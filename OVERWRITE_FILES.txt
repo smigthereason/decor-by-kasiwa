@@ -1,0 +1,8 @@
+Files intentionally changed from the previous full-bleed interactive build:
+
+app/layout.tsx
+components/navigation/SiteHeader.tsx
+components/navigation/SiteFooter.tsx
+components/shop/ShopGrid.tsx
+
+All other files in the commerce overlay are new.
