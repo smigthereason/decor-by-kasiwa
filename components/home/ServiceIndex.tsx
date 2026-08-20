@@ -36,32 +36,38 @@ export default function ServiceIndex() {
         </motion.div>
 
         <div>
-          {services.map(([number, title, description], index) => (
-            <motion.div
-              key={title}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.35 }}
-              transition={{ delay: index * 0.055, duration: 0.5 }}
-            >
-              <Link
-                href="/services"
-                className="group grid gap-3 border-t hairline py-5 transition-colors hover:bg-[var(--paper-2)] md:grid-cols-[54px_1fr_1fr_auto] md:items-center md:px-2"
+          {services.map(([number, title, description], index) => {
+            const isLast = index === services.length - 1;
+
+            return (
+              <motion.div
+                key={title}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.35 }}
+                transition={{ delay: index * 0.055, duration: 0.5 }}
               >
-                <span className="text-[10px] text-[var(--muted)]">{number}</span>
-                <span className="text-lg font-medium tracking-[-0.03em] md:text-xl">
-                  {title}
-                </span>
-                <span className="max-w-sm text-xs leading-relaxed text-[var(--muted)]">
-                  {description}
-                </span>
-                <ArrowUpRight
-                  size={16}
-                  className="transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"
-                />
-              </Link>
-            </motion.div>
-          ))}
+                <Link
+                  href="/services"
+                  className={`group grid gap-3 hairline py-5 transition-colors hover:bg-[var(--paper-2)] md:grid-cols-[54px_1fr_1fr_auto] md:items-center md:px-2 ${
+                    !isLast ? 'border-b' : ''
+                  }`}
+                >
+                  <span className="text-[10px] text-[var(--muted)]">{number}</span>
+                  <span className="text-lg font-medium tracking-[-0.03em] md:text-xl">
+                    {title}
+                  </span>
+                  <span className="max-w-sm text-xs leading-relaxed text-[var(--muted)]">
+                    {description}
+                  </span>
+                  <ArrowUpRight
+                    size={16}
+                    className="transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"
+                  />
+                </Link>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </section>

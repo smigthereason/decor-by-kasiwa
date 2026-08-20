@@ -15,6 +15,23 @@ export default function FeatureRoom() {
   return (
     <section className="w-full border-b hairline bg-[var(--paper)]">
       <div className="relative overflow-hidden">
+        {collectionRows.map(([number, label, href]) => (
+          <Link
+            key={label}
+            href={href}
+            className="group grid min-h-16 grid-cols-[64px_1fr_auto] items-center border-t hairline px-4 text-[11px] uppercase transition-colors hover:bg-[var(--paper-2)] md:grid-cols-[80px_1fr_auto] md:px-6"
+          >
+            <span className="text-[9px] text-[var(--muted)]">{number}</span>
+            <span className="justify-self-center font-semibold underline underline-offset-4">
+              {label}
+            </span>
+            <ArrowRight
+              size={14}
+              className="transition-transform group-hover:translate-x-1"
+            />
+          </Link>
+        ))}
+
         <div className="image-shade relative h-[560px] sm:h-[640px] md:h-[760px] lg:h-[820px]">
           <motion.div
             className="absolute inset-0"
@@ -45,7 +62,7 @@ export default function FeatureRoom() {
           </motion.div>
 
           <motion.div
-            className="absolute bottom-8 left-5 z-10 max-w-52 text-[var(--white)] sm:max-w-64 md:bottom-12 md:left-[34%]"
+            className="absolute bottom-8 left-4 z-10 max-w-52 text-[var(--white)] sm:max-w-64 md:bottom-12 md:left-12"
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -91,22 +108,7 @@ export default function FeatureRoom() {
           </motion.div>
         </div>
 
-        {collectionRows.map(([number, label, href]) => (
-          <Link
-            key={label}
-            href={href}
-            className="group grid min-h-16 grid-cols-[64px_1fr_auto] items-center border-t hairline px-4 text-[11px] uppercase transition-colors hover:bg-[var(--paper-2)] md:grid-cols-[80px_1fr_auto] md:px-6"
-          >
-            <span className="text-[9px] text-[var(--muted)]">{number}</span>
-            <span className="justify-self-center font-semibold underline underline-offset-4">
-              {label}
-            </span>
-            <ArrowRight
-              size={14}
-              className="transition-transform group-hover:translate-x-1"
-            />
-          </Link>
-        ))}
+
       </div>
     </section>
   );

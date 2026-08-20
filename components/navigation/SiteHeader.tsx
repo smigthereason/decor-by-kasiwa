@@ -22,7 +22,7 @@ const categories = [
   { label: "Furniture", href: "/shop?category=Furniture", value: "Furniture" },
   { label: "Lighting", href: "/shop?category=Lighting", value: "Lighting" },
   { label: "Textiles", href: "/shop?category=Textiles", value: "Textiles" },
-  { label: "Décor", href: "/shop?category=Decor", value: "Decor" },
+  { label: "Decor", href: "/shop?category=Decor", value: "Decor" },
   { label: "All", href: "/shop", value: "all" },
 ];
 
@@ -75,7 +75,7 @@ export default function SiteHeader() {
           {/* ============================================================ */}
           {/* PRIMARY ROW                                                  */}
           {/* ============================================================ */}
-          <div className="grid h-[58px] grid-cols-[1fr_auto_1fr] items-center border-b border-black/[0.045] px-4 sm:px-5 lg:px-7">
+          <div className="grid h-[72px] sm:h-[90px] grid-cols-[1fr_auto_1fr] items-center border-b border-black/[0.045] px-4 sm:px-5 lg:px-7">
             {/* LEFT */}
             <div className="flex min-w-0 items-center gap-3">
               <button
@@ -87,7 +87,7 @@ export default function SiteHeader() {
                 className="group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-0.5 text-[11px] font-medium text-[#171717] transition-opacity hover:opacity-55 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#e8e4e1]"
               >
                 <Menu
-                  size={15}
+                  size={24}
                   strokeWidth={1.45}
                   className="transition-transform duration-300 group-hover:scale-95"
                 />
@@ -96,12 +96,12 @@ export default function SiteHeader() {
 
               <form
                 onSubmit={handleSearch}
-                className="hidden h-[34px] items-center rounded-full bg-[#f4f1ef] pl-3 pr-[3px] sm:flex"
+                className="hidden h-[34px] items-center rounded-full bg-[#f4f1ef] pl-3 pr-3 sm:flex"
               >
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="w-[116px] bg-transparent pr-2 text-[8px] font-medium uppercase tracking-[-0.01em] text-[#171717] outline-none placeholder:text-black/35 lg:w-[150px]"
+                  className="w-32 bg-transparent pr-2 text-[8px] font-medium uppercase tracking-[-0.01em] text-[#171717] outline-none placeholder:text-black/35 lg:w-48"
                   placeholder="Light up your search"
                   aria-label="Search the collection"
                 />
@@ -120,16 +120,16 @@ export default function SiteHeader() {
             <Link
               href="/"
               aria-label="Decor by Kasiwa home"
-              className="flex items-center justify-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#e8e4e1]"
+              className="relative z-20 flex items-center justify-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#e8e4e1]"
             >
               <Image
                 src={Logo}
                 alt="Decor by Kasiwa logo"
-                width={340}
-                height={150}
+                width={400}
+                height={300}
                 priority
                 quality={100}
-                className="h-auto w-[84px] object-contain sm:w-[92px] lg:w-[98px]"
+                className="h-auto w-[160px] object-contain sm:w-[140px] lg:w-[190px]"
               />
             </Link>
 
@@ -138,23 +138,23 @@ export default function SiteHeader() {
               <Link
                 href="/account"
                 aria-label={user ? "Open my account" : "Sign in"}
-                className="hidden h-[34px] items-center gap-2 rounded-full bg-[#f4f1ef] pl-3 pr-1.5 text-[8px] font-medium transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35 sm:inline-flex"
+                className="hidden h-10 items-center gap-2 rounded-full bg-[#f4f1ef] pl-3 pr-1.5 text-[10px] font-medium transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35 sm:inline-flex"
               >
-                <span className="max-w-[72px] truncate">
+                <span className="max-w-20 truncate">
                   {user ? "My account" : "Sign in"}
                 </span>
 
-                <span className="grid size-[26px] place-items-center rounded-full bg-[#ddd7d2]">
-                  <CircleUserRound size={15} strokeWidth={1.1} />
+                <span className="grid size-7.5 place-items-center rounded-full bg-[#ddd7d2]">
+                  <CircleUserRound size={20} strokeWidth={1.1} />
                 </span>
               </Link>
 
               <Link
                 href="/wishlist"
                 aria-label="Open saved items"
-                className="grid size-[34px] place-items-center rounded-full bg-[#f4f1ef] transition-transform duration-200 hover:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35"
+                className="grid size-10 place-items-center rounded-full bg-[#f4f1ef] transition-transform duration-200 hover:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35"
               >
-                <Heart size={14} strokeWidth={1.45} />
+                <Heart size={20} strokeWidth={1.45} />
               </Link>
 
               <Link
@@ -162,12 +162,12 @@ export default function SiteHeader() {
                 aria-label={`Open shopping bag${
                   cartCount ? `, ${cartCount} items` : ""
                 }`}
-                className="relative grid size-[34px] place-items-center rounded-full bg-[#f4f1ef] transition-transform duration-200 hover:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35"
+                className="relative grid size-10 place-items-center rounded-full bg-[#f4f1ef] transition-transform duration-200 hover:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-black/35"
               >
-                <ShoppingBag size={14} strokeWidth={1.45} />
+                <ShoppingBag size={20} strokeWidth={1.45} />
 
                 {cartCount > 0 && (
-                  <span className="absolute -right-[1px] -top-[1px] grid min-h-[15px] min-w-[15px] place-items-center rounded-full bg-[#1a1a18] px-1 text-[7px] font-semibold leading-none text-white">
+                  <span className="absolute -right-px -top-1px grid min-h-3.75 min-w-3.75 place-items-center rounded-full bg-[#1a1a18] px-1 text-[10px] font-semibold leading-none text-white">
                     {cartCount > 99 ? "99+" : cartCount}
                   </span>
                 )}
@@ -180,7 +180,7 @@ export default function SiteHeader() {
           {/* ============================================================ */}
           <nav
             aria-label="Shop categories"
-            className="h-[38px] bg-[#e2dedb]"
+            className="h-[44px] "
           >
             <div className="scrollbar-none flex h-full items-stretch overflow-x-auto">
               {categories.map(({ label, href, value }) => {
@@ -193,7 +193,7 @@ export default function SiteHeader() {
                     aria-current={active ? "page" : undefined}
                     className={[
                       "relative flex h-full shrink-0 items-center justify-center",
-                      "px-[20px] text-[10px] font-medium text-[#171717]",
+                      "px-[20px] text-[11px] sm:text-[12px] font-medium text-[#171717]",
                       "transition-colors duration-200 sm:px-[24px]",
                       "focus-visible:z-20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-black/35",
                       active
@@ -240,7 +240,7 @@ export default function SiteHeader() {
             <div className="flex min-h-screen w-full flex-col px-4 pb-10 pt-5 md:px-8">
               <div className="flex items-center justify-between pb-4">
                 <span className="text-sm font-semibold tracking-[-0.04em]">
-                  KASIWA
+                DECOR BY KASIWA
                 </span>
 
                 <button
@@ -267,7 +267,7 @@ export default function SiteHeader() {
                     <Link
                       href={href}
                       onClick={() => setMenuOpen(false)}
-                      className="group flex items-center justify-between border-b border-white/20 py-3 text-[clamp(3rem,9vw,7rem)] font-medium leading-none tracking-[-0.075em]"
+                      className="group flex items-center justify-between border-b border-white/20 py-3 text-[clamp(3rem,9vw,5rem)] font-medium leading-none tracking-[-0.075em]"
                     >
                       <span>{label}</span>
 

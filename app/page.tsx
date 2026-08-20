@@ -13,7 +13,7 @@ export default function Home() {
       <ServiceIndex />
       <SelectedProjects />
 
-      <section className="page-shell border-b hairline bg-[var(--forest)] px-4 py-16 text-[var(--paper)] md:px-8 md:py-24">
+      {/*<section className="page-shell border-b hairline bg-[var(--forest)] px-4 py-16 text-[var(--paper)] md:px-8 md:py-24">
         <div className="grid gap-10 md:grid-cols-[1fr_1.4fr] md:items-end">
           <p className="kicker text-white/55">Our point of view</p>
           <div>
@@ -27,7 +27,7 @@ export default function Home() {
             </Link>
           </div>
         </div>
-      </section>
+      </section>*/}
     </>
   );
 }
