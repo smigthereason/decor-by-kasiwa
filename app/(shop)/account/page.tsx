@@ -26,7 +26,7 @@ export default function AccountPage() {
       <section className="flex min-h-[calc(100vh-140px)] w-full flex-col justify-center border-b hairline bg-[var(--paper)] px-4 py-20 md:px-8 md:py-28">
         <p className="kicker text-[var(--muted)]">Account</p>
         <h1 className="mt-4 max-w-4xl text-[clamp(3.8rem,9vw,8rem)] font-medium leading-[0.88] tracking-[-0.075em]">
-          YOUR KASIWA.
+          Your Account.
         </h1>
         <p className="mt-8 max-w-lg text-sm leading-relaxed text-[var(--muted)]">
           Sign in to test the returning-customer journey, or create an account to see how saved items and prototype orders can live in one place.

@@ -396,14 +396,14 @@ export default function SiteHeader() {
                     Saved items
                   </Link>
 
-                  <Link
+                  {/*<Link
                     href="/consultation"
                     onClick={() => setMenuOpen(false)}
                     className="inline-flex items-center gap-2"
                   >
                     Start a project
                     <ArrowUpRight size={14} />
-                  </Link>
+                  </Link>*/}
                 </div>
               </div>
             </div>

@@ -14,13 +14,13 @@ export default function SiteFooter() {
             <br />
             Your Space.
           </h2>
-          <Link
+          {/*<Link
             href="/consultation"
             className="group mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--paper)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-[var(--ink)] transition-all hover:gap-3 hover:shadow-lg"
           >
             <span>Start a project</span>
             <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Link>
+          </Link>*/}
         </div>
 
         {/* RIGHT: NAVIGATION */}

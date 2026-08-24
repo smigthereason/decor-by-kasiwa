@@ -229,7 +229,7 @@ export default function ConsultationForm() {
         <div>{steps[step].body}</div>
       </div>
 
-      <div className="flex justify-between border-t hairline py-5">
+      <div className="flex justify-between  py-5">
         <button
           type="button"
           onClick={() => setStep((value) => Math.max(0, value - 1))}
