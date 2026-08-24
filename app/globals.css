@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/*
+ * Decor by Kasiwa — client-approved palette
+ * Deep Green  #0E2B26
+ * Sage Green  #8CA78B
+ * Warm Beige  #E8DFCF
+ * Soft Cream  #FAF7F2
+ * Gold        #D4AF37
+ * Charcoal    #1F2321
+ */
+:root {
+  --deep-green: #0e2b26;
+  --sage-green: #8ca78b;
+  --warm-beige: #e8dfcf;
+  --soft-cream: #faf7f2;
+  --brand-gold: #d4af37;
+  --charcoal: #1f2321;
+
+  /* Existing semantic tokens retained so component layout does not change. */
+  --canvas: var(--warm-beige);
+  --paper: var(--soft-cream);
+  --paper-2: var(--warm-beige);
+  --ink: var(--charcoal);
+  --muted: color-mix(in srgb, var(--charcoal) 58%, var(--soft-cream));
+  --line: color-mix(in srgb, var(--charcoal) 20%, var(--soft-cream));
+  --forest: var(--deep-green);
+  --sage: var(--sage-green);
+  --sand: var(--warm-beige);
+  --gold: var(--brand-gold);
+  --white: var(--soft-cream);
+}
+
+/* Named Tailwind v4 colour utilities for exact client palette values. */
+@theme inline {
+  --color-deep-green: var(--deep-green);
+  --color-sage-green: var(--sage-green);
+  --color-warm-beige: var(--warm-beige);
+  --color-soft-cream: var(--soft-cream);
+  --color-brand-gold: var(--brand-gold);
+  --color-charcoal: var(--charcoal);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-manrope), Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--forest);
+  color: var(--white);
+}
+
+.page-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.hairline {
+  border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.kicker {
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.editorial-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.image-shade::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(14, 43, 38, 0.38) 0%,
+    rgba(14, 43, 38, 0.03) 52%,
+    rgba(14, 43, 38, 0.2) 100%
+  );
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .page-shell {
+    width: 100%;
+  }
+}
+
+
+.focus-ring:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.motion-safe-lift {
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+.motion-safe-lift:hover {
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
