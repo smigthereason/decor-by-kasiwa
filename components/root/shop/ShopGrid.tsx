@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { useMemo } from "react";
+import { ChevronDown } from "lucide-react";
 
 import ProductCard from "@/components/root/shop/ProductCard";
 import type { ShopNavigation, StoreProduct } from "@/types/commerce";
@@ -80,17 +81,95 @@ export default function ShopGrid({ products, navigation }: { products: StoreProd
       </div>
 
       <div className="mb-6 grid gap-4 border-b hairline pb-6 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">Shop by Space
-          <select value={space || ""} onChange={(event) => setFilter("space", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"><option value="">All spaces</option>{navigation.spaces.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}</select>
+        {/* Shop by Space */}
+        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">
+          Shop by Space
+          <div className="relative w-full">
+            <select
+              value={space || ""}
+              onChange={(event) => setFilter("space", event.target.value)}
+              className="min-h-12 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] pl-5 pr-12 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"
+            >
+              <option value="">All spaces</option>
+              {navigation.spaces.map((item) => (
+                <option key={item.slug} value={item.slug}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={16}
+              className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+            />
+          </div>
         </label>
-        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">Shop by Style
-          <select value={style || ""} onChange={(event) => setFilter("style", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"><option value="">All styles</option>{navigation.styles.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}</select>
+
+        {/* Shop by Style */}
+        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">
+          Shop by Style
+          <div className="relative w-full">
+            <select
+              value={style || ""}
+              onChange={(event) => setFilter("style", event.target.value)}
+              className="min-h-12 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] pl-5 pr-12 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"
+            >
+              <option value="">All styles</option>
+              {navigation.styles.map((item) => (
+                <option key={item.slug} value={item.slug}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={16}
+              className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+            />
+          </div>
         </label>
-        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">Shop by Price
-          <select value={price || ""} onChange={(event) => setFilter("price", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15">{priceOptions.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}</select>
+
+        {/* Shop by Price */}
+        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">
+          Shop by Price
+          <div className="relative w-full">
+            <select
+              value={price || ""}
+              onChange={(event) => setFilter("price", event.target.value)}
+              className="min-h-12 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] pl-5 pr-12 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"
+            >
+              {priceOptions.map((item) => (
+                <option key={item.value || "all"} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={16}
+              className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+            />
+          </div>
         </label>
-        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">Collection
-          <select value={collection || ""} onChange={(event) => setFilter("collection", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"><option value="">All collections</option>{navigation.collections.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}</select>
+
+        {/* Collection */}
+        <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">
+          Collection
+          <div className="relative w-full">
+            <select
+              value={collection || ""}
+              onChange={(event) => setFilter("collection", event.target.value)}
+              className="min-h-12 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] pl-5 pr-12 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"
+            >
+              <option value="">All collections</option>
+              {navigation.collections.map((item) => (
+                <option key={item.slug} value={item.slug}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={16}
+              className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+            />
+          </div>
         </label>
       </div>
 
