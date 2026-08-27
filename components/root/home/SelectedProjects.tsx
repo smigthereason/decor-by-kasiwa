@@ -385,6 +385,8 @@ export default function SelectedProjects() {
                       src={project.image}
                       alt={project.name}
                       fill
+                      unoptimized
+                      priority
                       sizes={
                         index === 0
                           ? "(max-width: 768px) 100vw, 58vw"

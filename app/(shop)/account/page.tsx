@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, MapPin, Calendar, Package, ChevronRight, ShoppingBag, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, Calendar, Package, ChevronRight, ShoppingBag, Sparkles } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import CustomerProfileForm from "@/components/root/account/CustomerProfileForm";
 
 export default function AccountPage() {
   const { hydrated, user, orders, wishlist, logout } = useCommerce();
@@ -29,7 +30,7 @@ export default function AccountPage() {
           Your Account.
         </h1>
         <p className="mt-8 max-w-lg text-sm leading-relaxed text-[var(--muted)]">
-          Sign in to test the returning-customer journey, or create an account to see how saved items and prototype orders can live in one place.
+          Sign in with Google to access your account, saved items and order history.
         </p>
         <div className="mt-8 flex flex-wrap gap-2">
           <Link
@@ -39,12 +40,7 @@ export default function AccountPage() {
             <span>Sign in</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
           </Link>
-          <Link
-            href="/account/register"
-            className="focus-ring inline-flex items-center gap-2 rounded-full border hairline px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-all hover:border-[var(--ink)]"
-          >
-            Create account
-          </Link>
+
         </div>
       </section>
     );
@@ -157,15 +153,7 @@ export default function AccountPage() {
               <ChevronRight size={16} className="shrink-0 text-[var(--muted)] transition-transform group-hover:translate-x-1" />
             </Link>
 
-            <div className="rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <MapPin size={16} className="shrink-0 text-[var(--muted)]" />
-                <p className="text-sm font-semibold">Addresses</p>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
-                Address management will be available when production authentication is connected.
-              </p>
-            </div>
+            <CustomerProfileForm />
           </div>
 
           {/* RIGHT COLUMN - ORDER HISTORY */}

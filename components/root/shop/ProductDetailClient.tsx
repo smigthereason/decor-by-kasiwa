@@ -15,40 +15,47 @@ import {
   Zap,
 } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
-import { formatMoney, getProductBySlug } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import { getMaximumPurchasableQuantity, isProductSoldOut } from "@/lib/catalogue";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import ProductCard from "@/components/root/shop/ProductCard";
 
 export default function ProductDetailClient({
   product,
+  relatedProducts,
 }: {
   product: StoreProduct;
+  relatedProducts: StoreProduct[];
 }) {
-  const { addToCart, toggleWishlist, isWishlisted } = useCommerce();
+  const { addToCart, toggleWishlist, isWishlisted, catalogueReady, catalogueError } = useCommerce();
   const [quantity, setQuantity] = useState(1);
   const [colour, setColour] = useState(product.colours[0] || "");
   const [added, setAdded] = useState(false);
   const [buyingNow, setBuyingNow] = useState(false);
   const wishlisted = isWishlisted(product.id);
+  const soldOut = isProductSoldOut(product);
+  const maximumQuantity = getMaximumPurchasableQuantity(product);
+  const purchasingUnavailable = !catalogueReady || Boolean(catalogueError);
 
   function handleAdd() {
-    addToCart(product.id, quantity, colour);
+    if (soldOut || purchasingUnavailable) return;
+    const addedToCart = addToCart(product.id, quantity, colour);
+    if (!addedToCart) return;
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
   }
 
   function handleBuyNow() {
+    if (soldOut || purchasingUnavailable) return;
+    const addedToCart = addToCart(product.id, quantity, colour);
+    if (!addedToCart) return;
     setBuyingNow(true);
-    addToCart(product.id, quantity, colour);
-    // Redirect to checkout after a brief delay
     window.setTimeout(() => {
       window.location.href = "/checkout";
     }, 300);
   }
 
-  const related = product.related
-    .map((slug) => getProductBySlug(slug))
-    .filter(Boolean) as StoreProduct[];
+  const related = relatedProducts;
 
   return (
     <>
@@ -84,28 +91,98 @@ export default function ProductDetailClient({
         <div className="grid flex-1 items-stretch lg:grid-cols-[1.35fr_0.65fr]">
           {/* LEFT COLUMN: IMAGES */}
           <div className="flex flex-col border-b hairline lg:border-b-0 lg:border-r">
-            <div className="grid gap-px bg-[var(--line)] sm:grid-cols-2">
-              {product.images.map((image, index) => (
+            {product.images.length > 0 ? (
+              <div className="flex flex-col lg:flex-row gap-4 p-4 lg:p-6 lg:sticky lg:top-24 h-fit">
+
+                {/* Primary / Hero Image Container */}
                 <motion.div
-                  key={image}
-                  className={`relative overflow-hidden bg-[var(--paper-2)] ${
-                    index === 0 ? "aspect-[4/5] sm:col-span-2 sm:aspect-[16/10]" : "aspect-[4/5]"
-                  }`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: index * 0.06 }}
+                  className="relative flex-1 overflow-hidden rounded-2xl bg-[var(--paper-2)] border border-[var(--line)] aspect-[4/5] max-h-[75vh]"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
                 >
                   <Image
-                    src={image}
-                    alt={`${product.name} view ${index + 1}`}
+                    src={product.images[0]}
+                    alt={`${product.name} - main view`}
                     fill
-                    priority={index === 0}
-                    className="object-cover"
+                    priority
+                    className="object-contain p-4"
+                    sizes="(max-width: 1024px) 100vw, 45vw"
+                    unoptimized
                   />
+
+                  {/* Featured Badge */}
+                  <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
+                    <span className="text-[10px] font-semibold tracking-widest text-white uppercase">
+                      Featured
+                    </span>
+                  </div>
                 </motion.div>
-              ))}
-            </div>
-            <div className="flex-1 bg-[var(--paper)]" />
+
+                {/* Side Thumbnail Rail (Horizontal on Mobile, Vertical Scroll on Desktop) */}
+                {product.images.slice(1).length > 0 && (
+                  <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto max-h-[75vh] scrollbar-none py-1">
+                    {product.images.slice(1).map((image, index) => (
+                      <motion.div
+                        key={image}
+                        className="group relative flex-shrink-0 w-20 lg:w-24 aspect-[4/5] overflow-hidden rounded-xl bg-[var(--paper-2)] border border-[var(--line)] cursor-pointer transition-all duration-300 hover:border-[var(--deep-green)]"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: (index + 1) * 0.08, duration: 0.4 }}
+                      >
+                        <Image
+                          src={image}
+                          alt={`${product.name} view ${index + 2}`}
+                          fill
+                          className="object-contain p-2 transition-transform duration-500 group-hover:scale-105"
+                          sizes="100px"
+                          unoptimized
+                        />
+
+                        {/* Subtle Overlay */}
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-2">
+                          <span className="text-[10px] text-white font-medium backdrop-blur-sm px-2 py-0.5 rounded bg-black/40">
+                            {index + 2}
+                          </span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Minimalist Decorative Placeholder */
+              <motion.div
+                className="relative min-h-[500px] lg:min-h-[700px] bg-gradient-to-br from-[var(--warm-beige)] to-[var(--paper-2)] flex items-center justify-center p-8 overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6 }}
+              >
+                <div className="absolute inset-0 opacity-5 pointer-events-none">
+                  <div className="absolute top-10 right-10 w-48 h-48 rounded-full border-4 border-[var(--deep-green)]" />
+                  <div className="absolute bottom-10 left-10 w-36 h-36 rounded-full border-4 border-[var(--deep-green)]" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full border-4 border-[var(--deep-green)]" />
+                </div>
+
+                <div className="relative text-center space-y-4 max-w-sm z-10">
+                  <span className="inline-block px-4 py-1.5 bg-[var(--deep-green)]/10 rounded-full text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--deep-green)]">
+                    Decor by Kasiwa
+                  </span>
+
+                  <div className="space-y-2">
+                    <p className="text-3xl font-light text-[var(--deep-green)]">📸</p>
+                    <p className="text-sm text-[var(--muted)] font-medium leading-relaxed">
+                      Product imagery will be added soon.
+                    </p>
+                    <p className="text-xs text-[var(--muted)]/60">
+                      Check back for updates
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+
           </div>
 
           {/* RIGHT COLUMN: DETAILS */}
@@ -125,10 +202,15 @@ export default function ProductDetailClient({
                     </p>
                   )}
                 </div>
-                <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.08em]">
-                  <span className="size-2 rounded-full bg-[var(--forest)]" />
-                  {product.stock}
-                </span>
+                <div className="text-right">
+                  <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.08em]">
+                    <span className={`size-2 rounded-full ${soldOut ? "bg-[var(--muted)]" : "bg-[var(--forest)]"}`} />
+                    {product.stock}
+                  </span>
+                  {product.sku && (
+                    <p className="mt-1 text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">SKU {product.sku}</p>
+                  )}
+                </div>
               </div>
 
               <p className="mt-6 text-sm leading-relaxed text-[var(--muted)]">
@@ -169,7 +251,8 @@ export default function ProductDetailClient({
                   <button
                     type="button"
                     onClick={() => setQuantity((value) => Math.max(1, value - 1))}
-                    className="focus-ring grid size-8 place-items-center"
+                    disabled={soldOut || quantity <= 1}
+                    className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
                     aria-label="Decrease quantity"
                   >
                     <Minus size={13} />
@@ -177,13 +260,17 @@ export default function ProductDetailClient({
                   <span className="text-xs">{quantity}</span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((value) => value + 1)}
-                    className="focus-ring grid size-8 place-items-center"
+                    onClick={() => setQuantity((value) => maximumQuantity === null ? value + 1 : Math.min(maximumQuantity, value + 1))}
+                    disabled={soldOut || (maximumQuantity !== null && quantity >= maximumQuantity)}
+                    className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
                     aria-label="Increase quantity"
                   >
                     <Plus size={13} />
                   </button>
                 </div>
+                {maximumQuantity !== null && maximumQuantity <= 5 && !soldOut && (
+                  <p className="mt-2 text-[11px] text-[var(--muted)]">Only {maximumQuantity} left in stock.</p>
+                )}
               </div>
 
               {/* ACTION BUTTONS */}
@@ -191,9 +278,16 @@ export default function ProductDetailClient({
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95"
+                  disabled={soldOut || purchasingUnavailable}
+                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  {added ? (
+                  {catalogueError ? (
+                    <>Catalogue unavailable</>
+                  ) : !catalogueReady ? (
+                    <>Preparing bag…</>
+                  ) : soldOut ? (
+                    <>Out of stock</>
+                  ) : added ? (
                     <>
                       <Check size={14} /> Added to bag
                     </>
@@ -205,7 +299,7 @@ export default function ProductDetailClient({
                 <button
                   type="button"
                   onClick={handleBuyNow}
-                  disabled={buyingNow}
+                  disabled={buyingNow || soldOut || purchasingUnavailable}
                   className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-2 border-[var(--ink)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink)] transition-all hover:bg-[var(--deep-green)] hover:text-[var(--paper)] disabled:opacity-50"
                 >
                   {buyingNow ? (
@@ -246,8 +340,12 @@ export default function ProductDetailClient({
                 <DetailRow title="The piece">{product.story}</DetailRow>
                 <DetailRow title="Details & dimensions">
                   {product.dimensions}
-                  <br />
-                  {product.materials.join(" · ")}
+                  {product.materials.length > 0 && (
+                    <>
+                      <br />
+                      {product.materials.join(" · ")}
+                    </>
+                  )}
                 </DetailRow>
                 <DetailRow title="Care">{product.care}</DetailRow>
                 <DetailRow title="Delivery & returns">

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Truck, Package, Clock } from "lucide-react";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "Delivery" };
+
+export const metadata: Metadata = { title: "Delivery" };
 
 export default function DeliveryPage() {
   return (

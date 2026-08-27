@@ -2,8 +2,10 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import LoginForm from "@/components/root/account/LoginForm";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "Sign In" };
+
+export const metadata: Metadata = { title: "Sign In" };
 
 export default function LoginPage() {
   return (

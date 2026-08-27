@@ -2,8 +2,10 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, HelpCircle } from "lucide-react";
 import FAQItem from "@/components/root/faq/FAQItem";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "FAQs" };
+
+export const metadata: Metadata = { title: "FAQs" };
 
 const questions = [
   ["Can I buy products without booking an interior design service?", "Yes. The shop journey is separate from the consultation journey, while individual products can still lead into styling support when a client needs it."],

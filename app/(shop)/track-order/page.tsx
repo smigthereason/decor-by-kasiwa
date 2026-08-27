@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Package, Search } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
 import type { DemoOrder } from "@/types/commerce";
 
 export default function TrackOrderPage() {

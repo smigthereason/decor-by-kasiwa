@@ -4,19 +4,24 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Minus, Plus, Trash2, LockKeyhole } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney, getProductById } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import { getMaximumPurchasableQuantity } from "@/lib/catalogue";
+import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
 
 export default function CartPage() {
   const {
     hydrated,
+    catalogueReady,
+    catalogueError,
     cart,
     subtotal,
     user,
+    getProductById,
     updateQuantity,
     removeFromCart,
   } = useCommerce();
 
-  if (!hydrated) {
+  if (!hydrated || !catalogueReady) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
@@ -27,6 +32,10 @@ export default function CartPage() {
         </div>
       </div>
     );
+  }
+
+  if (catalogueError) {
+    return <CatalogueUnavailable message={catalogueError} />;
   }
 
   if (cart.length === 0) {
@@ -87,6 +96,7 @@ export default function CartPage() {
               {cart.map((line) => {
                 const product = getProductById(line.productId);
                 if (!product) return null;
+                const maximumQuantity = getMaximumPurchasableQuantity(product);
 
                 return (
                   <article
@@ -98,12 +108,13 @@ export default function CartPage() {
                       href={`/shop/${product.slug}`}
                       className="relative aspect-[3/4] w-full sm:w-32 md:w-40 shrink-0 overflow-hidden rounded-lg bg-[var(--paper-2)]"
                     >
-                      <Image
-                        src={product.heroImage}
-                        alt={product.name}
-                        fill
-                        className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                      />
+                      {product.heroImage ? (
+                        <Image src={product.heroImage} alt={product.name} fill unoptimized priority={true} className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
+                      ) : (
+                        <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-3 text-center">
+                          <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--deep-green)]">Image coming soon</span>
+                        </div>
+                      )}
                     </Link>
 
                     {/* PRODUCT DETAILS */}
@@ -124,6 +135,9 @@ export default function CartPage() {
                               Finish:
                               <span className="font-medium text-[var(--ink)]">{line.colour}</span>
                             </p>
+                          )}
+                          {maximumQuantity !== null && maximumQuantity <= 5 && (
+                            <p className="mt-2 text-[11px] text-[var(--muted)]">Only {maximumQuantity} available.</p>
                           )}
                         </div>
                         <p className="whitespace-nowrap text-base sm:text-lg font-semibold">
@@ -160,7 +174,8 @@ export default function CartPage() {
                                 line.colour
                               )
                             }
-                            className="focus-ring grid size-9 place-items-center rounded-full transition-colors hover:bg-[var(--paper-2)]"
+                            disabled={maximumQuantity !== null && line.quantity >= maximumQuantity}
+                            className="focus-ring grid size-9 place-items-center rounded-full transition-colors hover:bg-[var(--paper-2)] disabled:cursor-not-allowed disabled:opacity-35"
                             aria-label="Increase quantity"
                           >
                             <Plus size={13} />
@@ -213,6 +228,7 @@ export default function CartPage() {
               {cart.map((line, index) => {
                 const product = getProductById(line.productId);
                 if (!product) return null;
+                const maximumQuantity = getMaximumPurchasableQuantity(product);
 
                 return (
                   <article

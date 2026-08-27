@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, RotateCcw, Package, AlertCircle } from "lucide-react";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "Returns" };
+
+export const metadata: Metadata = { title: "Returns" };
 
 export default function ReturnsPage() {
   return (

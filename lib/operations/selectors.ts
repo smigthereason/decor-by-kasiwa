@@ -1,5 +1,10 @@
-import { inventory, orders, shipments } from "./data";
-import type { InventoryItem } from "./types";
+import type {
+  AdminMetrics,
+  InventoryItem,
+  Order,
+  Shipment,
+  StoreMetrics,
+} from "./types";
 
 export function formatKes(value: number) {
   return new Intl.NumberFormat("en-KE", {
@@ -10,6 +15,8 @@ export function formatKes(value: number) {
 }
 
 export function formatDateTime(value: string) {
+  if (!value) return "—";
+
   return new Intl.DateTimeFormat("en-KE", {
     day: "2-digit",
     month: "short",
@@ -25,47 +32,58 @@ export function availableStock(item: InventoryItem) {
 
 export function stockStatus(item: InventoryItem) {
   const available = availableStock(item);
-  if (available <= 0) return "out" as const;
+  if (item.available === false || available <= 0) return "out" as const;
   if (available <= item.reorderPoint) return "low" as const;
   return "healthy" as const;
 }
 
-export function adminMetrics() {
+export function adminMetrics({
+  orders,
+  shipments,
+  inventory,
+}: {
+  orders: Order[];
+  shipments: Shipment[];
+  inventory: InventoryItem[];
+}): AdminMetrics {
   const revenue = orders
     .filter((order) => order.paymentStatus === "paid")
     .reduce((sum, order) => sum + order.total, 0);
 
   const openOrders = orders.filter(
-    (order) => !["delivered", "cancelled"].includes(order.status)
+    (order) => !["delivered", "cancelled"].includes(order.status),
   ).length;
 
   const fulfilmentQueue = shipments.filter(
-    (shipment) => !["delivered"].includes(shipment.status)
+    (shipment) => shipment.status !== "delivered",
   ).length;
 
   const lowStock = inventory.filter(
-    (item) => stockStatus(item) !== "healthy"
+    (item) => stockStatus(item) !== "healthy",
   ).length;
 
-  return {
-    revenue,
-    openOrders,
-    fulfilmentQueue,
-    lowStock,
-  };
+  return { revenue, openOrders, fulfilmentQueue, lowStock };
 }
 
-export function storeMetrics() {
+export function storeMetrics({
+  shipments,
+  inventory,
+}: {
+  shipments: Shipment[];
+  inventory: InventoryItem[];
+}): StoreMetrics {
   return {
     awaitingReceipt: shipments.filter(
-      (shipment) => shipment.status === "awaiting_store"
+      (shipment) => shipment.status === "awaiting_store",
     ).length,
     beingPicked: shipments.filter(
-      (shipment) => shipment.status === "picking"
+      (shipment) => shipment.status === "picking",
     ).length,
     readyToDispatch: shipments.filter(
-      (shipment) => shipment.status === "ready_dispatch"
+      (shipment) => shipment.status === "ready_dispatch",
     ).length,
-    lowStock: inventory.filter((item) => stockStatus(item) !== "healthy").length,
+    lowStock: inventory.filter(
+      (item) => stockStatus(item) !== "healthy",
+    ).length,
   };
 }

@@ -1,4 +1,6 @@
 import PageIntro from "@/components/root/PageIntro";
+import type { Metadata } from 'next';
+
 
 const steps = [
   [
@@ -38,7 +40,7 @@ const steps = [
   ],
 ] as const;
 
-export const metadata = { title: "Our Process" };
+export const metadata: Metadata = { title: "Our Process" };
 
 export default function ProcessPage() {
   return (

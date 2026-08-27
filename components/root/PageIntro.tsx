@@ -76,6 +76,7 @@ export default function PageIntro({
             src={image}
             alt=""
             fill
+            unoptimized
             priority
             sizes="100vw"
             className="object-cover"
@@ -222,11 +223,11 @@ export default function PageIntro({
           className="absolute bottom-10 left-5 z-30 w-[calc(100%-40px)] sm:bottom-12 sm:left-8 sm:max-w-[680px] lg:bottom-[10%] lg:left-[3.5vw] lg:max-w-[850px]"
         >
           <div className="mb-5 flex items-center gap-3">
-            <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-soft-cream/75 sm:text-[9px]">
+            <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-soft-cream/75 sm:text-[12px]">
               {meta}
             </span>
             <span className="h-px w-10 bg-soft-cream/40" />
-            <span className="text-[8px] uppercase tracking-[0.14em] text-soft-cream/55 sm:text-[9px]">
+            <span className="text-[8px] uppercase tracking-[0.14em] text-soft-cream/55 sm:text-[12px]">
               {index}
             </span>
           </div>
@@ -238,7 +239,7 @@ export default function PageIntro({
           {(body || (ctaLabel && ctaHref)) && (
             <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:gap-10">
               {body && (
-                <p className="max-w-[430px] text-[11px] leading-[1.65] text-soft-cream/75 sm:text-[12px]">
+                <p className="max-w-[430px] text-[11px] leading-[1.65] text-soft-cream/75 sm:text-[14px]">
                   {body}
                 </p>
               )}
@@ -246,7 +247,7 @@ export default function PageIntro({
               {ctaLabel && ctaHref && (
                 <Link
                   href={ctaHref}
-                  className="group inline-flex w-fit items-center gap-3 border-b border-soft-cream/65 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-soft-cream sm:text-[9px]"
+                  className="group inline-flex w-fit items-center gap-3 border-b border-soft-cream/65 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-soft-cream sm:text-[11px]"
                 >
                   {ctaLabel}
                   <ArrowRight
@@ -261,7 +262,7 @@ export default function PageIntro({
         </motion.div>
 
         {/* MICRO META */}
-        <div className="absolute bottom-5 right-5 z-30 hidden items-center gap-3 text-[8px] uppercase tracking-[0.14em] text-soft-cream/45 md:flex lg:bottom-[4%] lg:right-[3.5vw]">
+        <div className="absolute bottom-5 right-5 z-30 hidden items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-soft-cream/45 md:flex lg:bottom-[4%] lg:right-[3.5vw]">
           <span>Design</span>
           <span className="size-1 rounded-full bg-soft-cream/35" />
           <span>Detail</span>

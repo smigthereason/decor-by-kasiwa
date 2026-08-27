@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import PageIntro from "@/components/root/PageIntro";
+import type { Metadata } from 'next';
+
 
 const projects = [
   [
@@ -26,7 +28,7 @@ const projects = [
   ],
 ] as const;
 
-export const metadata = { title: "Portfolio" };
+export const metadata: Metadata = { title: "Portfolio" };
 
 export default function PortfolioPage() {
   return (
@@ -72,6 +74,8 @@ export default function PortfolioPage() {
                     src={image}
                     alt={name}
                     fill
+                    unoptimized
+                    priority
                     sizes="(max-width: 768px) 100vw, 50vw"
                     className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
                   />

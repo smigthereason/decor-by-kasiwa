@@ -2,279 +2,847 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  ReactNode,
+  type ReactNode,
 } from "react";
+import { signOut, useSession } from "next-auth/react";
+
 import type {
   DemoUser,
   DemoOrder,
   CartLine,
   DemoAddress,
+  StoreProduct,
 } from "@/types/commerce";
-import { storeProducts } from "@/lib/products";
+
+import {
+  clampProductQuantity,
+  isProductSoldOut,
+} from "@/lib/catalogue";
 
 type CommerceContextType = {
   hydrated: boolean;
+
+  catalogueReady: boolean;
+  catalogueError: string | null;
+  catalogue: StoreProduct[];
+
   cart: CartLine[];
   cartCount: number;
   subtotal: number;
+
   user: DemoUser | null;
+
   wishlist: string[];
   orders: DemoOrder[];
-  addToCart: (productId: string, quantity: number, colour?: string) => void;
-  updateQuantity: (productId: string, quantity: number, colour?: string) => void;
-  removeFromCart: (productId: string, colour?: string) => void;
-  toggleWishlist: (productId: string) => void;
-  isWishlisted: (productId: string) => boolean;
+
+  getProductById: (
+    productId: string,
+  ) => StoreProduct | undefined;
+
+  addToCart: (
+    productId: string,
+    quantity: number,
+    colour?: string,
+  ) => boolean;
+
+  updateQuantity: (
+    productId: string,
+    quantity: number,
+    colour?: string,
+  ) => void;
+
+  removeFromCart: (
+    productId: string,
+    colour?: string,
+  ) => void;
+
+  toggleWishlist: (
+    productId: string,
+  ) => void;
+
+  isWishlisted: (
+    productId: string,
+  ) => boolean;
+
   clearCart: () => void;
-  createOrder: (details: { email: string; address: DemoAddress; paymentMethod: string }) => DemoOrder;
-  login: (email: string, name?: string) => void;
-  register: (name: string, email: string) => void;
+
+  createOrder: (details: {
+    email: string;
+    address: DemoAddress;
+    paymentMethod: string;
+  }) => DemoOrder;
+
   logout: () => void;
 };
 
-const CommerceContext = createContext<CommerceContextType | null>(null);
+const CommerceContext =
+  createContext<CommerceContextType | null>(null);
 
-export function CommerceProvider({ children }: { children: ReactNode }) {
-  const [hydrated, setHydrated] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [user, setUser] = useState<DemoUser | null>(null);
-  const [wishlist, setWishlist] = useState<string[]>([]);
-  const [orders, setOrders] = useState<DemoOrder[]>([]);
+function sameLine(
+  line: CartLine,
+  productId: string,
+  colour?: string,
+) {
+  return (
+    line.productId === productId &&
+    (line.colour || "") === (colour || "")
+  );
+}
 
-  // Hydrate from localStorage on mount
+export function CommerceProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const {
+    data: session,
+    status: sessionStatus,
+  } = useSession();
+
+  const [storageHydrated, setStorageHydrated] =
+    useState(false);
+
+  const [catalogueReady, setCatalogueReady] =
+    useState(false);
+
+  const [catalogueError, setCatalogueError] =
+    useState<string | null>(null);
+
+  const [catalogue, setCatalogue] =
+    useState<StoreProduct[]>([]);
+
+  const [cart, setCart] =
+    useState<CartLine[]>([]);
+
+  const [wishlist, setWishlist] =
+    useState<string[]>([]);
+
+  const [orders, setOrders] =
+    useState<DemoOrder[]>([]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Real authenticated user from NextAuth                                  */
+  /* ---------------------------------------------------------------------- */
+
+  const user = useMemo<DemoUser | null>(() => {
+    if (
+      sessionStatus !== "authenticated" ||
+      !session?.user?.email
+    ) {
+      return null;
+    }
+
+    const fallbackName =
+      session.user.email
+        .split("@")[0]
+        .split(/[._-]/)
+        .filter(Boolean)
+        .map(
+          (part) =>
+            part.charAt(0).toUpperCase() +
+            part.slice(1),
+        )
+        .join(" ");
+
+    return {
+      name:
+        session.user.name?.trim() ||
+        fallbackName ||
+        "Customer",
+
+      email: session.user.email,
+    };
+  }, [
+    session?.user?.email,
+    session?.user?.name,
+    sessionStatus,
+  ]);
+
+  const hydrated =
+    storageHydrated &&
+    sessionStatus !== "loading";
+
+  /* ---------------------------------------------------------------------- */
+  /* Browser commerce state                                                  */
+  /* ---------------------------------------------------------------------- */
+
   useEffect(() => {
     try {
-      const storedCart = localStorage.getItem("kasiwa-cart");
-      const storedUser = localStorage.getItem("kasiwa-user");
-      const storedWishlist = localStorage.getItem("kasiwa-wishlist");
-      const storedOrders = localStorage.getItem("kasiwa-orders");
+      const storedCart =
+        localStorage.getItem("kasiwa-cart");
 
-      if (storedCart) setCart(JSON.parse(storedCart));
-      if (storedUser) setUser(JSON.parse(storedUser));
-      if (storedWishlist) setWishlist(JSON.parse(storedWishlist));
-      if (storedOrders) setOrders(JSON.parse(storedOrders));
+      const storedWishlist =
+        localStorage.getItem(
+          "kasiwa-wishlist",
+        );
+
+      const storedOrders =
+        localStorage.getItem("kasiwa-orders");
+
+      if (storedCart) {
+        setCart(JSON.parse(storedCart));
+      }
+
+      if (storedWishlist) {
+        setWishlist(
+          JSON.parse(storedWishlist),
+        );
+      }
+
+      if (storedOrders) {
+        setOrders(JSON.parse(storedOrders));
+      }
+
+      /*
+       * Remove the old prototype account.
+       * Authentication is now owned by NextAuth.
+       */
+      localStorage.removeItem("kasiwa-user");
     } catch (error) {
-      console.error("Failed to hydrate commerce state:", error);
+      console.error(
+        "Failed to hydrate commerce state:",
+        error,
+      );
     }
-    setHydrated(true);
+
+    setStorageHydrated(true);
   }, []);
 
-  // Persist to localStorage
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("kasiwa-cart", JSON.stringify(cart));
-  }, [cart, hydrated]);
+  /* ---------------------------------------------------------------------- */
+  /* Live Sanity catalogue                                                   */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("kasiwa-user", JSON.stringify(user));
-  }, [user, hydrated]);
+    let cancelled = false;
+
+    async function loadCatalogue() {
+      try {
+        const response = await fetch(
+          "/api/catalog",
+          {
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Catalogue request failed with status ${response.status}`,
+          );
+        }
+
+        const payload =
+          (await response.json()) as {
+            products?: StoreProduct[];
+          };
+
+        if (
+          !Array.isArray(
+            payload.products,
+          )
+        ) {
+          throw new Error(
+            "Catalogue response did not contain a products array",
+          );
+        }
+
+        if (!cancelled) {
+          setCatalogue(
+            payload.products,
+          );
+
+          setCatalogueError(null);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load live catalogue:",
+          error,
+        );
+
+        if (!cancelled) {
+          setCatalogueError(
+            "We could not load the live catalogue. Please refresh and try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setCatalogueReady(true);
+        }
+      }
+    }
+
+    loadCatalogue();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* ---------------------------------------------------------------------- */
+  /* Persist browser-only commerce state                                     */
+  /* ---------------------------------------------------------------------- */
 
   useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("kasiwa-wishlist", JSON.stringify(wishlist));
-  }, [wishlist, hydrated]);
+    if (!storageHydrated) return;
+
+    localStorage.setItem(
+      "kasiwa-cart",
+      JSON.stringify(cart),
+    );
+  }, [cart, storageHydrated]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem("kasiwa-orders", JSON.stringify(orders));
-  }, [orders, hydrated]);
+    if (!storageHydrated) return;
+
+    localStorage.setItem(
+      "kasiwa-wishlist",
+      JSON.stringify(wishlist),
+    );
+  }, [
+    wishlist,
+    storageHydrated,
+  ]);
+
+  useEffect(() => {
+    if (!storageHydrated) return;
+
+    localStorage.setItem(
+      "kasiwa-orders",
+      JSON.stringify(orders),
+    );
+  }, [orders, storageHydrated]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Product lookups                                                         */
+  /* ---------------------------------------------------------------------- */
+
+  const productMap = useMemo(
+    () =>
+      new Map(
+        catalogue.map(
+          (product) => [
+            product.id,
+            product,
+          ],
+        ),
+      ),
+    [catalogue],
+  );
+
+  const getProductById =
+    useCallback(
+      (productId: string) =>
+        productMap.get(productId),
+      [productMap],
+    );
+
+  /* ---------------------------------------------------------------------- */
+  /* Reconcile stale cart/wishlist against Sanity                            */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (
+      !storageHydrated ||
+      !catalogueReady ||
+      catalogueError
+    ) {
+      return;
+    }
+
+    setCart((current) => {
+      let changed = false;
+
+      const next: CartLine[] = [];
+
+      for (const line of current) {
+        const product =
+          productMap.get(
+            line.productId,
+          );
+
+        if (
+          !product ||
+          isProductSoldOut(product)
+        ) {
+          changed = true;
+          continue;
+        }
+
+        const quantity =
+          clampProductQuantity(
+            product,
+            line.quantity,
+          );
+
+        if (
+          quantity !==
+          line.quantity
+        ) {
+          changed = true;
+        }
+
+        next.push({
+          ...line,
+          quantity,
+        });
+      }
+
+      return changed
+        ? next
+        : current;
+    });
+
+    setWishlist((current) => {
+      const next =
+        current.filter(
+          (productId) =>
+            productMap.has(
+              productId,
+            ),
+        );
+
+      return next.length ===
+        current.length
+        ? current
+        : next;
+    });
+  }, [
+    storageHydrated,
+    catalogueReady,
+    catalogueError,
+    productMap,
+  ]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Totals                                                                  */
+  /* ---------------------------------------------------------------------- */
 
   const cartCount = useMemo(
-    () => cart.reduce((total, line) => total + line.quantity, 0),
-    [cart]
+    () =>
+      cart.reduce(
+        (
+          total,
+          line,
+        ) =>
+          total +
+          line.quantity,
+        0,
+      ),
+    [cart],
   );
 
   const subtotal = useMemo(
     () =>
-      cart.reduce((total, line) => {
-        const product = storeProducts.find((p) => p.id === line.productId);
-        return total + (product ? product.price * line.quantity : 0);
-      }, 0),
-    [cart]
+      cart.reduce(
+        (
+          total,
+          line,
+        ) => {
+          const product =
+            productMap.get(
+              line.productId,
+            );
+
+          return (
+            total +
+            (product
+              ? product.price *
+                line.quantity
+              : 0)
+          );
+        },
+        0,
+      ),
+    [cart, productMap],
   );
 
-  function addToCart(productId: string, quantity: number, colour?: string) {
-    setCart((current) => {
-      const existingIndex = current.findIndex(
-        (line) =>
-          line.productId === productId &&
-          (line.colour || "") === (colour || "")
+  /* ---------------------------------------------------------------------- */
+  /* Cart actions                                                            */
+  /* ---------------------------------------------------------------------- */
+
+  function addToCart(
+    productId: string,
+    quantity: number,
+    colour?: string,
+  ) {
+    const product =
+      productMap.get(productId);
+
+    if (
+      !product ||
+      isProductSoldOut(product)
+    ) {
+      return false;
+    }
+
+    const requested =
+      clampProductQuantity(
+        product,
+        quantity,
       );
 
-      if (existingIndex >= 0) {
-        const updated = [...current];
-        updated[existingIndex] = {
-          ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + quantity,
+    setCart((current) => {
+      const existingIndex =
+        current.findIndex(
+          (line) =>
+            sameLine(
+              line,
+              productId,
+              colour,
+            ),
+        );
+
+      if (
+        existingIndex >= 0
+      ) {
+        const updated =
+          [...current];
+
+        const combinedQuantity =
+          updated[
+            existingIndex
+          ].quantity +
+          requested;
+
+        updated[
+          existingIndex
+        ] = {
+          ...updated[
+            existingIndex
+          ],
+
+          quantity:
+            clampProductQuantity(
+              product,
+              combinedQuantity,
+            ),
         };
+
         return updated;
       }
 
-      return [...current, { productId, quantity, colour }];
+      return [
+        ...current,
+        {
+          productId,
+          quantity:
+            requested,
+          colour,
+        },
+      ];
     });
+
+    return true;
   }
 
-  function updateQuantity(productId: string, quantity: number, colour?: string) {
+  function updateQuantity(
+    productId: string,
+    quantity: number,
+    colour?: string,
+  ) {
     setCart((current) => {
       if (quantity <= 0) {
         return current.filter(
           (line) =>
-            !(
-              line.productId === productId &&
-              (line.colour || "") === (colour || "")
-            )
+            !sameLine(
+              line,
+              productId,
+              colour,
+            ),
         );
       }
 
-      return current.map((line) =>
-        line.productId === productId &&
-        (line.colour || "") === (colour || "")
-          ? { ...line, quantity }
-          : line
+      const product =
+        productMap.get(
+          productId,
+        );
+
+      if (
+        !product ||
+        isProductSoldOut(product)
+      ) {
+        return current.filter(
+          (line) =>
+            !sameLine(
+              line,
+              productId,
+              colour,
+            ),
+        );
+      }
+
+      const safeQuantity =
+        clampProductQuantity(
+          product,
+          quantity,
+        );
+
+      return current.map(
+        (line) =>
+          sameLine(
+            line,
+            productId,
+            colour,
+          )
+            ? {
+                ...line,
+                quantity:
+                  safeQuantity,
+              }
+            : line,
       );
     });
   }
 
-  function removeFromCart(productId: string, colour?: string) {
+  function removeFromCart(
+    productId: string,
+    colour?: string,
+  ) {
     setCart((current) =>
       current.filter(
         (line) =>
-          !(
-            line.productId === productId &&
-            (line.colour || "") === (colour || "")
-          )
-      )
+          !sameLine(
+            line,
+            productId,
+            colour,
+          ),
+      ),
     );
   }
 
-  function toggleWishlist(productId: string) {
+  /* ---------------------------------------------------------------------- */
+  /* Wishlist                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  function toggleWishlist(
+    productId: string,
+  ) {
     setWishlist((current) =>
-      current.includes(productId)
-        ? current.filter((id) => id !== productId)
-        : [...current, productId]
+      current.includes(
+        productId,
+      )
+        ? current.filter(
+            (id) =>
+              id !==
+              productId,
+          )
+        : [
+            ...current,
+            productId,
+          ],
     );
   }
 
-  function isWishlisted(productId: string) {
-    return wishlist.includes(productId);
+  function isWishlisted(
+    productId: string,
+  ) {
+    return wishlist.includes(
+      productId,
+    );
   }
 
   function clearCart() {
     setCart([]);
   }
 
-  function createOrder(details: {
-    email: string;
-    address: DemoAddress;
-    paymentMethod: string;
-  }) {
-    const order: DemoOrder = {
-      id: `KAS-${Date.now().toString().slice(-6)}`,
-      email: details.email,
-      address: details.address,
-      paymentMethod: details.paymentMethod,
-      subtotal,
-      items: cart.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        colour: line.colour,
-      })),
-      status: "Order received",
-      createdAt: new Date().toISOString(),
-    };
+  /* ---------------------------------------------------------------------- */
+  /* Temporary order workflow                                                */
+  /* ---------------------------------------------------------------------- */
 
-    setOrders((current) => [order, ...current]);
+  function createOrder(
+    details: {
+      email: string;
+      address: DemoAddress;
+      paymentMethod: string;
+    },
+  ) {
+    const validItems =
+      cart.flatMap(
+        (line) => {
+          const product =
+            productMap.get(
+              line.productId,
+            );
+
+          if (
+            !product ||
+            isProductSoldOut(
+              product,
+            )
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              ...line,
+              quantity:
+                clampProductQuantity(
+                  product,
+                  line.quantity,
+                ),
+            },
+          ];
+        },
+      );
+
+    if (
+      validItems.length === 0
+    ) {
+      throw new Error(
+        "No purchasable items remain in the bag.",
+      );
+    }
+
+    const validSubtotal =
+      validItems.reduce(
+        (
+          total,
+          line,
+        ) => {
+          const product =
+            productMap.get(
+              line.productId,
+            );
+
+          return (
+            total +
+            (product
+              ? product.price *
+                line.quantity
+              : 0)
+          );
+        },
+        0,
+      );
+
+    const order: DemoOrder =
+      {
+        id: `KAS-${Date.now()
+          .toString()
+          .slice(-6)}`,
+
+        email:
+          details.email,
+
+        address:
+          details.address,
+
+        paymentMethod:
+          details.paymentMethod,
+
+        subtotal:
+          validSubtotal,
+
+        items:
+          validItems,
+
+        status:
+          "Order received",
+
+        createdAt:
+          new Date().toISOString(),
+      };
+
+    setOrders(
+      (current) => [
+        order,
+        ...current,
+      ],
+    );
+
     setCart([]);
+
     return order;
   }
 
-  function login(email: string, name?: string) {
-    const userName = name || email.split("@")[0];
-    const capitalizedName = userName
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-
-    setUser({
-      email,
-      name: capitalizedName,
-    });
-  }
-
-  function register(name: string, email: string) {
-    const capitalizedName = name
-      .split(" ")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
-
-    setUser({
-      email,
-      name: capitalizedName,
-    });
-  }
+  /* ---------------------------------------------------------------------- */
+  /* Authentication                                                          */
+  /* ---------------------------------------------------------------------- */
 
   function logout() {
-    setUser(null);
+    void signOut({
+      callbackUrl: "/",
+    });
   }
 
-  const value = useMemo(
-    () => ({
-      hydrated,
-      cart,
-      cartCount,
-      subtotal,
-      user,
-      wishlist,
-      orders,
-      addToCart,
-      updateQuantity,
-      removeFromCart,
-      toggleWishlist,
-      isWishlisted,
-      clearCart,
-      createOrder,
-      login,
-      register,
-      logout,
-    }),
-    [
-      hydrated,
-      cart,
-      cartCount,
-      subtotal,
-      user,
-      wishlist,
-      orders,
-      addToCart,
-      updateQuantity,
-      removeFromCart,
-      toggleWishlist,
-      isWishlisted,
-      clearCart,
-      createOrder,
-      login,
-      register,
-      logout,
-    ]
-  );
+  const value =
+    useMemo(
+      () => ({
+        hydrated,
+
+        catalogueReady,
+        catalogueError,
+        catalogue,
+
+        cart,
+        cartCount,
+        subtotal,
+
+        user,
+
+        wishlist,
+        orders,
+
+        getProductById,
+
+        addToCart,
+        updateQuantity,
+        removeFromCart,
+
+        toggleWishlist,
+        isWishlisted,
+
+        clearCart,
+        createOrder,
+
+        logout,
+      }),
+      [
+        hydrated,
+
+        catalogueReady,
+        catalogueError,
+        catalogue,
+
+        cart,
+        cartCount,
+        subtotal,
+
+        user,
+
+        wishlist,
+        orders,
+
+        getProductById,
+      ],
+    );
 
   return (
-    <CommerceContext.Provider value={value}>
+    <CommerceContext.Provider
+      value={value}
+    >
       {children}
     </CommerceContext.Provider>
   );
 }
 
 export function useCommerce() {
-  const context = useContext(CommerceContext);
+  const context =
+    useContext(
+      CommerceContext,
+    );
+
   if (!context) {
-    throw new Error("useCommerce must be used within a CommerceProvider");
+    throw new Error(
+      "useCommerce must be used within a CommerceProvider",
+    );
   }
+
   return context;
 }
 

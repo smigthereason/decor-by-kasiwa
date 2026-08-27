@@ -44,6 +44,7 @@ export default function FeatureRoom() {
               src="https://images.unsplash.com/photo-1617104611622-d5f245d317f0?auto=format&fit=crop&w=2000&q=90"
               alt="Contemporary living room"
               fill
+              unoptimized
               priority
               className="object-cover"
             />
