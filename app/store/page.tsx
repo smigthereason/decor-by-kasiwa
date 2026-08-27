@@ -1,0 +1,16 @@
+"use client";
+
+import Link from "next/link";
+import { Boxes, ClipboardList, PackageCheck, Truck } from "lucide-react";
+
+import LiveDataState from "@/components/backoffice/LiveDataState";
+import MetricCard from "@/components/backoffice/MetricCard";
+import StatusPill from "@/components/backoffice/StatusPill";
+import { useLiveOperations } from "@/lib/operations/client";
+
+export default function StoreOverviewPage() {
+  const { data, loading, error, refresh } = useLiveOperations();
+  if (!data) return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;
+
+  return <div className="min-h-full bg-[var(--paper-2)]"><div className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10"><p className="kicker text-[var(--muted)]">Store operations</p><h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">Live fulfilment workspace</h1><p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">The Store view now uses the same live Sanity inventory, orders and shipments as Admin.</p><div className="mt-5 flex gap-2"><Link href="/store/orders" className="rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]">Order queue</Link><Link href="/store/shipments" className="rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">Shipments</Link></div></div><section className="grid grid-cols-1 border-b hairline sm:grid-cols-2 xl:grid-cols-4"><MetricCard index="01" label="Awaiting receipt" value={String(data.store.awaitingReceipt)} detail="Live shipments handed to store." icon={ClipboardList} /><MetricCard index="02" label="Picking" value={String(data.store.beingPicked)} detail="Shipments currently being picked." icon={Boxes} /><MetricCard index="03" label="Ready dispatch" value={String(data.store.readyToDispatch)} detail="Packed shipments ready for handoff." icon={PackageCheck} /><MetricCard index="04" label="Low stock" value={String(data.store.lowStock)} detail="Products at or below reorder threshold." icon={Truck} /></section><section className="p-4 sm:p-6 lg:p-8"><div className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><div className="mb-4 flex items-center justify-between"><p className="kicker text-[var(--muted)]">Current shipment queue</p><Link href="/store/shipments" className="text-[10px] font-semibold uppercase tracking-[0.08em]">View all</Link></div><div className="grid gap-3 md:grid-cols-3">{data.shipments.filter((shipment) => shipment.status !== "delivered").slice(0,6).map((shipment) => <article key={shipment.id} className="rounded-lg border hairline p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{shipment.shipmentNumber}</p><p className="mt-1 text-sm font-semibold">{shipment.customerName}</p></div><StatusPill value={shipment.status} /></div><p className="mt-3 text-xs text-[var(--muted)]">{shipment.destination}</p></article>)}{data.shipments.length === 0 && <div className="md:col-span-3 rounded-lg border border-dashed hairline p-10 text-center text-sm text-[var(--muted)]">No live shipments yet.</div>}</div></div></section></div>;
+}

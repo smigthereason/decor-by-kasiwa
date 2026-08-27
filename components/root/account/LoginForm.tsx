@@ -1,144 +1,204 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { ArrowLeft, ArrowRight, LockKeyhole, Mail, ShieldCheck, User } from "lucide-react";
-import { useCommerce } from "@/components/root/commerce/CommerceProvider";
+import { signIn, useSession } from "next-auth/react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ShieldCheck,
+} from "lucide-react";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login } = useCommerce();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    if (!name.trim() || !email.includes("@") || password.length < 4) {
-      setError("Enter your name, a valid email, and a prototype password of at least four characters.");
-      return;
+  const { status } = useSession();
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const authError =
+    searchParams.get("error");
+
+  /*
+   * If the user already has an active session,
+   * always send them through the role router.
+   *
+   * CUSTOMER -> /
+   * STORE    -> /store
+   * ADMIN    -> /admin
+   */
+  useEffect(() => {
+    if (
+      status === "authenticated"
+    ) {
+      router.replace(
+        "/account/route",
+      );
     }
-    login(email, name);
-    router.push(searchParams.get("next") || "/account");
+  }, [status, router]);
+
+  async function loginWithGoogle() {
+    setLoading(true);
+
+    try {
+      await signIn(
+        "google",
+        {
+          callbackUrl:
+            "/account/route",
+        },
+      );
+    } catch (error) {
+      console.error(
+        "Google login failed:",
+        error,
+      );
+
+      setLoading(false);
+    }
+  }
+
+  if (
+    status === "loading" ||
+    status ===
+      "authenticated"
+  ) {
+    return (
+      <div className="grid min-h-48 place-items-center">
+        <div className="text-center">
+          <div className="mx-auto h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+
+          <p className="mt-4 text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            Checking account…
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={submit} className="w-full max-w-xl">
-      {/* PROTOTYPE NOTE */}
+    <div className="w-full max-w-xl">
       <div className="flex gap-4 rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-5">
-        <ShieldCheck size={18} strokeWidth={1.5} className="shrink-0 text-[var(--muted)]" />
-        <p className="text-xs leading-relaxed text-[var(--muted)]">
-          This starter currently uses local browser state for the account journey. Replace it with production authentication before launch.
-        </p>
+        <ShieldCheck
+          size={19}
+          strokeWidth={1.45}
+          className="mt-0.5 shrink-0 text-[var(--deep-green)]"
+        />
+
+        <div>
+          <p className="text-sm font-medium text-[var(--ink)]">
+            Secure Google sign in
+          </p>
+
+          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+            Decor by Kasiwa uses
+            Google to verify your
+            identity. Your Google
+            password is never
+            shared with or stored
+            by us.
+          </p>
+        </div>
       </div>
 
-      {/* NAME FIELD */}
-      <label className="mt-8 block">
-        <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-          Name
-        </span>
-        <div className="relative">
-          <User
-            size={16}
-            strokeWidth={1.5}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"
-          />
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] py-3 pl-12 pr-4 text-sm text-[var(--ink)] outline-none transition-all placeholder:text-[var(--muted)]/50 focus:border-[var(--ink)] focus:ring-2 focus:ring-[var(--ink)]/10"
-            autoComplete="name"
-            placeholder="Jane Doe"
-          />
-        </div>
-      </label>
-
-      {/* EMAIL FIELD */}
-      <label className="mt-6 block">
-        <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-          Email
-        </span>
-        <div className="relative">
-          <Mail
-            size={16}
-            strokeWidth={1.5}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"
-          />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] py-3 pl-12 pr-4 text-sm text-[var(--ink)] outline-none transition-all placeholder:text-[var(--muted)]/50 focus:border-[var(--ink)] focus:ring-2 focus:ring-[var(--ink)]/10"
-            autoComplete="email"
-            placeholder="name@domain.com"
-          />
-        </div>
-      </label>
-
-      {/* PASSWORD FIELD */}
-      <label className="mt-6 block">
-        <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-          Password
-        </span>
-        <div className="relative">
-          <LockKeyhole
-            size={16}
-            strokeWidth={1.5}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] py-3 pl-12 pr-4 text-sm text-[var(--ink)] outline-none transition-all placeholder:text-[var(--muted)]/50 focus:border-[var(--ink)] focus:ring-2 focus:ring-[var(--ink)]/10"
-            autoComplete="current-password"
-            placeholder="Enter your password"
-          />
-        </div>
-      </label>
-
-      {/* ERROR MESSAGE */}
-      {error && (
-        <div className="mt-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800">
-          <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-red-100">
-            <span className="text-xs font-bold">!</span>
-          </span>
-          {error}
+      {authError && (
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-xs leading-relaxed text-red-800">
+          We could not complete
+          your sign in. Please try
+          again. If your Google
+          account is not currently
+          permitted for this test
+          application, add it as a
+          test user in Google
+          Cloud.
         </div>
       )}
 
-      {/* SUBMIT BUTTON */}
       <button
-        type="submit"
-        className="focus-ring group mt-8 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--ink)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:shadow-lg hover:opacity-95"
+        type="button"
+        onClick={
+          loginWithGoogle
+        }
+        disabled={loading}
+        className="
+          focus-ring
+          group
+          mt-8
+          flex
+          min-h-[54px]
+          w-full
+          items-center
+          justify-center
+          gap-4
+          rounded-full
+          bg-[var(--deep-green)]
+          px-6
+          text-[12px]
+          font-semibold
+          !text-soft-cream
+          transition-all
+          hover:shadow-lg
+          disabled:cursor-wait
+          disabled:opacity-60
+        "
       >
-        <span>Sign in</span>
-        <ArrowRight size={14} className="text-white transition-transform group-hover:translate-x-1" />
+        <span
+          className="
+            grid size-8
+            shrink-0
+            place-items-center
+            rounded-full
+            bg-white
+            text-[15px]
+            font-bold
+            text-[#4285F4]
+          "
+          aria-hidden="true"
+        >
+          G
+        </span>
+
+        <span>
+          {loading
+            ? "Connecting to Google…"
+            : "Continue with Google"}
+        </span>
+
+        {!loading && (
+          <ArrowRight
+            size={15}
+            className="transition-transform group-hover:translate-x-1"
+          />
+        )}
       </button>
 
-      {/* HELPER LINKS */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 pt-6 text-xs !text-[var(--muted)]">
-        <Link
-          href="/account/forgot-password"
-          className="underline underline-offset-4 transition-colors  hover:!text-[var(--ink)]"
-        >
-          Forgot password?
-        </Link>
-        <span>
-          New here?{" "}
-          <Link
-            href="/account/register"
-            className="font-medium hover:!text-[var(--ink)] underline underline-offset-4"
-          >
-            Create an account
-          </Link>
-        </span>
+      <div className="mt-8 border-t hairline pt-6">
+        <div className="flex items-start gap-3">
+          <CheckCircle2
+            size={16}
+            strokeWidth={1.5}
+            className="mt-0.5 shrink-0 text-[var(--sage-green)]"
+          />
+
+          <p className="text-xs leading-relaxed text-[var(--muted)]">
+            If this is your first
+            visit, your Decor by
+            Kasiwa account will be
+            created automatically
+            after Google verifies
+            your identity.
+          </p>
+        </div>
       </div>
-    </form>
+
+      <p className="mt-8 text-[11px] leading-relaxed text-[var(--muted)]">
+        Your account permissions
+        determine which Decor by
+        Kasiwa workspace you can
+        access after signing in.
+      </p>
+    </div>
   );
 }

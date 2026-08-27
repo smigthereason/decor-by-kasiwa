@@ -1,4 +1,6 @@
 import PageIntro from "@/components/root/PageIntro";
+import type { Metadata } from 'next';
+
 
 const steps = [
   [
@@ -38,7 +40,7 @@ const steps = [
   ],
 ] as const;
 
-export const metadata = { title: "Our Process" };
+export const metadata: Metadata = { title: "Our Process" };
 
 export default function ProcessPage() {
   return (
@@ -59,7 +61,7 @@ export default function ProcessPage() {
 
       <section
         id="process-steps"
-        className="page-shell border-b hairline bg-[var(--canvas)] px-4 pb-16 md:px-8 md:pb-24"
+        className="page-shell border-b hairline  px-4 pb-16 md:px-8 md:pb-24"
       >
         {steps.map(([number, title, body]) => (
           <article

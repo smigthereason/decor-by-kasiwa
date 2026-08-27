@@ -1,0 +1,1977 @@
+{
+  "generatedAt": "2026-08-27T11:10:55.152Z",
+  "mode": "WRITE",
+  "images": false,
+  "overwriteImages": false,
+  "totals": {
+    "rows": 246,
+    "created": 12,
+    "patched": 14,
+    "unchanged": 217,
+    "blocked": 3,
+    "failed": 0,
+    "imagesUploaded": 0,
+    "imagesFailed": 0
+  },
+  "rows": [
+    {
+      "name": "Pipe Cleaner Vases",
+      "sourceRow": 2,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0001-pipe-cleaner-vases",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Palm Leaves",
+      "sourceRow": 3,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0002-palm-leaves",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Circle Magnets",
+      "sourceRow": 4,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0003-circle-magnets",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Mango plant",
+      "sourceRow": 5,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0004-mango-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Banana Plant Tree Big",
+      "sourceRow": 6,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0005-banana-plant-tree-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2- Set Classy Candle Holder set",
+      "sourceRow": 7,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0006-2-set-classy-candle-holder-set",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A2 Sticker",
+      "sourceRow": 8,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0007-a2-sticker",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Small Fiddle Tree",
+      "sourceRow": 9,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0008-small-fiddle-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Maple vine Rattan Light",
+      "sourceRow": 10,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0009-maple-vine-rattan-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Artificial Palm tree big",
+      "sourceRow": 11,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0010-artificial-palm-tree-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Monsera plant",
+      "sourceRow": 12,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0011-monsera-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pineapple Plastic Vase",
+      "sourceRow": 13,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0012-pineapple-plastic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Invisible Hooks",
+      "sourceRow": 14,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0013-big-invisible-hooks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "55 Cm Natural Pampas Grass",
+      "sourceRow": 15,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0014-55-cm-natural-pampas-grass",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Batter box wire lamp",
+      "sourceRow": 16,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0015-batter-box-wire-lamp",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 Layer Macrame Wall Hanging",
+      "sourceRow": 17,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0016-3-layer-macrame-wall-hanging",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 in 1 MdF Golden Tray",
+      "sourceRow": 18,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0017-3-in-1-mdf-golden-tray",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Coffee Table plain",
+      "sourceRow": 19,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0018-coffee-table-plain",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A3 Imported Frames",
+      "sourceRow": 20,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0019-a3-imported-frames",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ceramic Pineapple Vase",
+      "sourceRow": 21,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0020-ceramic-pineapple-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Smooth Edge Magnets",
+      "sourceRow": 22,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0021-smooth-edge-magnets",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Plastic Vase Small",
+      "sourceRow": 23,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0022-plastic-vase-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Traveler Banana Plant",
+      "sourceRow": 24,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0023-traveler-banana-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Florist Ribbons",
+      "sourceRow": 25,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0024-florist-ribbons",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Double Sided flower Wrappers",
+      "sourceRow": 26,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0025-double-sided-flower-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Spiral Vase Small",
+      "sourceRow": 27,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0026-spiral-vase-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Small Invisible Hooks",
+      "sourceRow": 28,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0027-small-invisible-hooks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry pot like tree",
+      "sourceRow": 29,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0028-cherry-pot-like-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fern bonsai",
+      "sourceRow": 30,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0029-fern-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1M wisteria Hanging Vine",
+      "sourceRow": 31,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0030-1m-wisteria-hanging-vine",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Boho Table Mat Blue",
+      "sourceRow": 32,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0031-boho-table-mat-blue",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1M Fairy string light",
+      "sourceRow": 33,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0032-1m-fairy-string-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Astronut Projector Light",
+      "sourceRow": 34,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0033-astronut-projector-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "18 Leaves Artificial Plants",
+      "sourceRow": 35,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0034-18-leaves-artificial-plants",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Green Balcony Fence",
+      "sourceRow": 36,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-green-balcony-fence",
+      "imageAction": "SKIP",
+      "note": "Balcony fence; mapped to DIY & Accessories + Balcony & Outdoor"
+    },
+    {
+      "name": "10 Bob Carrier Bags",
+      "sourceRow": 37,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0036-10-bob-carrier-bags",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Double Head seramic Vase",
+      "sourceRow": 38,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0037-double-head-seramic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fish Tail Ribbons",
+      "sourceRow": 39,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0038-fish-tail-ribbons",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Knot Seramic Vase",
+      "sourceRow": 40,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0039-knot-seramic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Plastic Vase",
+      "sourceRow": 41,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0040-big-plastic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Gift Box",
+      "sourceRow": 42,
+      "action": "PATCH",
+      "documentId": "dbk-product-0041-big-gift-box",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Long Corn Vase",
+      "sourceRow": 43,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0042-long-corn-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Sunflower bunch",
+      "sourceRow": 44,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0043-sunflower-bunch",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Neon Lights",
+      "sourceRow": 45,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0044-neon-lights",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "6 pcs silver Top Bathroom Set",
+      "sourceRow": 46,
+      "action": "PATCH",
+      "documentId": "dbk-product-0045-6-pcs-silver-top-bathroom-set",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Purple Balcony Fence",
+      "sourceRow": 47,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-purple-balcony-fence",
+      "imageAction": "SKIP",
+      "note": "Balcony fence; mapped to DIY & Accessories + Balcony & Outdoor"
+    },
+    {
+      "name": "LED Butterfly",
+      "sourceRow": 48,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0047-led-butterfly",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 Brunch Wisteria Hanging",
+      "sourceRow": 49,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0048-3-brunch-wisteria-hanging",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Small Plastic Donut Vase",
+      "sourceRow": 50,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0049-small-plastic-donut-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A1 Portrait",
+      "sourceRow": 51,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0050-a1-portrait",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A3 Personalized Frames",
+      "sourceRow": 52,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0051-a3-personalized-frames",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Seramic Pineapple Vase big",
+      "sourceRow": 53,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0052-seramic-pineapple-vase-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Spiral Small Vase Planter",
+      "sourceRow": 54,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0053-spiral-small-vase-planter",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Snake plant",
+      "sourceRow": 55,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0054-snake-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Artificial Flower Bunches",
+      "sourceRow": 56,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0055-artificial-flower-bunches",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "busket",
+      "sourceRow": 57,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0056-busket",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1 Layer Macrame Hanging",
+      "sourceRow": 58,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0057-1-layer-macrame-hanging",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Wall Hanging plants",
+      "sourceRow": 59,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0058-wall-hanging-plants",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A1 photo mount",
+      "sourceRow": 60,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0059-a1-photo-mount",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "pot hanging",
+      "sourceRow": 61,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0060-pot-hanging",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Plant monsera small",
+      "sourceRow": 62,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0061-plant-monsera-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Family Boho Beads",
+      "sourceRow": 63,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0062-family-boho-beads",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Classy Single Candle Holder",
+      "sourceRow": 64,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0063-classy-single-candle-holder",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1 metre Lipin",
+      "sourceRow": 65,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-1-metre-lipin",
+      "imageAction": "SKIP",
+      "note": "Name is ambiguous; provisional Gift Wrapping mapping"
+    },
+    {
+      "name": "LED Cherry Blossom Lights",
+      "sourceRow": 66,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0065-led-cherry-blossom-lights",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Tassel Floating Shelve",
+      "sourceRow": 67,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0066-tassel-floating-shelve",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Versace Flower Wrappers",
+      "sourceRow": 68,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0067-versace-flower-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Smaller Donut Seramic vase",
+      "sourceRow": 69,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0068-smaller-donut-seramic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Reed Diffuser",
+      "sourceRow": 70,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0069-reed-diffuser",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bathroom Series 3pcs white",
+      "sourceRow": 71,
+      "action": "PATCH",
+      "documentId": "dbk-product-0070-bathroom-series-3pcs-white",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Colored pots",
+      "sourceRow": 72,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0071-colored-pots",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry big Tree",
+      "sourceRow": 73,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0072-cherry-big-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Butterfly String Light",
+      "sourceRow": 74,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0073-butterfly-string-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "50 Bob Carrir Bags",
+      "sourceRow": 75,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0074-50-bob-carrir-bags",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pink Balcony Fence",
+      "sourceRow": 76,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-pink-balcony-fence",
+      "imageAction": "SKIP",
+      "note": "Balcony fence; mapped to DIY & Accessories + Balcony & Outdoor"
+    },
+    {
+      "name": "Glass vase Small",
+      "sourceRow": 77,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0076-glass-vase-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ceramic Small offer Vase",
+      "sourceRow": 78,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0077-ceramic-small-offer-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Medium Plastic Vase",
+      "sourceRow": 79,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0078-medium-plastic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Candle Holder glass gold",
+      "sourceRow": 80,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0079-candle-holder-glass-gold",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Donut Seramic Vase big",
+      "sourceRow": 81,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0080-donut-seramic-vase-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A4 Imported Frames",
+      "sourceRow": 82,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0081-a4-imported-frames",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "23 Leaves Artificial plants",
+      "sourceRow": 83,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0082-23-leaves-artificial-plants",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pearl Wrappers",
+      "sourceRow": 84,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0083-pearl-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Boho Table Mat Brown",
+      "sourceRow": 85,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0084-boho-table-mat-brown",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2.1 M Pink vines",
+      "sourceRow": 86,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0085-2-1-m-pink-vines",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "6 Pcs Gold Bathroom Set",
+      "sourceRow": 87,
+      "action": "PATCH",
+      "documentId": "dbk-product-0086-6-pcs-gold-bathroom-set",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Esthetic wall Clock",
+      "sourceRow": 88,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0087-esthetic-wall-clock",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 IN 1 mirror clocks",
+      "sourceRow": 89,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0088-3-in-1-mirror-clocks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Shell Plastic Vase",
+      "sourceRow": 90,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0089-shell-plastic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Shredded Gift Box Paper",
+      "sourceRow": 91,
+      "action": "PATCH",
+      "documentId": "dbk-product-0090-shredded-gift-box-paper",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Banana Plant",
+      "sourceRow": 92,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0091-banana-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Xmass tree small",
+      "sourceRow": 93,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0092-xmass-tree-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bathroom Supplies Grey",
+      "sourceRow": 94,
+      "action": "PATCH",
+      "documentId": "dbk-product-0093-bathroom-supplies-grey",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ficus Small Tree",
+      "sourceRow": 95,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0094-ficus-small-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Teddy Bear Small",
+      "sourceRow": 96,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-teddy-bear-small",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry bonsai",
+      "sourceRow": 97,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0096-cherry-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Essential Oil",
+      "sourceRow": 98,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0097-essential-oil",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "6 Pcs plain stripes Bathroom Set",
+      "sourceRow": 99,
+      "action": "PATCH",
+      "documentId": "dbk-product-0098-6-pcs-plain-stripes-bathroom-set",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Jungle green Balcony fence",
+      "sourceRow": 100,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-jungle-green-balcony-fence",
+      "imageAction": "SKIP",
+      "note": "Balcony fence; mapped to DIY & Accessories + Balcony & Outdoor"
+    },
+    {
+      "name": "Arttificial Sunflower big",
+      "sourceRow": 101,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0100-arttificial-sunflower-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Black Short Boho Beads",
+      "sourceRow": 102,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0101-black-short-boho-beads",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Glass Vase big",
+      "sourceRow": 103,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0102-glass-vase-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry Blossom Flowers",
+      "sourceRow": 104,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0103-cherry-blossom-flowers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Beige Long Boho Beads",
+      "sourceRow": 105,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0104-beige-long-boho-beads",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Donut Seramic Vase medium",
+      "sourceRow": 106,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0105-donut-seramic-vase-medium",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Rattan Hooks",
+      "sourceRow": 107,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0106-rattan-hooks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2 Layer Macrame Wall Hanging",
+      "sourceRow": 108,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0107-2-layer-macrame-wall-hanging",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Double Leaf Seramic Vase",
+      "sourceRow": 109,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0108-double-leaf-seramic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2.1 M  White vines",
+      "sourceRow": 110,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0109-2-1-m-white-vines",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A4 Portraits",
+      "sourceRow": 111,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0110-a4-portraits",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Donut Seramic Vase small",
+      "sourceRow": 112,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0111-donut-seramic-vase-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Sunset Lamp USB",
+      "sourceRow": 113,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0112-sunset-lamp-usb",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bathroom Series 3pcs Black",
+      "sourceRow": 114,
+      "action": "PATCH",
+      "documentId": "dbk-product-0113-bathroom-series-3pcs-black",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Seramic Vase With handle",
+      "sourceRow": 115,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0114-seramic-vase-with-handle",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Eucalyptus Flowers",
+      "sourceRow": 116,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0115-eucalyptus-flowers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Olive Tree",
+      "sourceRow": 117,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0116-olive-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry small tree",
+      "sourceRow": 118,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0117-cherry-small-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "10 head flowers",
+      "sourceRow": 119,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0118-10-head-flowers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "All Aesthetic Mirrors",
+      "sourceRow": 120,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0119-all-aesthetic-mirrors",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "long flower vase",
+      "sourceRow": 121,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0120-long-flower-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Areca 160",
+      "sourceRow": 122,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0121-areca-160",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Metallic Glass Vase decor",
+      "sourceRow": 123,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0122-metallic-glass-vase-decor",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Calendars",
+      "sourceRow": 124,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-calendars",
+      "imageAction": "SKIP",
+      "note": "Provisional Home Accessories mapping"
+    },
+    {
+      "name": "short Beads Black",
+      "sourceRow": 125,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0124-short-beads-black",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Rectangular Magnet",
+      "sourceRow": 126,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0125-rectangular-magnet",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Gold Boho Bead",
+      "sourceRow": 127,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0126-gold-boho-bead",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Mdf Palllet Trays",
+      "sourceRow": 128,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0127-mdf-palllet-trays",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "White Plastic vase",
+      "sourceRow": 129,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0128-white-plastic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Gear Wall Clock",
+      "sourceRow": 130,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0129-gear-wall-clock",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bathroom series 6pcs white",
+      "sourceRow": 131,
+      "action": "PATCH",
+      "documentId": "dbk-product-0130-bathroom-series-6pcs-white",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Metallic hanging Vase",
+      "sourceRow": 132,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0131-metallic-hanging-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "bicyle bonsaI",
+      "sourceRow": 133,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0132-bicyle-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "carrier bag small",
+      "sourceRow": 134,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0133-carrier-bag-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ficus Big Tree",
+      "sourceRow": 135,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0134-ficus-big-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Red Balcony Fence",
+      "sourceRow": 136,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-red-balcony-fence",
+      "imageAction": "SKIP",
+      "note": "Balcony fence; mapped to DIY & Accessories + Balcony & Outdoor"
+    },
+    {
+      "name": "luminous butterfly stickers",
+      "sourceRow": 137,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0136-luminous-butterfly-stickers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "free potrait hooks",
+      "sourceRow": 138,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0137-free-potrait-hooks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Plastic Donut Vase",
+      "sourceRow": 139,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0138-big-plastic-donut-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Spiral Vase Big",
+      "sourceRow": 140,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0139-spiral-vase-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1kg saw dust",
+      "sourceRow": 141,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0140-1kg-saw-dust",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Hexagonal Planter",
+      "sourceRow": 142,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0141-hexagonal-planter",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Seramic Big Vase",
+      "sourceRow": 143,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0142-seramic-big-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "a1 sticker",
+      "sourceRow": 144,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0143-a1-sticker",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "100 bob gunia",
+      "sourceRow": 145,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0144-100-bob-gunia",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2.1 Cherry Blossom Vine",
+      "sourceRow": 146,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0145-2-1-cherry-blossom-vine",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Teddy Bear",
+      "sourceRow": 147,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-big-teddy-bear",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Rose vine Rattan Light",
+      "sourceRow": 148,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0147-rose-vine-rattan-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "7 Cm Rose Petals",
+      "sourceRow": 149,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0148-7-cm-rose-petals",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A2 Board Portrait",
+      "sourceRow": 150,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0149-a2-board-portrait",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Shell Pillows",
+      "sourceRow": 151,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0150-shell-pillows",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Canadian leaf",
+      "sourceRow": 152,
+      "action": "BLOCKED",
+      "note": "PRICE_MUST_BE_GREATER_THAN_ZERO"
+    },
+    {
+      "name": "Black cloth",
+      "sourceRow": 153,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0152-black-cloth",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bathroom Supplies Black",
+      "sourceRow": 154,
+      "action": "PATCH",
+      "documentId": "dbk-product-0153-bathroom-supplies-black",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bulb Humidier",
+      "sourceRow": 155,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0154-bulb-humidier",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Big Round Mirrors",
+      "sourceRow": 156,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0155-big-round-mirrors",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Curtain Light",
+      "sourceRow": 157,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0156-curtain-light",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Plain Flower Wrappers",
+      "sourceRow": 158,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0157-plain-flower-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Love Clock",
+      "sourceRow": 159,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0158-love-clock",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Single sided Flower Wrappers",
+      "sourceRow": 160,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0159-single-sided-flower-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Cherry Blossom String Lights",
+      "sourceRow": 161,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0160-cherry-blossom-string-lights",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A3 printed and laminated",
+      "sourceRow": 162,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-a3-printed-and-laminated",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Black Long Boho Beads",
+      "sourceRow": 163,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0162-black-long-boho-beads",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Small gift box",
+      "sourceRow": 164,
+      "action": "PATCH",
+      "documentId": "dbk-product-0163-small-gift-box",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Metallic Stand Planter",
+      "sourceRow": 165,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0164-metallic-stand-planter",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "140 Colored Pampas Grass",
+      "sourceRow": 166,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0165-140-colored-pampas-grass",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bow Tie Vase",
+      "sourceRow": 167,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0166-bow-tie-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Hanging plants",
+      "sourceRow": 168,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0167-hanging-plants",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Boho Table mat Brown Small",
+      "sourceRow": 169,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0168-boho-table-mat-brown-small",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Wooven Table Mats Black",
+      "sourceRow": 170,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0169-wooven-table-mats-black",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fibre Trow Pillow",
+      "sourceRow": 171,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0170-fibre-trow-pillow",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "6Pcs Classy Bathroom Set",
+      "sourceRow": 172,
+      "action": "PATCH",
+      "documentId": "dbk-product-0171-6pcs-classy-bathroom-set",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Boho Table Mat Maroon",
+      "sourceRow": 173,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0172-boho-table-mat-maroon",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ficus Tree Banches",
+      "sourceRow": 174,
+      "action": "BLOCKED",
+      "note": "PRICE_MUST_BE_GREATER_THAN_ZERO"
+    },
+    {
+      "name": "Wooven Table Mats White",
+      "sourceRow": 175,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0174-wooven-table-mats-white",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ribbed seramic vase",
+      "sourceRow": 176,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0175-ribbed-seramic-vase",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Flamingo Flowers",
+      "sourceRow": 177,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0176-flamingo-flowers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fruits mini Bonsai",
+      "sourceRow": 178,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0177-fruits-mini-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "tocebal batteries",
+      "sourceRow": 179,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0178-tocebal-batteries",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "wooden vases",
+      "sourceRow": 180,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0179-wooden-vases",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Bohemian Pillow Case",
+      "sourceRow": 181,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0180-bohemian-pillow-case",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fluffy Pillow Cases",
+      "sourceRow": 182,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0181-fluffy-pillow-cases",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Monsera Big plant",
+      "sourceRow": 183,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0182-monsera-big-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3.5 Cm Rose Petals",
+      "sourceRow": 184,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0183-3-5-cm-rose-petals",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "4 Pcs Bathroom Series",
+      "sourceRow": 185,
+      "action": "PATCH",
+      "documentId": "dbk-product-0184-4-pcs-bathroom-series",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1kg Pebbles",
+      "sourceRow": 186,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0185-1kg-pebbles",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "55 Cm Artificial Pampas Grass",
+      "sourceRow": 187,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0186-55-cm-artificial-pampas-grass",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Shadow Boxes",
+      "sourceRow": 188,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0187-shadow-boxes",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Japanese Maple Plant",
+      "sourceRow": 189,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0188-japanese-maple-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Trace less screw sticker",
+      "sourceRow": 190,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0189-trace-less-screw-sticker",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Tray set Circle",
+      "sourceRow": 191,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0190-tray-set-circle",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Sink Strainer",
+      "sourceRow": 192,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0191-sink-strainer",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Wooven Pillows Cases",
+      "sourceRow": 193,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0192-wooven-pillows-cases",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Wavy Small Mirrors",
+      "sourceRow": 194,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0193-wavy-small-mirrors",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Round Wall Hanging Pots",
+      "sourceRow": 195,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0194-round-wall-hanging-pots",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Spiral Big Planters",
+      "sourceRow": 196,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0195-spiral-big-planters",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Octagon Big Planters",
+      "sourceRow": 197,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0196-octagon-big-planters",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Artificial Palm Tree",
+      "sourceRow": 198,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0197-artificial-palm-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "cherry Blossom LED Rattan",
+      "sourceRow": 199,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0198-cherry-blossom-led-rattan",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Octagon Small Planter",
+      "sourceRow": 200,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0199-octagon-small-planter",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fiddle tree big",
+      "sourceRow": 201,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0200-fiddle-tree-big",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Wall Hanging signs",
+      "sourceRow": 202,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0201-wall-hanging-signs",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2 M Wisteria Hanging vines",
+      "sourceRow": 203,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0202-2-m-wisteria-hanging-vines",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Mini Bathroom Bonsai",
+      "sourceRow": 204,
+      "action": "PATCH",
+      "documentId": "dbk-product-0203-mini-bathroom-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Coffee Table Coloured",
+      "sourceRow": 205,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0204-coffee-table-coloured",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A3 Plain Boards",
+      "sourceRow": 206,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-a3-plain-boards",
+      "imageAction": "SKIP",
+      "note": "Provisional Wall Art mapping"
+    },
+    {
+      "name": "2 - Tier wall hanging shelves",
+      "sourceRow": 207,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0206-2-tier-wall-hanging-shelves",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1 Tier wall hanging shelves",
+      "sourceRow": 208,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0207-1-tier-wall-hanging-shelves",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "1 Metre Double sided tape",
+      "sourceRow": 209,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0208-1-metre-double-sided-tape",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 In1 Pcs Big Decor Mirrors",
+      "sourceRow": 210,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0209-3-in1-pcs-big-decor-mirrors",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 IN 1 Mirror Wall Clocks",
+      "sourceRow": 211,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0210-3-in-1-mirror-wall-clocks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2M  Double Sided Tape",
+      "sourceRow": 212,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0211-2m-double-sided-tape",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3M Double Sided Tape",
+      "sourceRow": 213,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0212-3m-double-sided-tape",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pipe cleaners",
+      "sourceRow": 214,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0213-pipe-cleaners",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pipe Cleaners Green Stem",
+      "sourceRow": 215,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0214-pipe-cleaners-green-stem",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "A3 sticker",
+      "sourceRow": 216,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0215-a3-sticker",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Artificial Bonsai",
+      "sourceRow": 217,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0216-artificial-bonsai",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "StamenS Double Heads",
+      "sourceRow": 218,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0217-stamens-double-heads",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Storage Decor Books",
+      "sourceRow": 219,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0218-storage-decor-books",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Plastic Thinking Man",
+      "sourceRow": 220,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0219-plastic-thinking-man",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ceramic Tv Stand Succulent Decor",
+      "sourceRow": 221,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0220-ceramic-tv-stand-succulent-decor",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Aroma Diffuser",
+      "sourceRow": 222,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0221-aroma-diffuser",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "H2o Humidifier",
+      "sourceRow": 223,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0222-h2o-humidifier",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Pipe Cleaner Tapes",
+      "sourceRow": 224,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0223-pipe-cleaner-tapes",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "plastic-flower-vases",
+      "sourceRow": 225,
+      "action": "BLOCKED",
+      "note": "PRICE_MUST_BE_GREATER_THAN_ZERO"
+    },
+    {
+      "name": "Wall Panels",
+      "sourceRow": 226,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0225-wall-panels",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Gold Leaf Decor Tray",
+      "sourceRow": 227,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0226-gold-leaf-decor-tray",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Fluffy Fux Fur Sandals",
+      "sourceRow": 228,
+      "action": "CREATE",
+      "documentId": "dbk-product-import-fluffy-fux-fur-sandals",
+      "imageAction": "SKIP",
+      "note": "No footwear category exists; provisional Gift Accessories mapping"
+    },
+    {
+      "name": "drill-hooks",
+      "sourceRow": 229,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0228-drill-hooks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Decor Books",
+      "sourceRow": 230,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0229-decor-books",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "36 Leave Green Vines",
+      "sourceRow": 231,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0230-36-leave-green-vines",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "palm-plant-tree",
+      "sourceRow": 232,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0231-palm-plant-tree",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "DIY Wall Clock",
+      "sourceRow": 233,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0232-diy-wall-clock",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Jacquard Pillow Cases",
+      "sourceRow": 234,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0233-jacquard-pillow-cases",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "artificial-plants-stand",
+      "sourceRow": 235,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0234-artificial-plants-stand",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "3 IN 1 Black Round Bottomed Candle Holder",
+      "sourceRow": 236,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0235-3-in-1-black-round-bottomed-candle-holder",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Eucalyptus Stem",
+      "sourceRow": 237,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0236-eucalyptus-stem",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "90 Cm pampas Grass",
+      "sourceRow": 238,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0237-90-cm-pampas-grass",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "kitchen Bonsai  350",
+      "sourceRow": 239,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0238-kitchen-bonsai-350",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "7 Heads Tulip",
+      "sourceRow": 240,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0239-7-heads-tulip",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "72 Leaves vines-money-plant",
+      "sourceRow": 241,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0240-72-leaves-vines-money-plant",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ceramic Thinking Man",
+      "sourceRow": 242,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0241-ceramic-thinking-man",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Ombre Flower Wrappers",
+      "sourceRow": 243,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0242-ombre-flower-wrappers",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Glue-sticks",
+      "sourceRow": 244,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0243-glue-sticks",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2.1M Rose Vine",
+      "sourceRow": 245,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0244-2-1m-rose-vine",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "2.1 M Sunflower Vines",
+      "sourceRow": 246,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0245-2-1-m-sunflower-vines",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    },
+    {
+      "name": "Glue Gun",
+      "sourceRow": 247,
+      "action": "NO_CHANGE",
+      "documentId": "dbk-product-0246-glue-gun",
+      "matchedBy": "documentId",
+      "imageAction": "SKIP"
+    }
+  ]
+}

@@ -4,23 +4,29 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Heart, ShoppingBag, LockKeyhole, Trash2 } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney, getProductById } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import { isProductSoldOut } from "@/lib/catalogue";
+import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
 
 export default function WishlistPage() {
-  const { hydrated, wishlist, toggleWishlist, addToCart, user } = useCommerce();
+  const { hydrated, catalogueReady, catalogueError, wishlist, toggleWishlist, addToCart, user, getProductById } = useCommerce();
   const products = wishlist.map(getProductById).filter(Boolean);
 
-  if (!hydrated) {
+  if (!hydrated || !catalogueReady) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--ink)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing saved items…
           </p>
         </div>
       </div>
     );
+  }
+
+  if (catalogueError) {
+    return <CatalogueUnavailable message={catalogueError} />;
   }
 
   if (products.length === 0) {
@@ -55,7 +61,7 @@ export default function WishlistPage() {
           </p>
           <Link
             href="/shop"
-            className="group mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3 hover:shadow-lg"
+            className="group mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
           >
             <span>Explore shop</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -110,7 +116,10 @@ export default function WishlistPage() {
         {/* PRODUCTS GRID */}
         <div className="flex-1 px-4 py-6 sm:px-6 md:px-8 lg:px-10 xl:px-12">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4">
-            {products.map((product) => product && (
+            {products.map((product) => {
+              if (!product) return null;
+              const soldOut = isProductSoldOut(product);
+              return (
               <article
                 key={product.id}
                 className="group flex flex-col overflow-hidden rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] transition-all hover:border-[var(--ink)]/30 hover:shadow-lg"
@@ -121,17 +130,13 @@ export default function WishlistPage() {
                 >
                   {/* PRODUCT IMAGE */}
                   <div className="relative aspect-[3/4] overflow-hidden bg-[var(--paper-2)]">
-                    <Image
-                      src={product.heroImage}
-                      alt={product.name}
-                      fill
-                      sizes="
-                        (max-width: 640px) 100vw,
-                        (max-width: 1024px) 50vw,
-                        25vw
-                      "
-                      className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.035]"
-                    />
+                    {product.heroImage ? (
+                      <Image src={product.heroImage} alt={product.name} fill unoptimized priority sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.035]" />
+                    ) : (
+                      <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-4 text-center">
+                        <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--deep-green)]">Image coming soon</span>
+                      </div>
+                    )}
 
                     {/* CATEGORY BADGE */}
                     <span className="absolute left-3 top-3 rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
@@ -142,6 +147,12 @@ export default function WishlistPage() {
                     <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-[var(--paper)]/90 backdrop-blur-sm">
                       <Heart size={14} className="text-[var(--ink)]" fill="currentColor" />
                     </span>
+
+                    {soldOut && (
+                      <span className="absolute bottom-3 left-3 rounded-full bg-[var(--charcoal)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--soft-cream)]">
+                        Out of stock
+                      </span>
+                    )}
                   </div>
 
                   {/* PRODUCT DETAILS */}
@@ -185,10 +196,11 @@ export default function WishlistPage() {
                   <button
                     type="button"
                     onClick={() => addToCart(product.id, 1, product.colours?.[0])}
-                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--ink)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:opacity-95"
+                    disabled={soldOut}
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ShoppingBag size={12} />
-                    <span>Add to Bag</span>
+                    <span>{soldOut ? "Out of stock" : "Add to Bag"}</span>
                   </button>
                   <button
                     type="button"
@@ -200,7 +212,8 @@ export default function WishlistPage() {
                   </button>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
 

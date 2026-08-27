@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Truck, Package, Clock } from "lucide-react";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "Delivery" };
+
+export const metadata: Metadata = { title: "Delivery" };
 
 export default function DeliveryPage() {
   return (
@@ -76,7 +78,7 @@ export default function DeliveryPage() {
           </p>
           <Link
             href="/consultation"
-            className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--ink)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3"
+            className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
           >
             <span>Speak to the studio</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

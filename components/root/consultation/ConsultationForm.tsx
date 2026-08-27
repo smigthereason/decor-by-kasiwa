@@ -216,7 +216,7 @@ export default function ConsultationForm() {
           {steps.map((_, index) => (
             <span
               key={index}
-              className={`h-1 w-8 ${index <= step ? "bg-[var(--ink)]" : "bg-black/10"}`}
+              className={`h-1 w-8 ${index <= step ? "bg-[var(--deep-green)]" : "bg-charcoal/10"}`}
             />
           ))}
         </div>
@@ -229,7 +229,7 @@ export default function ConsultationForm() {
         <div>{steps[step].body}</div>
       </div>
 
-      <div className="flex justify-between border-t hairline py-5">
+      <div className="flex justify-between  py-5">
         <button
           type="button"
           onClick={() => setStep((value) => Math.max(0, value - 1))}
@@ -243,7 +243,7 @@ export default function ConsultationForm() {
           <button
             type="button"
             onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)]"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)]"
           >
             Continue <ArrowRight size={14} />
           </button>
@@ -251,7 +251,7 @@ export default function ConsultationForm() {
           <button
             type="submit"
             disabled={status === "sending"}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)] disabled:opacity-50"
           >
             {status === "sending" ? "Sending..." : "Send enquiry"} <ArrowRight size={14} />
           </button>
@@ -282,12 +282,12 @@ function Choice({
       onClick={onClick}
       className={`flex min-h-16 items-center justify-between border px-4 text-left text-sm transition-colors ${
         active
-          ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+          ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
           : "hairline hover:bg-[var(--paper-2)]"
       }`}
     >
       {children}
-      <span className={`size-2 rounded-full ${active ? "bg-[var(--paper)]" : "bg-black/15"}`} />
+      <span className={`size-2 rounded-full ${active ? "bg-[var(--paper)]" : "bg-charcoal/15"}`} />
     </button>
   );
 }
@@ -302,7 +302,7 @@ function Field({
   return (
     <label className="grid gap-2">
       <span className="kicker text-[var(--muted)]">{label}</span>
-      <div className="[&_input]:w-full [&_input]:border-b [&_input]:border-black/20 [&_input]:bg-transparent [&_input]:px-0 [&_input]:py-3 [&_input]:outline-none [&_select]:w-full [&_select]:border-b [&_select]:border-black/20 [&_select]:bg-transparent [&_select]:py-3 [&_select]:outline-none [&_textarea]:w-full [&_textarea]:border [&_textarea]:border-black/20 [&_textarea]:bg-transparent [&_textarea]:p-3 [&_textarea]:outline-none">
+      <div className="[&_input]:w-full [&_input]:border-b [&_input]:border-charcoal/20 [&_input]:bg-transparent [&_input]:px-0 [&_input]:py-3 [&_input]:outline-none [&_select]:w-full [&_select]:border-b [&_select]:border-charcoal/20 [&_select]:bg-transparent [&_select]:py-3 [&_select]:outline-none [&_textarea]:w-full [&_textarea]:border [&_textarea]:border-charcoal/20 [&_textarea]:bg-transparent [&_textarea]:p-3 [&_textarea]:outline-none">
         {children}
       </div>
     </label>

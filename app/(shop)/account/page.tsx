@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, MapPin, Calendar, Package, ChevronRight, ShoppingBag, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, Calendar, Package, ChevronRight, ShoppingBag, Sparkles } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import CustomerProfileForm from "@/components/root/account/CustomerProfileForm";
 
 export default function AccountPage() {
   const { hydrated, user, orders, wishlist, logout } = useCommerce();
@@ -12,7 +13,7 @@ export default function AccountPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--ink)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Loading account…
           </p>
@@ -26,25 +27,20 @@ export default function AccountPage() {
       <section className="flex min-h-[calc(100vh-140px)] w-full flex-col justify-center border-b hairline bg-[var(--paper)] px-4 py-20 md:px-8 md:py-28">
         <p className="kicker text-[var(--muted)]">Account</p>
         <h1 className="mt-4 max-w-4xl text-[clamp(3.8rem,9vw,8rem)] font-medium leading-[0.88] tracking-[-0.075em]">
-          YOUR KASIWA.
+          Your Account.
         </h1>
         <p className="mt-8 max-w-lg text-sm leading-relaxed text-[var(--muted)]">
-          Sign in to test the returning-customer journey, or create an account to see how saved items and prototype orders can live in one place.
+          Sign in with Google to access your account, saved items and order history.
         </p>
         <div className="mt-8 flex flex-wrap gap-2">
           <Link
             href="/account/login"
-            className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3 hover:shadow-lg"
+            className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
           >
             <span>Sign in</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
           </Link>
-          <Link
-            href="/account/register"
-            className="focus-ring inline-flex items-center gap-2 rounded-full border hairline px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-all hover:border-[var(--ink)]"
-          >
-            Create account
-          </Link>
+
         </div>
       </section>
     );
@@ -68,21 +64,21 @@ export default function AccountPage() {
       </div>
 
       {/* WELCOME HERO SECTION */}
-      <div className="relative overflow-hidden border-b hairline bg-[var(--ink)] text-[var(--paper)]">
-        <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-white/5 to-transparent" />
+      <div className="relative overflow-hidden border-b hairline bg-[var(--deep-green)] text-[var(--paper)]">
+        <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-soft-cream/5 to-transparent" />
         <div className="relative px-4 py-12 md:px-8 md:py-16 lg:px-12">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <p className="kicker text-white/50">My Account</p>
+              <p className="kicker text-soft-cream/50">My Account</p>
               <h1 className="mt-4 text-[clamp(2.5rem,5vw,4.5rem)] font-medium leading-[0.9] tracking-[-0.06em]">
                 Hello, {user.name.split(" ")[0]}
               </h1>
-              <p className="mt-4 text-sm text-white/70">{user.email}</p>
+              <p className="mt-4 text-sm text-soft-cream/70">{user.email}</p>
             </div>
             <button
               type="button"
               onClick={logout}
-              className="focus-ring inline-flex items-center gap-2 rounded-full border border-white/30 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-white transition-all hover:bg-white/10"
+              className="focus-ring inline-flex items-center gap-2 rounded-full border border-soft-cream/30 px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-soft-cream transition-all hover:bg-soft-cream/10"
             >
               <LogOut size={13} /> Sign out
             </button>
@@ -119,7 +115,7 @@ export default function AccountPage() {
               href="/wishlist"
               className="group flex items-center gap-4 rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] p-4 transition-all hover:border-[var(--ink)]/30 hover:shadow-lg sm:p-5"
             >
-              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--ink)] text-[var(--paper)]">
+              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] text-[var(--paper)]">
                 <Heart size={18} strokeWidth={1.5} />
               </span>
               <div className="flex-1">
@@ -157,15 +153,7 @@ export default function AccountPage() {
               <ChevronRight size={16} className="shrink-0 text-[var(--muted)] transition-transform group-hover:translate-x-1" />
             </Link>
 
-            <div className="rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-5">
-              <div className="flex items-center gap-3">
-                <MapPin size={16} className="shrink-0 text-[var(--muted)]" />
-                <p className="text-sm font-semibold">Addresses</p>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
-                Address management will be available when production authentication is connected.
-              </p>
-            </div>
+            <CustomerProfileForm />
           </div>
 
           {/* RIGHT COLUMN - ORDER HISTORY */}
@@ -236,7 +224,7 @@ export default function AccountPage() {
                 </p>
                 <Link
                   href="/shop"
-                  className="focus-ring group mt-6 inline-flex items-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3"
+                  className="focus-ring group mt-6 inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
                 >
                   <span>Start shopping</span>
                   <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

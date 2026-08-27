@@ -1,56 +1,59 @@
-# Decor by Kasiwa — Starter
+# Decor by Kasiwa
 
-A Next.js + TypeScript + Sanity starter for Decor by Kasiwa.
+Next.js + TypeScript project for Decor by Kasiwa, containing the customer storefront, Admin Office and Store Operations in one application.
 
-## Design direction
+## Application surfaces
 
-This first implementation deliberately moves away from the Daima Mkenya visual language while retaining the same general engineering philosophy:
+```text
+app/
+├── (shop)/   customer-facing site; route group is invisible in URLs
+├── admin/    business administration
+├── store/    fulfilment and inventory operations
+├── api/      shared server routes
+├── studio/   Sanity Studio entry point
+├── layout.tsx
+├── providers.tsx
+└── globals.css
+```
 
-- editorial oversized typography
-- warm ivory / stone canvas
-- architectural hairline borders
-- asymmetric interior imagery
-- compact catalogue navigation
-- room-led product storytelling
-- large project photography
-- service + commerce positioning
-- multi-step consultation funnel
+Examples:
 
-The supplied visual references are inspiration only. Their names, logos and exact artwork are not included.
+- `app/(shop)/page.tsx` → `/`
+- `app/(shop)/shop/page.tsx` → `/shop`
+- `app/(shop)/cart/page.tsx` → `/cart`
+- `app/admin/page.tsx` → `/admin`
+- `app/store/page.tsx` → `/store`
 
-## Included routes
+## Client-approved palette
 
-- `/` — editorial home page
-- `/about`
-- `/services`
-- `/portfolio`
-- `/shop`
-- `/process`
-- `/consultation`
-- `/studio` — Sanity Studio
-- `/api/consultations` — consultation submission API
+- Deep Green `#0E2B26`
+- Sage Green `#8CA78B`
+- Warm Beige `#E8DFCF`
+- Soft Cream `#FAF7F2`
+- Gold `#D4AF37`
+- Charcoal `#1F2321`
 
-## Sanity schemas
+The central semantic tokens are defined in `app/globals.css`.
 
-- Product
-- Portfolio Project
-- Service
-- Consultation Enquiry
-- Site Settings
-
-## Setup
+## Local setup
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
 
-Then open `http://localhost:3000`.
+For a production check:
+
+```bash
+npm run build
+```
 
 ## Sanity
 
-Create or select a Sanity project and set:
+Sanity has not been configured yet. The customer site and consultation route are intentionally build-safe without a Sanity project ID.
+
+When ready, set:
 
 ```env
 NEXT_PUBLIC_SANITY_PROJECT_ID=your_project_id
@@ -58,40 +61,10 @@ NEXT_PUBLIC_SANITY_DATASET=production
 SANITY_API_WRITE_TOKEN=your_write_token
 ```
 
-The write token is only used server-side by the consultation API.
+## Current persistence
 
-## Current phase
+Customer cart/account/order prototype data uses browser storage. Admin and Store operational screens currently use shared demo data from `lib/operations`.
 
-This is the visual + architecture foundation, not the final ecommerce build.
+Persistent commerce, staff authentication, inventory transactions, real payments and carrier integrations remain future backend work.
 
-Next implementation passes should add:
-
-1. Sanity-powered homepage queries
-2. dynamic `/portfolio/[slug]`
-3. before/after comparison component
-4. dynamic `/shop/[slug]`
-5. cart + wishlist state
-6. checkout/payment integration
-7. image upload in consultation journey
-8. email notifications for enquiries
-9. search + filters
-10. SEO, sitemap, metadata and analytics
-11. responsive refinement
-12. final client photography and copy
-
-
-## Interaction pass
-
-The starter has now been updated to:
-
-- render full-bleed from viewport edge to viewport edge
-- use responsive internal spacing rather than a fixed desktop container
-- animate the full-screen navigation
-- support working collection search
-- support animated hero previous/next controls
-- support clickable hero pagination dots and automatic cycling
-- add mobile hero navigation controls
-- animate the immersive room image and content on scroll
-- animate service and portfolio content on entry
-- support functional shop category filtering and query filtering
-- respect `prefers-reduced-motion` for accessibility
+See `RECOVERY_NOTES.md`, `COMMERCE_JOURNEY.md` and `BACKOFFICE_IMPLEMENTATION.md` for more detail.

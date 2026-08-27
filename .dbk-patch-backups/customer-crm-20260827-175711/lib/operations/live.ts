@@ -1,0 +1,289 @@
+import "server-only";
+
+import { serverClient } from "@/sanity/lib/serverClient";
+
+import { adminMetrics, storeMetrics } from "./selectors";
+import type {
+  ActivityEvent,
+  Customer,
+  InventoryItem,
+  OperationsSnapshot,
+  Order,
+  Shipment,
+} from "./types";
+
+type RawProduct = {
+  _id: string;
+  slug?: string;
+  sku?: string;
+  name?: string;
+  price?: number;
+  initialStock?: number;
+  available?: boolean;
+  category?: string;
+  colours?: string[];
+  image?: string;
+  inventory?: {
+    location?: string;
+    reserved?: number;
+    incoming?: number;
+    reorderPoint?: number;
+    unitCost?: number;
+  } | null;
+};
+
+type RawCustomer = {
+  _id: string;
+  name?: string;
+  email?: string;
+  image?: string | null;
+  role?: "CUSTOMER" | "ADMIN" | "STORE";
+  status?: "ACTIVE" | "SUSPENDED";
+  createdAt?: string;
+  lastLoginAt?: string;
+};
+
+function safeString(value: unknown, fallback = "—") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+export async function getLiveProducts(): Promise<InventoryItem[]> {
+  const rows = await serverClient.fetch<RawProduct[]>(
+    `*[_type == "product" && defined(slug.current)] | order(name asc) {
+      _id,
+      name,
+      sku,
+      price,
+      initialStock,
+      available,
+      "slug": slug.current,
+      "category": primaryCategory->title,
+      colours,
+      "image": heroImage.asset->url,
+      "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
+        location,
+        reserved,
+        incoming,
+        reorderPoint,
+        unitCost
+      }
+    }`,
+    {},
+    { cache: "no-store" },
+  );
+
+  return rows.map((row) => ({
+    id: row._id,
+    productId: row._id,
+    slug: row.slug,
+    sku: safeString(row.sku, "NO-SKU"),
+    name: safeString(row.name, "Untitled product"),
+    category: safeString(row.category, "Uncategorised"),
+    finish: row.colours?.[0] || "",
+    location: row.inventory?.location || "Unassigned",
+    onHand: typeof row.initialStock === "number" ? row.initialStock : 0,
+    reserved: row.inventory?.reserved || 0,
+    incoming: row.inventory?.incoming || 0,
+    reorderPoint: row.inventory?.reorderPoint ?? 5,
+    unitCost: row.inventory?.unitCost || 0,
+    retailPrice: typeof row.price === "number" ? row.price : 0,
+    image: row.image || undefined,
+    available: row.available !== false,
+  }));
+}
+
+export async function getLiveOrders(): Promise<Order[]> {
+  const rows = await serverClient.fetch<Order[]>(
+    `*[_type == "commerceOrder"] | order(createdAt desc) {
+      "id": _id,
+      orderNumber,
+      "customerId": coalesce(customer._ref, ""),
+      customerName,
+      customerEmail,
+      customerPhone,
+      deliveryLocation,
+      createdAt,
+      status,
+      paymentStatus,
+      subtotal,
+      deliveryFee,
+      total,
+      assignedStore,
+      paymentReference,
+      "lineItems": lineItems[]{
+        "id": coalesce(_key, product._ref),
+        "productId": coalesce(product._ref, productId),
+        name,
+        category,
+        finish,
+        quantity,
+        unitPrice
+      }
+    }`,
+    {},
+    { cache: "no-store" },
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    orderNumber: safeString(row.orderNumber, row.id),
+    customerName: safeString(row.customerName, "Customer"),
+    customerEmail: safeString(row.customerEmail, ""),
+    customerPhone: safeString(row.customerPhone, ""),
+    deliveryLocation: safeString(row.deliveryLocation, "Not supplied"),
+    createdAt: row.createdAt || new Date(0).toISOString(),
+    status: row.status || "pending",
+    paymentStatus: row.paymentStatus || "pending",
+    subtotal: Number(row.subtotal || 0),
+    deliveryFee: Number(row.deliveryFee || 0),
+    total: Number(row.total || 0),
+    lineItems: Array.isArray(row.lineItems) ? row.lineItems : [],
+  }));
+}
+
+export async function getLiveShipments(): Promise<Shipment[]> {
+  const rows = await serverClient.fetch<Shipment[]>(
+    `*[_type == "shipment"] | order(updatedAt desc) {
+      "id": _id,
+      shipmentNumber,
+      "orderId": order._ref,
+      orderNumber,
+      customerName,
+      destination,
+      carrier,
+      trackingNumber,
+      createdAt,
+      updatedAt,
+      status,
+      itemCount,
+      totalUnits,
+      notes
+    }`,
+    {},
+    { cache: "no-store" },
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    shipmentNumber: safeString(row.shipmentNumber, row.id),
+    orderNumber: safeString(row.orderNumber, "—"),
+    customerName: safeString(row.customerName, "Customer"),
+    destination: safeString(row.destination, "Not supplied"),
+    createdAt: row.createdAt || new Date(0).toISOString(),
+    updatedAt: row.updatedAt || row.createdAt || new Date(0).toISOString(),
+    status: row.status || "awaiting_store",
+    itemCount: Number(row.itemCount || 0),
+    totalUnits: Number(row.totalUnits || 0),
+  }));
+}
+
+export async function getLiveCustomers(orders?: Order[]): Promise<Customer[]> {
+  const [rows, liveOrders] = await Promise.all([
+    serverClient.fetch<RawCustomer[]>(
+      `*[_type == "customerUser"] | order(lastLoginAt desc) {
+        _id,
+        name,
+        email,
+        image,
+        role,
+        status,
+        createdAt,
+        lastLoginAt
+      }`,
+      {},
+      { cache: "no-store" },
+    ),
+    orders ? Promise.resolve(orders) : getLiveOrders(),
+  ]);
+
+  return rows.map((row) => {
+    const email = (row.email || "").toLowerCase();
+    const customerOrders = liveOrders.filter(
+      (order) => order.customerEmail.toLowerCase() === email,
+    );
+    const latestOrder = customerOrders[0];
+
+    return {
+      id: row._id,
+      name: safeString(row.name, "Customer"),
+      email: row.email || "",
+      phone: latestOrder?.customerPhone || "—",
+      location: latestOrder?.deliveryLocation || "—",
+      orders: customerOrders.length,
+      lifetimeValue: customerOrders
+        .filter((order) => order.paymentStatus === "paid")
+        .reduce((sum, order) => sum + order.total, 0),
+      lastOrderAt: latestOrder?.createdAt || row.lastLoginAt || row.createdAt || "",
+      role: row.role,
+      status: row.status,
+      image: row.image,
+    };
+  });
+}
+
+function buildActivity({
+  orders,
+  shipments,
+  customers,
+}: {
+  orders: Order[];
+  shipments: Shipment[];
+  customers: Customer[];
+}): ActivityEvent[] {
+  const events: ActivityEvent[] = [
+    ...orders.slice(0, 6).map((order) => ({
+      id: `order-${order.id}`,
+      timestamp: order.createdAt,
+      actor: "Customer",
+      action: order.paymentStatus === "paid" ? "Paid order" : "Order created",
+      detail: `${order.orderNumber} · ${order.customerName}`,
+      type: "order" as const,
+    })),
+    ...shipments.slice(0, 6).map((shipment) => ({
+      id: `shipment-${shipment.id}`,
+      timestamp: shipment.updatedAt,
+      actor: "Operations",
+      action: `Shipment ${shipment.status.replaceAll("_", " ")}`,
+      detail: `${shipment.shipmentNumber} · ${shipment.customerName}`,
+      type: "shipment" as const,
+    })),
+    ...customers.slice(0, 4).map((customer) => ({
+      id: `customer-${customer.id}`,
+      timestamp: customer.lastOrderAt,
+      actor: "Customer",
+      action: "Customer activity",
+      detail: `${customer.name} · ${customer.email}`,
+      type: "customer" as const,
+    })),
+  ];
+
+  return events
+    .filter((event) => Boolean(event.timestamp))
+    .sort(
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    )
+    .slice(0, 10);
+}
+
+export async function getLiveOperationsSnapshot(): Promise<OperationsSnapshot> {
+  const [products, orders, shipments] = await Promise.all([
+    getLiveProducts(),
+    getLiveOrders(),
+    getLiveShipments(),
+  ]);
+
+  const customers = await getLiveCustomers(orders);
+  const activity = buildActivity({ orders, shipments, customers });
+
+  return {
+    admin: adminMetrics({ orders, shipments, inventory: products }),
+    store: storeMetrics({ shipments, inventory: products }),
+    products,
+    customers,
+    orders,
+    shipments,
+    activity,
+    source: "sanity-live",
+  };
+}

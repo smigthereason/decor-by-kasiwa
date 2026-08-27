@@ -51,7 +51,7 @@ export default function PageIntro({
 
   return (
     <section
-      className="relative isolate w-full overflow-hidden bg-[#17120f] text-white"
+      className="relative isolate w-full overflow-hidden bg-[var(--deep-green)] text-soft-cream"
       aria-label={`${eyebrow}: ${title}`}
     >
       <div className="relative min-h-[560px] w-full sm:min-h-[620px] lg:h-[clamp(620px,72vh,820px)]">
@@ -76,6 +76,7 @@ export default function PageIntro({
             src={image}
             alt=""
             fill
+            unoptimized
             priority
             sizes="100vw"
             className="object-cover"
@@ -83,9 +84,9 @@ export default function PageIntro({
         </motion.div>
 
         {/* IMAGE TREATMENT */}
-        <div className="absolute inset-0 bg-black/15" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/20 to-black/10" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/20" />
+        <div className="absolute inset-0 bg-charcoal/15" />
+        <div className="absolute inset-0 bg-gradient-to-r from-charcoal/65 via-charcoal/20 to-charcoal/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-charcoal/75 via-transparent to-charcoal/20" />
 
         {/* TOP META */}
         <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between px-5 pt-6 sm:px-8 sm:pt-8 lg:px-[3.5vw] lg:pt-9">
@@ -103,15 +104,15 @@ export default function PageIntro({
               y: 0,
             }}
             transition={transition}
-            className="max-w-[300px] text-[9px] font-semibold uppercase leading-[1.35] tracking-[0.14em] text-white/80 sm:text-[10px]"
+            className="max-w-[300px] text-[9px] font-semibold uppercase leading-[1.35] tracking-[0.14em] text-soft-cream/80 sm:text-[10px]"
           >
             {eyebrow}
           </motion.p>
 
-          <div className="flex items-center gap-3 text-[8px] font-medium uppercase tracking-[0.15em] text-white/60 sm:text-[9px]">
+          <div className="flex items-center gap-3 text-[8px] font-medium uppercase tracking-[0.15em] text-soft-cream/60 sm:text-[9px]">
             <span className="hidden sm:inline">{meta}</span>
-            <span className="hidden h-px w-8 bg-white/35 sm:block" />
-            <span className="text-white">{index}</span>
+            <span className="hidden h-px w-8 bg-soft-cream/35 sm:block" />
+            <span className="text-soft-cream">{index}</span>
           </div>
         </div>
 
@@ -134,14 +135,14 @@ export default function PageIntro({
               ...transition,
               delay: reduceMotion ? 0 : 0.12,
             }}
-            className="absolute right-5 top-[105px] z-30 hidden w-[230px] border border-white/25 bg-black/15 p-1.5 backdrop-blur-[3px] sm:block sm:right-8 sm:w-[250px] lg:right-[3.5vw] lg:top-[21%] lg:w-[290px] xl:w-[315px]"
+            className="absolute right-5 top-[105px] z-30 hidden w-[230px] border border-soft-cream/25 bg-charcoal/15 p-1.5 backdrop-blur-[3px] sm:block sm:right-8 sm:w-[250px] lg:right-[3.5vw] lg:top-[21%] lg:w-[290px] xl:w-[315px]"
           >
             <div className="flex items-center justify-between px-2.5 py-2">
               <div>
-                <p className="text-[7px] uppercase tracking-[0.15em] text-white/50 sm:text-[8px]">
+                <p className="text-[7px] uppercase tracking-[0.15em] text-soft-cream/50 sm:text-[8px]">
                   {featureLabel}
                 </p>
-                <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.04em] text-white sm:text-[10px]">
+                <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.04em] text-soft-cream sm:text-[10px]">
                   Decor by Kasiwa
                 </p>
               </div>
@@ -150,7 +151,7 @@ export default function PageIntro({
                 <Link
                   href={resolvedFeatureHref}
                   aria-label={featureTitle}
-                  className="grid size-8 place-items-center rounded-full bg-white text-black transition-transform duration-300 hover:rotate-45"
+                  className="grid size-8 place-items-center rounded-full bg-soft-cream text-charcoal transition-transform duration-300 hover:rotate-45"
                 >
                   <ArrowUpRight size={14} strokeWidth={1.5} />
                 </Link>
@@ -169,15 +170,15 @@ export default function PageIntro({
                   sizes="315px"
                   className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
                 />
-                <div className="absolute inset-0 bg-black/10" />
-                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-10">
-                  <span className="max-w-[175px] text-[8px] font-medium uppercase leading-[1.3] tracking-[0.1em] text-white">
+                <div className="absolute inset-0 bg-charcoal/10" />
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-charcoal/60 to-transparent px-3 pb-3 pt-10">
+                  <span className="max-w-[175px] text-[8px] font-medium uppercase leading-[1.3] tracking-[0.1em] text-soft-cream">
                     {featureTitle}
                   </span>
                   <ArrowRight
                     size={13}
                     strokeWidth={1.5}
-                    className="shrink-0 text-white transition-transform duration-300 group-hover:translate-x-1"
+                    className="shrink-0 text-soft-cream transition-transform duration-300 group-hover:translate-x-1"
                   />
                 </div>
               </Link>
@@ -190,9 +191,9 @@ export default function PageIntro({
                   sizes="315px"
                   className="object-cover"
                 />
-                <div className="absolute inset-0 bg-black/10" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 pb-3 pt-10">
-                  <span className="text-[8px] font-medium uppercase leading-[1.3] tracking-[0.1em] text-white">
+                <div className="absolute inset-0 bg-charcoal/10" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-charcoal/60 to-transparent px-3 pb-3 pt-10">
+                  <span className="text-[8px] font-medium uppercase leading-[1.3] tracking-[0.1em] text-soft-cream">
                     {featureTitle}
                   </span>
                 </div>
@@ -222,11 +223,11 @@ export default function PageIntro({
           className="absolute bottom-10 left-5 z-30 w-[calc(100%-40px)] sm:bottom-12 sm:left-8 sm:max-w-[680px] lg:bottom-[10%] lg:left-[3.5vw] lg:max-w-[850px]"
         >
           <div className="mb-5 flex items-center gap-3">
-            <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-white/75 sm:text-[9px]">
+            <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-soft-cream/75 sm:text-[12px]">
               {meta}
             </span>
-            <span className="h-px w-10 bg-white/40" />
-            <span className="text-[8px] uppercase tracking-[0.14em] text-white/55 sm:text-[9px]">
+            <span className="h-px w-10 bg-soft-cream/40" />
+            <span className="text-[8px] uppercase tracking-[0.14em] text-soft-cream/55 sm:text-[12px]">
               {index}
             </span>
           </div>
@@ -238,7 +239,7 @@ export default function PageIntro({
           {(body || (ctaLabel && ctaHref)) && (
             <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:gap-10">
               {body && (
-                <p className="max-w-[430px] text-[11px] leading-[1.65] text-white/75 sm:text-[12px]">
+                <p className="max-w-[430px] text-[11px] leading-[1.65] text-soft-cream/75 sm:text-[14px]">
                   {body}
                 </p>
               )}
@@ -246,7 +247,7 @@ export default function PageIntro({
               {ctaLabel && ctaHref && (
                 <Link
                   href={ctaHref}
-                  className="group inline-flex w-fit items-center gap-3 border-b border-white/65 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white sm:text-[9px]"
+                  className="group inline-flex w-fit items-center gap-3 border-b border-soft-cream/65 pb-1.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-soft-cream sm:text-[11px]"
                 >
                   {ctaLabel}
                   <ArrowRight
@@ -261,11 +262,11 @@ export default function PageIntro({
         </motion.div>
 
         {/* MICRO META */}
-        <div className="absolute bottom-5 right-5 z-30 hidden items-center gap-3 text-[8px] uppercase tracking-[0.14em] text-white/45 md:flex lg:bottom-[4%] lg:right-[3.5vw]">
+        <div className="absolute bottom-5 right-5 z-30 hidden items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-soft-cream/45 md:flex lg:bottom-[4%] lg:right-[3.5vw]">
           <span>Design</span>
-          <span className="size-1 rounded-full bg-white/35" />
+          <span className="size-1 rounded-full bg-soft-cream/35" />
           <span>Detail</span>
-          <span className="size-1 rounded-full bg-white/35" />
+          <span className="size-1 rounded-full bg-soft-cream/35" />
           <span>Transformation</span>
         </div>
       </div>

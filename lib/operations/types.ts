@@ -29,9 +29,19 @@ export type Customer = {
   email: string;
   phone: string;
   location: string;
+  address1?: string;
+  address2?: string;
+  city?: string;
+  region?: string;
+  country?: string;
   orders: number;
   lifetimeValue: number;
   lastOrderAt: string;
+  role?: "CUSTOMER" | "ADMIN" | "STORE";
+  status?: "ACTIVE" | "SUSPENDED";
+  source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
+  authenticated?: boolean;
+  image?: string | null;
 };
 
 export type OrderLine = {
@@ -59,6 +69,7 @@ export type Order = {
   deliveryFee: number;
   total: number;
   assignedStore?: string;
+  paymentReference?: string;
   lineItems: OrderLine[];
 };
 
@@ -66,6 +77,7 @@ export type InventoryItem = {
   id: string;
   sku: string;
   productId: string;
+  slug?: string;
   name: string;
   category: string;
   finish?: string;
@@ -76,6 +88,8 @@ export type InventoryItem = {
   reorderPoint: number;
   unitCost: number;
   retailPrice: number;
+  image?: string;
+  available?: boolean;
 };
 
 export type Shipment = {
@@ -102,4 +116,29 @@ export type ActivityEvent = {
   action: string;
   detail: string;
   type: "order" | "inventory" | "shipment" | "customer";
+};
+
+export type AdminMetrics = {
+  revenue: number;
+  openOrders: number;
+  fulfilmentQueue: number;
+  lowStock: number;
+};
+
+export type StoreMetrics = {
+  awaitingReceipt: number;
+  beingPicked: number;
+  readyToDispatch: number;
+  lowStock: number;
+};
+
+export type OperationsSnapshot = {
+  admin: AdminMetrics;
+  store: StoreMetrics;
+  products: InventoryItem[];
+  customers: Customer[];
+  orders: Order[];
+  shipments: Shipment[];
+  activity: ActivityEvent[];
+  source: "sanity-live";
 };

@@ -1,7 +1,9 @@
+import type { Metadata } from 'next';
 import Image from "next/image";
 import PageIntro from "@/components/root/PageIntro";
 
-export const metadata = { title: "About" };
+
+export const metadata: Metadata = { title: "About" };
 
 export default function AboutPage() {
   return (
@@ -29,6 +31,8 @@ export default function AboutPage() {
             src="https://images.unsplash.com/photo-1600566753104-685f4f24cb4d?auto=format&fit=crop&w=1200&q=88"
             alt="Interior studio mood"
             fill
+            unoptimized
+            priority
             sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover"
           />

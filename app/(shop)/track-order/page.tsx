@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, LockKeyhole, Package, Search } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
 import type { DemoOrder } from "@/types/commerce";
 
 export default function TrackOrderPage() {
@@ -104,10 +104,10 @@ export default function TrackOrderPage() {
             {/* SUBMIT BUTTON */}
             <button
               type="submit"
-              className="focus-ring group mt-8 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--ink)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:shadow-lg hover:opacity-95"
+              className="focus-ring group mt-8 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95"
             >
               <span>Find order</span>
-              <ArrowRight size={14} className="text-white transition-transform group-hover:translate-x-1" />
+              <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />
             </button>
 
             {/* ERROR MESSAGE */}
@@ -124,7 +124,7 @@ export default function TrackOrderPage() {
             {result && (
               <div className="mt-8 rounded-lg border hairline bg-[var(--paper-2)] p-5 sm:p-6">
                 <div className="flex items-center gap-3">
-                  <span className="grid size-10 place-items-center rounded-full bg-[var(--ink)] text-[var(--paper)]">
+                  <span className="grid size-10 place-items-center rounded-full bg-[var(--deep-green)] text-[var(--paper)]">
                     <Check size={16} strokeWidth={2.5} />
                   </span>
                   <div>

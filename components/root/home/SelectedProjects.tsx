@@ -136,7 +136,7 @@ export default function SelectedProjects() {
         w-full
         overflow-hidden
         border-b
-        border-white/10
+        border-soft-cream/10
 
         text-muted
       "
@@ -385,6 +385,8 @@ export default function SelectedProjects() {
                       src={project.image}
                       alt={project.name}
                       fill
+                      unoptimized
+                      priority
                       sizes={
                         index === 0
                           ? "(max-width: 768px) 100vw, 58vw"
@@ -405,10 +407,10 @@ export default function SelectedProjects() {
                       className="
                         absolute
                         inset-0
-                        bg-black/10
+                        bg-charcoal/10
                         transition-colors
                         duration-500
-                        group-hover:bg-black/15
+                        group-hover:bg-charcoal/15
                       "
                     />
 
@@ -417,9 +419,9 @@ export default function SelectedProjects() {
                         absolute
                         inset-0
                         bg-gradient-to-t
-                        from-black/75
-                        via-black/5
-                        to-black/10
+                        from-charcoal/75
+                        via-charcoal/5
+                        to-charcoal/10
                       "
                     />
 
@@ -446,7 +448,7 @@ export default function SelectedProjects() {
                             font-semibold
                             uppercase
                             tracking-[0.15em]
-                            text-white/75
+                            text-soft-cream/75
 
                             sm:text-[10px]
                           "
@@ -460,7 +462,7 @@ export default function SelectedProjects() {
                             text-[10px]
                             uppercase
                             tracking-[0.13em]
-                            text-white
+                            text-soft-cream
 
                             sm:text-[11px]
                           "
@@ -474,7 +476,7 @@ export default function SelectedProjects() {
                           text-[10px]
                           font-medium
                           tracking-[0.15em]
-                          text-white/70
+                          text-soft-cream/70
 
                           sm:text-[11px]
                         "
@@ -516,7 +518,7 @@ export default function SelectedProjects() {
                               text-[9px]
                               uppercase
                               tracking-[0.15em]
-                              text-white/50
+                              text-soft-cream/50
 
                               sm:text-[10px]
                             "
@@ -531,7 +533,7 @@ export default function SelectedProjects() {
                                 font-medium
                                 leading-[0.98]
                                 tracking-[-0.04em]
-                                text-white
+                                text-soft-cream
                               `,
                               index === 0
                                 ? `
@@ -557,8 +559,8 @@ export default function SelectedProjects() {
                             shrink-0
                             place-items-center
                             rounded-full
-                            bg-white
-                            text-black
+                            bg-soft-cream
+                            text-charcoal
                             transition-transform
                             duration-300
                             group-hover:rotate-45
@@ -590,7 +592,7 @@ export default function SelectedProjects() {
           className="
             mt-8
             border-t
-            border-white/15
+            border-soft-cream/15
             pt-5
             sm:hidden
           "
@@ -627,7 +629,7 @@ export default function SelectedProjects() {
             grid-cols-[1fr_auto]
             items-center
             border-t
-            border-white/15
+            border-soft-cream/15
             pt-4
 
             sm:grid
@@ -638,7 +640,7 @@ export default function SelectedProjects() {
               text-[8px]
               uppercase
               tracking-[0.14em]
-              text-white/35
+              text-soft-cream/35
             "
           >
             Residential · Hospitality · Styling
@@ -649,7 +651,7 @@ export default function SelectedProjects() {
               text-[8px]
               uppercase
               tracking-[0.14em]
-              text-white/35
+              text-soft-cream/35
             "
           >
             Selected Spaces / 2026

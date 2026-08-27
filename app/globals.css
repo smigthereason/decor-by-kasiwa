@@ -1,16 +1,44 @@
 @import "tailwindcss";
 
+/*
+ * Decor by Kasiwa — client-approved palette
+ * Deep Green  #0E2B26
+ * Sage Green  #8CA78B
+ * Warm Beige  #E8DFCF
+ * Soft Cream  #FAF7F2
+ * Gold        #D4AF37
+ * Charcoal    #1F2321
+ */
 :root {
-  --canvas: #efeae2;
-  --paper: #f7f3ed;
-  --paper-2: #e8e1d7;
-  --ink: #1c1c19;
-  --muted: #777168;
-  --line: #cfc7bc;
-  --forest: #263b31;
-  --sand: #c8bba8;
-  --gold: #9b825b;
-  --white: #fffdf8;
+  --deep-green: #0e2b26;
+  --sage-green: #8ca78b;
+  --warm-beige: #e8dfcf;
+  --soft-cream: #faf7f2;
+  --brand-gold: #d4af37;
+  --charcoal: #1f2321;
+
+  /* Existing semantic tokens retained so component layout does not change. */
+  --canvas: var(--warm-beige);
+  --paper: var(--soft-cream);
+  --paper-2: var(--warm-beige);
+  --ink: var(--charcoal);
+  --muted: color-mix(in srgb, var(--charcoal) 58%, var(--soft-cream));
+  --line: color-mix(in srgb, var(--charcoal) 20%, var(--soft-cream));
+  --forest: var(--deep-green);
+  --sage: var(--sage-green);
+  --sand: var(--warm-beige);
+  --gold: var(--brand-gold);
+  --white: var(--soft-cream);
+}
+
+/* Named Tailwind v4 colour utilities for exact client palette values. */
+@theme inline {
+  --color-deep-green: var(--deep-green);
+  --color-sage-green: var(--sage-green);
+  --color-warm-beige: var(--warm-beige);
+  --color-soft-cream: var(--soft-cream);
+  --color-brand-gold: var(--brand-gold);
+  --color-charcoal: var(--charcoal);
 }
 
 * {
@@ -80,9 +108,9 @@ select {
   inset: 0;
   background: linear-gradient(
     90deg,
-    rgba(7, 8, 7, 0.38) 0%,
-    rgba(7, 8, 7, 0.03) 52%,
-    rgba(7, 8, 7, 0.2) 100%
+    rgba(14, 43, 38, 0.38) 0%,
+    rgba(14, 43, 38, 0.03) 52%,
+    rgba(14, 43, 38, 0.2) 100%
   );
   pointer-events: none;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   FormEvent,
   ReactNode,
@@ -20,10 +19,12 @@ import {
   ShieldCheck,
   Truck,
   Package,
+  LoaderCircle,
 } from "lucide-react";
 
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney, getProductById } from "@/lib/products";
+import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
+import { formatMoney } from "@/lib/money";
 import type { DemoAddress } from "@/types/commerce";
 
 const emptyAddress: DemoAddress = {
@@ -49,19 +50,14 @@ const paymentMethods = [
 ] as const;
 
 export default function CheckoutPage() {
-  const router = useRouter();
-  const { hydrated, cart, subtotal, user, createOrder } = useCommerce();
+  const { hydrated, catalogueReady, catalogueError, cart, subtotal, user, getProductById } = useCommerce();
 
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState<DemoAddress>(emptyAddress);
   const [paymentMethod, setPaymentMethod] = useState("Card");
-  const [mobileNumber, setMobileNumber] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [cvv, setCvv] = useState("");
   const [error, setError] = useState("");
+  const [initializingPayment, setInitializingPayment] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -77,20 +73,24 @@ export default function CheckoutPage() {
       cart
         .map((line) => ({ line, product: getProductById(line.productId) }))
         .filter((item) => Boolean(item.product)),
-    [cart]
+    [cart, getProductById]
   );
 
-  if (!hydrated) {
+  if (!hydrated || !catalogueReady) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--ink)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing checkout…
           </p>
         </div>
       </div>
     );
+  }
+
+  if (catalogueError) {
+    return <CatalogueUnavailable message={catalogueError} />;
   }
 
   if (cart.length === 0) {
@@ -105,7 +105,7 @@ export default function CheckoutPage() {
         </p>
         <Link
           href="/shop"
-          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--ink)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3 hover:shadow-lg"
+          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
         >
           <span>Return to collection</span>
           <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -139,24 +139,50 @@ export default function CheckoutPage() {
     }
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    if (paymentMethod === "Card") {
-      if (![cardName, cardNumber, expiry, cvv].every((value) => value.trim())) {
-        setError("Please complete all card details before placing your order.");
-        return;
+    if (initializingPayment) return;
+
+    if (!validateStep(3)) return;
+
+    setInitializingPayment(true);
+
+    try {
+      const response = await fetch("/api/paystack/initialize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          address,
+          cart,
+          paymentMethod,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        authorizationUrl?: string;
+        reference?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !payload.authorizationUrl) {
+        throw new Error(payload.message || "Unable to start Paystack checkout.");
       }
-    }
 
-    if (paymentMethod === "Mobile money" && !mobileNumber.trim()) {
-      setError("Please provide a valid phone number for mobile payment.");
-      return;
+      window.location.assign(payload.authorizationUrl);
+    } catch (paymentError) {
+      console.error("Unable to initialize Paystack:", paymentError);
+      setError(
+        paymentError instanceof Error
+          ? paymentError.message
+          : "Unable to start secure payment. Please try again.",
+      );
+      setInitializingPayment(false);
     }
-
-    const order = createOrder({ email, address, paymentMethod });
-    router.push(`/checkout/success?order=${encodeURIComponent(order.id)}`);
   }
 
   return (
@@ -215,9 +241,9 @@ export default function CheckoutPage() {
                         className={[
                           "grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold transition-all sm:size-8",
                           active
-                            ? "bg-[var(--ink)] text-[var(--paper)] ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--paper)]"
+                            ? "bg-[var(--deep-green)] text-[var(--paper)] ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--paper)]"
                             : complete
-                            ? "bg-[var(--ink)] text-[var(--paper)]"
+                            ? "bg-[var(--deep-green)] text-[var(--paper)]"
                             : "border hairline text-[var(--muted)]",
                         ].join(" ")}
                       >
@@ -233,7 +259,7 @@ export default function CheckoutPage() {
                       </span>
                     </button>
                     {idx < steps.length - 1 && (
-                      <div className="mx-2 h-px flex-1 bg-[var(--ink)]/10 sm:mx-4" />
+                      <div className="mx-2 h-px flex-1 bg-[var(--deep-green)]/10 sm:mx-4" />
                     )}
                   </div>
                 );
@@ -373,7 +399,7 @@ export default function CheckoutPage() {
                           className={[
                             "flex w-full items-center justify-between rounded-lg border p-4 sm:p-5 text-left transition-all",
                             selected
-                              ? "border-[var(--ink)] bg-[var(--ink)]/[0.03] shadow-sm"
+                              ? "border-[var(--ink)] bg-[var(--deep-green)]/[0.03] shadow-sm"
                               : "border-[var(--ink)]/10 hover:border-[var(--ink)]/30 hover:bg-[var(--paper-2)]",
                           ].join(" ")}
                         >
@@ -382,7 +408,7 @@ export default function CheckoutPage() {
                               className={[
                                 "grid size-9 sm:size-10 place-items-center rounded-full transition-colors",
                                 selected
-                                  ? "bg-[var(--ink)] text-[var(--paper)]"
+                                  ? "bg-[var(--deep-green)] text-[var(--paper)]"
                                   : "bg-[var(--paper-2)] text-[var(--muted)]",
                               ].join(" ")}
                             >
@@ -397,7 +423,7 @@ export default function CheckoutPage() {
                             className={[
                               "grid size-5 place-items-center rounded-full border-2 transition-all shrink-0",
                               selected
-                                ? "border-[var(--ink)] bg-[var(--ink)]"
+                                ? "border-[var(--ink)] bg-[var(--deep-green)]"
                                 : "border-[var(--ink)]/20",
                             ].join(" ")}
                           >
@@ -408,87 +434,41 @@ export default function CheckoutPage() {
                     })}
                   </div>
 
-                  {paymentMethod === "Card" && (
-                    <div className="mt-8 grid gap-5 sm:gap-6 rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-6 sm:grid-cols-2">
-                      <div className="sm:col-span-2">
-                        <Field label="Name on Card">
-                          <input
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            autoComplete="cc-name"
-                            placeholder="Jane Doe"
-                          />
-                        </Field>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <Field label="Card Number">
-                          <input
-                            inputMode="numeric"
-                            value={cardNumber}
-                            onChange={(e) => setCardNumber(e.target.value)}
-                            placeholder="1234 5678 9012 3456"
-                            autoComplete="cc-number"
-                          />
-                        </Field>
-                      </div>
-                      <Field label="Expiry Date">
-                        <input
-                          value={expiry}
-                          onChange={(e) => setExpiry(e.target.value)}
-                          placeholder="MM/YY"
-                          autoComplete="cc-exp"
-                        />
-                      </Field>
-                      <Field label="Security Code (CVV)">
-                        <input
-                          value={cvv}
-                          onChange={(e) => setCvv(e.target.value)}
-                          inputMode="numeric"
-                          placeholder="123"
-                          autoComplete="cc-csc"
-                        />
-                      </Field>
-                    </div>
-                  )}
-
-                  {paymentMethod === "Mobile money" && (
-                    <div className="mt-8 rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-6">
-                      <Field label="Mobile Phone Number">
-                        <input
-                          value={mobileNumber}
-                          onChange={(e) => setMobileNumber(e.target.value)}
-                          inputMode="tel"
-                          placeholder="+254 700 000000"
-                          autoComplete="tel"
-                        />
-                      </Field>
-                      <p className="mt-3 text-xs text-[var(--muted)]">
-                        You'll receive a payment prompt on this number.
-                      </p>
-                    </div>
-                  )}
-
-                  {paymentMethod === "Bank transfer" && (
-                    <div className="mt-8 rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-6">
-                      <div className="flex gap-3 sm:gap-4">
-                        <Landmark size={18} strokeWidth={1.5} className="shrink-0 text-[var(--muted)]" />
-                        <div>
-                          <p className="text-sm font-medium">Wire Transfer</p>
-                          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                            Banking instructions will be sent to your email immediately after placing your order.
-                          </p>
-                        </div>
+                  <div className="mt-8 rounded-lg border hairline bg-[var(--paper-2)] p-4 sm:p-6">
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      <ShieldCheck
+                        size={18}
+                        strokeWidth={1.5}
+                        className="mt-0.5 shrink-0 text-[var(--deep-green)]"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold">Pay securely with Paystack</p>
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                          You will enter your payment details on Paystack&apos;s secure checkout.
+                          Decor by Kasiwa does not collect or store your card number, CVV, expiry
+                          date, mobile-money PIN, or bank credentials.
+                        </p>
+                        <p className="mt-3 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+                          Selected method: {paymentMethod}
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   <button
                     type="submit"
-                    className="focus-ring group mt-8 sm:mt-10 inline-flex min-h-12 sm:min-h-14 w-full items-center justify-center gap-3 rounded-full bg-[var(--ink)] px-6 sm:px-8 text-xs font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:shadow-lg hover:opacity-95"
+                    disabled={initializingPayment}
+                    className="focus-ring group mt-8 sm:mt-10 inline-flex min-h-12 sm:min-h-14 w-full items-center justify-center gap-3 rounded-full bg-[var(--deep-green)] px-6 sm:px-8 text-xs font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <LockKeyhole size={14} className="text-white/80" />
-                    <span>Place Order Securely</span>
-                    <ArrowRight size={14} className="text-white transition-transform group-hover:translate-x-1" />
+                    {initializingPayment ? (
+                      <LoaderCircle size={14} className="animate-spin text-soft-cream/80" />
+                    ) : (
+                      <LockKeyhole size={14} className="text-soft-cream/80" />
+                    )}
+                    <span>{initializingPayment ? "Opening Paystack" : "Continue to Paystack"}</span>
+                    {!initializingPayment && (
+                      <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />
+                    )}
                   </button>
                 </form>
               )}
@@ -518,11 +498,11 @@ export default function CheckoutPage() {
                   <button
                     type="button"
                     onClick={() => continueTo(step + 1)}
-                    className="focus-ring group inline-flex min-h-11 sm:min-h-12 items-center gap-2 sm:gap-3 rounded-full bg-[var(--ink)] px-5 sm:px-8 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:shadow-lg"
+                    className="focus-ring group inline-flex min-h-11 sm:min-h-12 items-center gap-2 sm:gap-3 rounded-full bg-[var(--deep-green)] px-5 sm:px-8 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg"
                   >
                     <span className="hidden sm:inline">Continue to {steps[step].label}</span>
                     <span className="sm:hidden">Continue</span>
-                    <ArrowRight size={14} className="text-white transition-transform group-hover:translate-x-1" />
+                    <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />
                   </button>
                 </div>
               )}
@@ -538,7 +518,7 @@ export default function CheckoutPage() {
                 <p className="kicker text-[var(--muted)]">Order Summary</p>
                 <h2 className="mt-2 text-xl sm:text-2xl font-medium tracking-[-0.02em]">Your Selection</h2>
               </div>
-              <span className="rounded-full bg-[var(--ink)]/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+              <span className="rounded-full bg-[var(--deep-green)]/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
                 {cart.length} {cart.length === 1 ? "Item" : "Items"}
               </span>
             </div>
@@ -552,7 +532,7 @@ export default function CheckoutPage() {
                     className="flex items-start justify-between gap-3 sm:gap-4 py-4 sm:py-5"
                   >
                     <div className="flex gap-3 sm:gap-4">
-                      <div className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-lg bg-[var(--ink)]/[0.03] text-xs font-medium text-[var(--muted)]">
+                      <div className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-lg bg-[var(--deep-green)]/[0.03] text-xs font-medium text-[var(--muted)]">
                         {String(index + 1).padStart(2, "0")}
                       </div>
                       <div>
@@ -584,7 +564,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* TOTAL */}
-            <div className="mt-5 sm:mt-6 flex items-baseline justify-between rounded-lg bg-[var(--ink)] px-5 sm:px-6 py-4 sm:py-5 text-[var(--paper)]">
+            <div className="mt-5 sm:mt-6 flex items-baseline justify-between rounded-lg bg-[var(--deep-green)] px-5 sm:px-6 py-4 sm:py-5 text-[var(--paper)]">
               <span className="text-xs font-medium uppercase tracking-[0.08em] opacity-80">Total</span>
               <span className="text-2xl sm:text-3xl font-medium tracking-[-0.03em]">
                 {formatMoney(subtotal)}
@@ -608,7 +588,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* FOOTNOTE */}
-            <div className="mt-5 sm:mt-6 rounded-lg bg-[var(--ink)]/[0.03] p-4 text-xs leading-relaxed text-[var(--muted)]">
+            <div className="mt-5 sm:mt-6 rounded-lg bg-[var(--deep-green)]/[0.03] p-4 text-xs leading-relaxed text-[var(--muted)]">
               <p className="font-semibold text-[var(--ink)] uppercase tracking-[0.06em] text-[10px]">
                 Fulfilment Note
               </p>
@@ -637,7 +617,7 @@ function StepHeading({
   return (
     <div>
       <div className="flex items-center gap-3">
-        <span className="grid size-7 sm:size-8 place-items-center rounded-full bg-[var(--ink)] text-[10px] font-semibold text-[var(--paper)]">
+        <span className="grid size-7 sm:size-8 place-items-center rounded-full bg-[var(--deep-green)] text-[10px] font-semibold text-[var(--paper)]">
           {index}
         </span>
         <p className="kicker text-[var(--muted)]">{eyebrow}</p>

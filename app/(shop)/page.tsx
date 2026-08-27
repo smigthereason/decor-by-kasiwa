@@ -15,7 +15,7 @@ export default function Home() {
 
       {/*<section className="page-shell border-b hairline bg-[var(--forest)] px-4 py-16 text-[var(--paper)] md:px-8 md:py-24">
         <div className="grid gap-10 md:grid-cols-[1fr_1.4fr] md:items-end">
-          <p className="kicker text-white/55">Our point of view</p>
+          <p className="kicker text-soft-cream/55">Our point of view</p>
           <div>
             <p className="text-[clamp(2rem,4.8vw,5rem)] font-medium leading-[1.02] tracking-[-0.055em]">
               A beautiful space is not simply about how it looks.

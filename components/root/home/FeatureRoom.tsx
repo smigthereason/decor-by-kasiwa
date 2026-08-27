@@ -44,6 +44,7 @@ export default function FeatureRoom() {
               src="https://images.unsplash.com/photo-1617104611622-d5f245d317f0?auto=format&fit=crop&w=2000&q=90"
               alt="Contemporary living room"
               fill
+              unoptimized
               priority
               className="object-cover"
             />
@@ -69,14 +70,14 @@ export default function FeatureRoom() {
             transition={{ delay: 0.15, duration: 0.6 }}
           >
             <span className="kicker">The detail</span>
-            <p className="mt-3 text-xs leading-relaxed text-white/80">
+            <p className="mt-3 text-xs leading-relaxed text-soft-cream/80">
               Layered texture, purposeful lighting and furniture selected to
               support how the room is actually lived in.
             </p>
           </motion.div>
 
           <motion.div
-            className="absolute bottom-5 right-4 z-10 w-[min(72vw,18rem)] rounded-lg border border-white/25 bg-black/20 p-3 text-white backdrop-blur-lg md:bottom-12 md:right-8 md:w-72"
+            className="absolute bottom-5 right-4 z-10 w-[min(72vw,18rem)] rounded-lg border border-soft-cream/25 bg-charcoal/20 p-3 text-soft-cream backdrop-blur-lg md:bottom-12 md:right-8 md:w-72"
             initial={{ opacity: 0, x: 28 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
@@ -93,13 +94,13 @@ export default function FeatureRoom() {
             <div className="mt-3 flex items-end justify-between gap-4">
               <div>
                 <p className="text-base font-medium">The Residence</p>
-                <p className="mt-1 text-[10px] leading-snug text-white/70">
+                <p className="mt-1 text-[10px] leading-snug text-soft-cream/70">
                   A complete styling and furnishing transformation.
                 </p>
               </div>
               <Link
                 href="/portfolio"
-                className="focus-ring grid size-8 shrink-0 place-items-center rounded-full border border-white/30 transition-colors hover:bg-white hover:text-black"
+                className="focus-ring grid size-8 shrink-0 place-items-center rounded-full border border-soft-cream/30 transition-colors hover:bg-soft-cream hover:text-charcoal"
                 aria-label="View project"
               >
                 <ArrowRight size={13} />

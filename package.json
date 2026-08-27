@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:products:dry": "sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
+    "migrate:products": "DBK_MIGRATION_WRITE=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
+    "migrate:products:images": "DBK_MIGRATION_WRITE=1 DBK_MIGRATE_IMAGES=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token"
   },
   "dependencies": {
     "@sanity/image-url": "^1.2.0",
@@ -14,6 +17,7 @@
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.563.0",
     "next": "^16.2.1",
+    "next-auth": "^4.24.15",
     "next-sanity": "^11.6.12",
     "react": "19.2.3",
     "react-dom": "19.2.3",

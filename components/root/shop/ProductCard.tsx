@@ -5,7 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
-import { formatMoney } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import { isProductSoldOut } from "@/lib/catalogue";
 
 function getColorHex(colourName: string): string {
   const colorMap: Record<string, string> = {
@@ -46,6 +47,8 @@ function getColorHex(colourName: string): string {
 }
 
 export default function ProductCard({ product }: { product: StoreProduct }) {
+  const soldOut = isProductSoldOut(product);
+
   return (
     <Link
       href={`/shop/${product.slug}`}
@@ -53,13 +56,24 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
     >
       {/* PRODUCT IMAGE */}
       <div className="relative aspect-[4/5] overflow-hidden bg-[var(--paper-2)]">
-        <Image
-          src={product.heroImage}
-          alt={product.name}
-          fill
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-        />
+        {product.heroImage ? (
+          <Image
+            src={product.heroImage}
+            alt={product.name}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+            unoptimized
+            priority
+          />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-6 text-center">
+            <div>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--deep-green)]">Decor by Kasiwa</p>
+              <p className="mt-2 text-xs text-[var(--muted)]">Product image coming soon</p>
+            </div>
+          </div>
+        )}
 
         {/* CATEGORY BADGE */}
         <span className="absolute left-3 top-3 rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
@@ -70,6 +84,12 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
         <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-[var(--paper)]/90 opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
           <ArrowRight size={14} className="text-[var(--ink)]" />
         </span>
+
+        {soldOut && (
+          <span className="absolute bottom-3 left-3 rounded-full bg-[var(--charcoal)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--soft-cream)]">
+            Out of stock
+          </span>
+        )}
       </div>
 
       {/* PRODUCT DETAILS */}

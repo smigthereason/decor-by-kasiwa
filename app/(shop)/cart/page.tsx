@@ -4,29 +4,38 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Minus, Plus, Trash2, LockKeyhole } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
-import { formatMoney, getProductById } from "@/lib/products";
+import { formatMoney } from "@/lib/money";
+import { getMaximumPurchasableQuantity } from "@/lib/catalogue";
+import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
 
 export default function CartPage() {
   const {
     hydrated,
+    catalogueReady,
+    catalogueError,
     cart,
     subtotal,
     user,
+    getProductById,
     updateQuantity,
     removeFromCart,
   } = useCommerce();
 
-  if (!hydrated) {
+  if (!hydrated || !catalogueReady) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--ink)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing bag…
           </p>
         </div>
       </div>
     );
+  }
+
+  if (catalogueError) {
+    return <CatalogueUnavailable message={catalogueError} />;
   }
 
   if (cart.length === 0) {
@@ -41,7 +50,7 @@ export default function CartPage() {
         </p>
         <Link
           href="/shop"
-          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--ink)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3 hover:shadow-lg"
+          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
         >
           <span>Return to collection</span>
           <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -87,6 +96,7 @@ export default function CartPage() {
               {cart.map((line) => {
                 const product = getProductById(line.productId);
                 if (!product) return null;
+                const maximumQuantity = getMaximumPurchasableQuantity(product);
 
                 return (
                   <article
@@ -98,12 +108,13 @@ export default function CartPage() {
                       href={`/shop/${product.slug}`}
                       className="relative aspect-[3/4] w-full sm:w-32 md:w-40 shrink-0 overflow-hidden rounded-lg bg-[var(--paper-2)]"
                     >
-                      <Image
-                        src={product.heroImage}
-                        alt={product.name}
-                        fill
-                        className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                      />
+                      {product.heroImage ? (
+                        <Image src={product.heroImage} alt={product.name} fill unoptimized priority={true} className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
+                      ) : (
+                        <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-3 text-center">
+                          <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--deep-green)]">Image coming soon</span>
+                        </div>
+                      )}
                     </Link>
 
                     {/* PRODUCT DETAILS */}
@@ -124,6 +135,9 @@ export default function CartPage() {
                               Finish:
                               <span className="font-medium text-[var(--ink)]">{line.colour}</span>
                             </p>
+                          )}
+                          {maximumQuantity !== null && maximumQuantity <= 5 && (
+                            <p className="mt-2 text-[11px] text-[var(--muted)]">Only {maximumQuantity} available.</p>
                           )}
                         </div>
                         <p className="whitespace-nowrap text-base sm:text-lg font-semibold">
@@ -160,7 +174,8 @@ export default function CartPage() {
                                 line.colour
                               )
                             }
-                            className="focus-ring grid size-9 place-items-center rounded-full transition-colors hover:bg-[var(--paper-2)]"
+                            disabled={maximumQuantity !== null && line.quantity >= maximumQuantity}
+                            className="focus-ring grid size-9 place-items-center rounded-full transition-colors hover:bg-[var(--paper-2)] disabled:cursor-not-allowed disabled:opacity-35"
                             aria-label="Increase quantity"
                           >
                             <Plus size={13} />
@@ -213,6 +228,7 @@ export default function CartPage() {
               {cart.map((line, index) => {
                 const product = getProductById(line.productId);
                 if (!product) return null;
+                const maximumQuantity = getMaximumPurchasableQuantity(product);
 
                 return (
                   <article
@@ -262,10 +278,10 @@ export default function CartPage() {
             {/* CHECKOUT BUTTON */}
             <Link
               href="/checkout"
-              className="focus-ring group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--ink)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:shadow-lg hover:opacity-95"
+              className="focus-ring group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--deep-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95"
             >
               <span>Continue to Checkout</span>
-              <ArrowRight size={14} className="text-white transition-transform group-hover:translate-x-1" />
+              <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />
             </Link>
 
             {!user && (

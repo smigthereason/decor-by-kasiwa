@@ -2,8 +2,10 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, HelpCircle } from "lucide-react";
 import FAQItem from "@/components/root/faq/FAQItem";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "FAQs" };
+
+export const metadata: Metadata = { title: "FAQs" };
 
 const questions = [
   ["Can I buy products without booking an interior design service?", "Yes. The shop journey is separate from the consultation journey, while individual products can still lead into styling support when a client needs it."],
@@ -62,7 +64,7 @@ export default function FAQPage() {
             </p>
             <Link
               href="/contact"
-              className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--ink)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:gap-3"
+              className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
             >
               <span>Contact us</span>
               <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

@@ -1,5 +1,9 @@
 import PageIntro from "@/components/root/PageIntro";
 import { ArrowUpRight } from "lucide-react";
+import type { Metadata } from 'next';
+
+
+
 
 const services = [
   [
@@ -28,7 +32,7 @@ const services = [
   ],
 ] as const;
 
-export const metadata = { title: "Services" };
+export const metadata: Metadata = { title: "Services" };
 
 export default function ServicesPage() {
   return (

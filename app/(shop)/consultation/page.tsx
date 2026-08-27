@@ -1,7 +1,9 @@
 import PageIntro from "@/components/root/PageIntro";
 import ConsultationForm from "@/components/root/consultation/ConsultationForm";
+import type { Metadata } from 'next';
 
-export const metadata = { title: "Book a Consultation" };
+
+export const metadata: Metadata = { title: "Book a Consultation" };
 
 export default function ConsultationPage() {
   return (

@@ -1,7 +1,21 @@
 "use client";
 
-import CommerceProvider from "@/components/commerce/CommerceProvider";
+import {
+  SessionProvider,
+} from "next-auth/react";
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  return <CommerceProvider>{children}</CommerceProvider>;
+import CommerceProvider from "@/components/root/commerce/CommerceProvider";
+
+export default function Providers({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <SessionProvider>
+      <CommerceProvider>
+        {children}
+      </CommerceProvider>
+    </SessionProvider>
+  );
 }
