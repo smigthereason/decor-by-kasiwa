@@ -1,0 +1,1974 @@
+[
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "to": [
+          {
+            "type": "product"
+          }
+        ],
+        "name": "product",
+        "type": "reference"
+      },
+      {
+        "initialValue": "Unassigned",
+        "name": "location",
+        "type": "string",
+        "title": "Store Location"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "reserved",
+        "type": "number",
+        "title": "Reserved Units"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "incoming",
+        "type": "number",
+        "title": "Incoming Units"
+      },
+      {
+        "initialValue": 5,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "reorderPoint",
+        "type": "number"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "unitCost",
+        "type": "number",
+        "title": "Unit Cost (KES)"
+      }
+    ],
+    "name": "inventoryRecord",
+    "type": "document"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "shipmentNumber",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "to": [
+          {
+            "type": "commerceOrder"
+          }
+        ],
+        "name": "order",
+        "type": "reference"
+      },
+      {
+        "name": "orderNumber",
+        "type": "string"
+      },
+      {
+        "name": "customerName",
+        "type": "string"
+      },
+      {
+        "name": "destination",
+        "type": "string"
+      },
+      {
+        "name": "carrier",
+        "type": "string"
+      },
+      {
+        "name": "trackingNumber",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "createdAt",
+        "type": "datetime"
+      },
+      {
+        "name": "updatedAt",
+        "type": "datetime"
+      },
+      {
+        "initialValue": "awaiting_store",
+        "options": {
+          "list": [
+            {
+              "title": "Awaiting Store",
+              "value": "awaiting_store"
+            },
+            {
+              "title": "Received",
+              "value": "received"
+            },
+            {
+              "title": "Picking",
+              "value": "picking"
+            },
+            {
+              "title": "Packed",
+              "value": "packed"
+            },
+            {
+              "title": "Ready to Dispatch",
+              "value": "ready_dispatch"
+            },
+            {
+              "title": "Dispatched",
+              "value": "dispatched"
+            },
+            {
+              "title": "Delivered",
+              "value": "delivered"
+            },
+            {
+              "title": "Exception",
+              "value": "exception"
+            }
+          ]
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "valid",
+                "constraint": [
+                  "awaiting_store",
+                  "received",
+                  "picking",
+                  "packed",
+                  "ready_dispatch",
+                  "dispatched",
+                  "delivered",
+                  "exception"
+                ]
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "status",
+        "type": "string",
+        "title": "Shipment Status"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "itemCount",
+        "type": "number",
+        "title": "Line Item Count"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "totalUnits",
+        "type": "number"
+      },
+      {
+        "rows": 3,
+        "name": "notes",
+        "type": "text"
+      }
+    ],
+    "name": "shipment",
+    "type": "document"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "orderNumber",
+        "type": "string"
+      },
+      {
+        "to": [
+          {
+            "type": "customerUser"
+          }
+        ],
+        "name": "customer",
+        "type": "reference"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "customerName",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "customerEmail",
+        "type": "string"
+      },
+      {
+        "name": "customerPhone",
+        "type": "string"
+      },
+      {
+        "name": "deliveryLocation",
+        "type": "string"
+      },
+      {
+        "description": "Immutable checkout address captured for this order. Customer profile changes do not alter this order history.",
+        "fields": [
+          {
+            "name": "fullName",
+            "type": "string"
+          },
+          {
+            "name": "phone",
+            "type": "string"
+          },
+          {
+            "name": "address1",
+            "type": "string",
+            "title": "Address line 1"
+          },
+          {
+            "name": "address2",
+            "type": "string",
+            "title": "Address line 2"
+          },
+          {
+            "name": "city",
+            "type": "string",
+            "title": "City / Town"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "title": "County / Region"
+          },
+          {
+            "name": "country",
+            "type": "string"
+          }
+        ],
+        "name": "deliveryAddress",
+        "type": "object",
+        "title": "Delivery Address Snapshot"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "createdAt",
+        "type": "datetime"
+      },
+      {
+        "name": "updatedAt",
+        "type": "datetime"
+      },
+      {
+        "name": "paidAt",
+        "type": "datetime"
+      },
+      {
+        "initialValue": "pending",
+        "options": {
+          "list": [
+            {
+              "title": "Pending",
+              "value": "pending"
+            },
+            {
+              "title": "Paid",
+              "value": "paid"
+            },
+            {
+              "title": "Processing",
+              "value": "processing"
+            },
+            {
+              "title": "Ready for Store",
+              "value": "ready_for_store"
+            },
+            {
+              "title": "Picking",
+              "value": "picking"
+            },
+            {
+              "title": "Packed",
+              "value": "packed"
+            },
+            {
+              "title": "Dispatched",
+              "value": "dispatched"
+            },
+            {
+              "title": "Delivered",
+              "value": "delivered"
+            },
+            {
+              "title": "Cancelled",
+              "value": "cancelled"
+            }
+          ]
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "valid",
+                "constraint": [
+                  "pending",
+                  "paid",
+                  "processing",
+                  "ready_for_store",
+                  "picking",
+                  "packed",
+                  "dispatched",
+                  "delivered",
+                  "cancelled"
+                ]
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "status",
+        "type": "string",
+        "title": "Order Status"
+      },
+      {
+        "initialValue": "pending",
+        "options": {
+          "list": [
+            {
+              "title": "Pending",
+              "value": "pending"
+            },
+            {
+              "title": "Paid",
+              "value": "paid"
+            },
+            {
+              "title": "Refunded",
+              "value": "refunded"
+            },
+            {
+              "title": "Failed",
+              "value": "failed"
+            }
+          ]
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "valid",
+                "constraint": [
+                  "pending",
+                  "paid",
+                  "refunded",
+                  "failed"
+                ]
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "paymentStatus",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              },
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "subtotal",
+        "type": "number"
+      },
+      {
+        "initialValue": 0,
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "deliveryFee",
+        "type": "number"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              },
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "total",
+        "type": "number"
+      },
+      {
+        "initialValue": "KES",
+        "name": "currency",
+        "type": "string"
+      },
+      {
+        "name": "assignedStore",
+        "type": "string"
+      },
+      {
+        "name": "paymentReference",
+        "type": "string"
+      },
+      {
+        "name": "paymentProvider",
+        "type": "string"
+      },
+      {
+        "name": "paymentChannel",
+        "type": "string"
+      },
+      {
+        "name": "paystackTransactionId",
+        "type": "string",
+        "title": "Paystack Transaction ID"
+      },
+      {
+        "rows": 3,
+        "name": "failureReason",
+        "type": "text",
+        "title": "Payment / Processing Note"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              },
+              {
+                "flag": "min",
+                "constraint": 1
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "of": [
+          {
+            "fields": [
+              {
+                "to": [
+                  {
+                    "type": "product"
+                  }
+                ],
+                "name": "product",
+                "type": "reference"
+              },
+              {
+                "name": "productId",
+                "type": "string",
+                "title": "Product ID"
+              },
+              {
+                "validation": [
+                  {
+                    "rules": [
+                      {
+                        "flag": "presence",
+                        "constraint": "required"
+                      }
+                    ],
+                    "level": "error"
+                  }
+                ],
+                "name": "name",
+                "type": "string",
+                "title": "Product Name"
+              },
+              {
+                "name": "category",
+                "type": "string"
+              },
+              {
+                "name": "finish",
+                "type": "string"
+              },
+              {
+                "validation": [
+                  {
+                    "rules": [
+                      {
+                        "flag": "presence",
+                        "constraint": "required"
+                      },
+                      {
+                        "flag": "min",
+                        "constraint": 1
+                      }
+                    ],
+                    "level": "error"
+                  }
+                ],
+                "name": "quantity",
+                "type": "number"
+              },
+              {
+                "validation": [
+                  {
+                    "rules": [
+                      {
+                        "flag": "presence",
+                        "constraint": "required"
+                      },
+                      {
+                        "flag": "min",
+                        "constraint": 0
+                      }
+                    ],
+                    "level": "error"
+                  }
+                ],
+                "name": "unitPrice",
+                "type": "number"
+              }
+            ],
+            "type": "object"
+          }
+        ],
+        "name": "lineItems",
+        "type": "array"
+      }
+    ],
+    "name": "commerceOrder",
+    "type": "document"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "name",
+        "type": "string",
+        "title": "Product name"
+      },
+      {
+        "options": {
+          "source": "name",
+          "maxLength": 96
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              },
+              {
+                "flag": "regex",
+                "constraint": {
+                  "pattern": "/^DBK-[A-Z0-9]{2,4}-[A-Z0-9]{6}$/",
+                  "name": "DBK SKU",
+                  "invert": false
+                }
+              },
+              {
+                "flag": "custom"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "description": "Generated automatically when empty. Once assigned, keep the SKU stable even if the product name changes.",
+        "name": "sku",
+        "type": "string",
+        "title": "SKU"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              },
+              {
+                "flag": "min",
+                "constraint": 1
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "price",
+        "type": "number",
+        "title": "Price (KES)"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "description": "Optional original price for offers/sale presentation.",
+        "name": "compareAtPrice",
+        "type": "number",
+        "title": "Compare-at price (KES)"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "to": [
+          {
+            "type": "category"
+          }
+        ],
+        "name": "primaryCategory",
+        "type": "reference",
+        "title": "Primary category"
+      },
+      {
+        "of": [
+          {
+            "to": [
+              {
+                "type": "category"
+              }
+            ],
+            "type": "reference",
+            "title": "Reference to categories"
+          }
+        ],
+        "name": "categories",
+        "type": "array",
+        "title": "Additional categories"
+      },
+      {
+        "of": [
+          {
+            "to": [
+              {
+                "type": "collection"
+              }
+            ],
+            "type": "reference",
+            "title": "Reference to collections"
+          }
+        ],
+        "name": "collections",
+        "type": "array"
+      },
+      {
+        "of": [
+          {
+            "to": [
+              {
+                "type": "shopSpace"
+              }
+            ],
+            "type": "reference",
+            "title": "Reference to shop by space"
+          }
+        ],
+        "name": "spaces",
+        "type": "array",
+        "title": "Shop by Space"
+      },
+      {
+        "of": [
+          {
+            "to": [
+              {
+                "type": "shopStyle"
+              }
+            ],
+            "type": "reference",
+            "title": "Reference to shop by style"
+          }
+        ],
+        "name": "styles",
+        "type": "array",
+        "title": "Shop by Style"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "heroImage",
+        "type": "image",
+        "title": "Hero image"
+      },
+      {
+        "of": [
+          {
+            "options": {
+              "hotspot": true
+            },
+            "type": "image"
+          }
+        ],
+        "name": "gallery",
+        "type": "array"
+      },
+      {
+        "rows": 3,
+        "name": "shortDescription",
+        "type": "text",
+        "title": "Short description"
+      },
+      {
+        "rows": 6,
+        "name": "description",
+        "type": "text",
+        "title": "Full description"
+      },
+      {
+        "of": [
+          {
+            "type": "string"
+          }
+        ],
+        "name": "colours",
+        "type": "array"
+      },
+      {
+        "of": [
+          {
+            "type": "string"
+          }
+        ],
+        "name": "materials",
+        "type": "array",
+        "title": "Materials / finishes"
+      },
+      {
+        "name": "dimensions",
+        "type": "string"
+      },
+      {
+        "rows": 4,
+        "name": "careInstructions",
+        "type": "text",
+        "title": "Care instructions"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "min",
+                "constraint": 0
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "description": "Used only while importing the existing catalogue. Operational stock will move to the fulfilment data layer.",
+        "name": "initialStock",
+        "type": "number",
+        "title": "Initial stock / migration quantity"
+      },
+      {
+        "initialValue": false,
+        "name": "featured",
+        "type": "boolean",
+        "title": "Featured product"
+      },
+      {
+        "initialValue": false,
+        "name": "newArrival",
+        "type": "boolean",
+        "title": "New arrival"
+      },
+      {
+        "initialValue": false,
+        "name": "bestSeller",
+        "type": "boolean",
+        "title": "Best seller"
+      },
+      {
+        "initialValue": false,
+        "name": "onSale",
+        "type": "boolean",
+        "title": "On sale"
+      },
+      {
+        "initialValue": true,
+        "name": "available",
+        "type": "boolean"
+      }
+    ],
+    "name": "product",
+    "type": "document",
+    "title": "Products"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Collection name"
+      },
+      {
+        "options": {
+          "source": "title",
+          "maxLength": 96
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "initialValue": "curated",
+        "options": {
+          "list": [
+            {
+              "title": "Curated collection",
+              "value": "curated"
+            },
+            {
+              "title": "New arrivals",
+              "value": "new-arrivals"
+            },
+            {
+              "title": "Best sellers",
+              "value": "best-sellers"
+            },
+            {
+              "title": "Offers",
+              "value": "offers"
+            },
+            {
+              "title": "Clearance",
+              "value": "clearance"
+            }
+          ],
+          "layout": "radio"
+        },
+        "name": "kind",
+        "type": "string",
+        "title": "Collection type"
+      },
+      {
+        "rows": 4,
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "heroImage",
+        "type": "image",
+        "title": "Collection image"
+      },
+      {
+        "initialValue": 100,
+        "name": "displayOrder",
+        "type": "number",
+        "title": "Display order"
+      },
+      {
+        "initialValue": true,
+        "name": "active",
+        "type": "boolean"
+      }
+    ],
+    "name": "collection",
+    "type": "document",
+    "title": "Collections"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Category name"
+      },
+      {
+        "options": {
+          "source": "title",
+          "maxLength": 96
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "description": "Leave empty for a top-level Shop category.",
+        "to": [
+          {
+            "type": "category"
+          }
+        ],
+        "name": "parent",
+        "type": "reference",
+        "title": "Parent category"
+      },
+      {
+        "rows": 4,
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "image",
+        "type": "image",
+        "title": "Category image"
+      },
+      {
+        "initialValue": 100,
+        "name": "displayOrder",
+        "type": "number",
+        "title": "Display order"
+      },
+      {
+        "initialValue": true,
+        "name": "showInNavigation",
+        "type": "boolean",
+        "title": "Show in Shop navigation"
+      },
+      {
+        "initialValue": true,
+        "name": "active",
+        "type": "boolean"
+      }
+    ],
+    "name": "category",
+    "type": "document",
+    "title": "Categories"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Space name"
+      },
+      {
+        "options": {
+          "source": "title",
+          "maxLength": 96
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "rows": 3,
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "image",
+        "type": "image"
+      },
+      {
+        "initialValue": 100,
+        "name": "displayOrder",
+        "type": "number",
+        "title": "Display order"
+      },
+      {
+        "initialValue": true,
+        "name": "active",
+        "type": "boolean"
+      }
+    ],
+    "name": "shopSpace",
+    "type": "document",
+    "title": "Shop by Space"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Style name"
+      },
+      {
+        "options": {
+          "source": "title",
+          "maxLength": 96
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "rows": 3,
+        "name": "description",
+        "type": "text"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "image",
+        "type": "image"
+      },
+      {
+        "initialValue": 100,
+        "name": "displayOrder",
+        "type": "number",
+        "title": "Display order"
+      },
+      {
+        "initialValue": true,
+        "name": "active",
+        "type": "boolean"
+      }
+    ],
+    "name": "shopStyle",
+    "type": "document",
+    "title": "Shop by Style"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "email",
+        "type": "string"
+      },
+      {
+        "description": "Best contact number collected from account details or checkout.",
+        "name": "phone",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "uri",
+                "constraint": {
+                  "options": {
+                    "scheme": [
+                      "/^http$/",
+                      "/^https$/"
+                    ],
+                    "allowRelative": false,
+                    "relativeOnly": false,
+                    "allowCredentials": false
+                  }
+                }
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "image",
+        "type": "url",
+        "title": "Google profile image URL"
+      },
+      {
+        "description": "Empty for guest purchasers until they sign in with Google.",
+        "name": "googleId",
+        "type": "string",
+        "title": "Google account ID"
+      },
+      {
+        "initialValue": "GOOGLE",
+        "options": {
+          "list": [
+            {
+              "title": "Google account",
+              "value": "GOOGLE"
+            },
+            {
+              "title": "Guest checkout",
+              "value": "GUEST_CHECKOUT"
+            },
+            {
+              "title": "Created by admin",
+              "value": "ADMIN"
+            }
+          ]
+        },
+        "name": "source",
+        "type": "string",
+        "title": "Customer source"
+      },
+      {
+        "initialValue": "CUSTOMER",
+        "options": {
+          "list": [
+            {
+              "title": "Customer",
+              "value": "CUSTOMER"
+            },
+            {
+              "title": "Store",
+              "value": "STORE"
+            },
+            {
+              "title": "Admin",
+              "value": "ADMIN"
+            }
+          ],
+          "layout": "radio"
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "valid",
+                "constraint": [
+                  "CUSTOMER",
+                  "STORE",
+                  "ADMIN"
+                ]
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "role",
+        "type": "string"
+      },
+      {
+        "initialValue": "ACTIVE",
+        "options": {
+          "list": [
+            {
+              "title": "Active",
+              "value": "ACTIVE"
+            },
+            {
+              "title": "Suspended",
+              "value": "SUSPENDED"
+            }
+          ],
+          "layout": "radio"
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "valid",
+                "constraint": [
+                  "ACTIVE",
+                  "SUSPENDED"
+                ]
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "status",
+        "type": "string"
+      },
+      {
+        "name": "address1",
+        "type": "string",
+        "title": "Address line 1"
+      },
+      {
+        "name": "address2",
+        "type": "string",
+        "title": "Address line 2"
+      },
+      {
+        "name": "city",
+        "type": "string",
+        "title": "City / Town"
+      },
+      {
+        "name": "region",
+        "type": "string",
+        "title": "County / Region"
+      },
+      {
+        "initialValue": "Kenya",
+        "name": "country",
+        "type": "string"
+      },
+      {
+        "readOnly": true,
+        "name": "firstPurchaseAt",
+        "type": "datetime",
+        "title": "First purchase"
+      },
+      {
+        "readOnly": true,
+        "name": "lastPurchaseAt",
+        "type": "datetime",
+        "title": "Last purchase"
+      },
+      {
+        "readOnly": true,
+        "name": "createdAt",
+        "type": "datetime",
+        "title": "Created at"
+      },
+      {
+        "readOnly": true,
+        "name": "lastLoginAt",
+        "type": "datetime",
+        "title": "Last Google login"
+      },
+      {
+        "readOnly": true,
+        "name": "updatedAt",
+        "type": "datetime",
+        "title": "Updated at"
+      }
+    ],
+    "name": "customerUser",
+    "type": "document",
+    "title": "Customers"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Project name"
+      },
+      {
+        "options": {
+          "source": "title"
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              },
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "options": {
+          "list": [
+            "Residential",
+            "Commercial",
+            "Hospitality",
+            "Before & After",
+            "Bespoke"
+          ]
+        },
+        "name": "category",
+        "type": "string"
+      },
+      {
+        "name": "location",
+        "type": "string"
+      },
+      {
+        "name": "year",
+        "type": "number"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "heroImage",
+        "type": "image",
+        "title": "Hero image"
+      },
+      {
+        "of": [
+          {
+            "options": {
+              "hotspot": true
+            },
+            "type": "image"
+          }
+        ],
+        "name": "gallery",
+        "type": "array",
+        "title": "Project gallery"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "beforeImage",
+        "type": "image",
+        "title": "Before image"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "afterImage",
+        "type": "image",
+        "title": "After image"
+      },
+      {
+        "rows": 5,
+        "name": "summary",
+        "type": "text",
+        "title": "Project summary"
+      },
+      {
+        "of": [
+          {
+            "type": "string"
+          }
+        ],
+        "name": "services",
+        "type": "array",
+        "title": "Services used"
+      },
+      {
+        "of": [
+          {
+            "type": "string"
+          }
+        ],
+        "name": "materials",
+        "type": "array",
+        "title": "Materials / finishes"
+      },
+      {
+        "rows": 4,
+        "name": "testimonial",
+        "type": "text",
+        "title": "Client testimonial"
+      },
+      {
+        "initialValue": false,
+        "name": "featured",
+        "type": "boolean",
+        "title": "Featured project"
+      }
+    ],
+    "name": "project",
+    "type": "document",
+    "title": "Portfolio Projects"
+  },
+  {
+    "fields": [
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "presence",
+                "constraint": "required"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "title",
+        "type": "string",
+        "title": "Service title"
+      },
+      {
+        "options": {
+          "source": "title"
+        },
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "custom"
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "slug",
+        "type": "slug"
+      },
+      {
+        "rows": 4,
+        "name": "summary",
+        "type": "text"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "heroImage",
+        "type": "image",
+        "title": "Hero image"
+      },
+      {
+        "of": [
+          {
+            "type": "string"
+          }
+        ],
+        "name": "features",
+        "type": "array",
+        "title": "Includes"
+      },
+      {
+        "name": "order",
+        "type": "number",
+        "title": "Display order"
+      }
+    ],
+    "name": "service",
+    "type": "document",
+    "title": "Services"
+  },
+  {
+    "fields": [
+      {
+        "name": "name",
+        "type": "string",
+        "title": "Client name"
+      },
+      {
+        "name": "email",
+        "type": "string"
+      },
+      {
+        "name": "phone",
+        "type": "string"
+      },
+      {
+        "name": "projectType",
+        "type": "string",
+        "title": "Project type"
+      },
+      {
+        "name": "spaceType",
+        "type": "string",
+        "title": "Space type"
+      },
+      {
+        "name": "location",
+        "type": "string"
+      },
+      {
+        "name": "budget",
+        "type": "string"
+      },
+      {
+        "name": "timeline",
+        "type": "string"
+      },
+      {
+        "rows": 6,
+        "name": "inspiration",
+        "type": "text",
+        "title": "Inspiration / notes"
+      },
+      {
+        "initialValue": "new",
+        "options": {
+          "list": [
+            "new",
+            "contacted",
+            "qualified",
+            "proposal",
+            "won",
+            "closed"
+          ]
+        },
+        "name": "status",
+        "type": "string"
+      }
+    ],
+    "name": "consultation",
+    "type": "document",
+    "title": "Consultation Enquiries"
+  },
+  {
+    "fields": [
+      {
+        "initialValue": "Decor by Kasiwa",
+        "name": "brandName",
+        "type": "string",
+        "title": "Brand name"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "primaryLogo",
+        "type": "image",
+        "title": "Primary logo"
+      },
+      {
+        "options": {
+          "hotspot": true
+        },
+        "name": "lightLogo",
+        "type": "image",
+        "title": "Light / inverse logo"
+      },
+      {
+        "name": "favicon",
+        "type": "image"
+      },
+      {
+        "name": "tagline",
+        "type": "string"
+      },
+      {
+        "fields": [
+          {
+            "initialValue": "#0E2B26",
+            "name": "deepGreen",
+            "type": "string"
+          },
+          {
+            "initialValue": "#8CA78B",
+            "name": "sageGreen",
+            "type": "string"
+          },
+          {
+            "initialValue": "#E8DFCF",
+            "name": "warmBeige",
+            "type": "string"
+          },
+          {
+            "initialValue": "#FAF7F2",
+            "name": "softCream",
+            "type": "string"
+          },
+          {
+            "initialValue": "#D4AF37",
+            "name": "gold",
+            "type": "string"
+          },
+          {
+            "initialValue": "#1F2321",
+            "name": "charcoal",
+            "type": "string"
+          }
+        ],
+        "readOnly": true,
+        "name": "palette",
+        "type": "object",
+        "title": "Approved brand palette"
+      }
+    ],
+    "name": "branding",
+    "type": "document",
+    "title": "Logo & Branding"
+  },
+  {
+    "fields": [
+      {
+        "initialValue": "Decor by Kasiwa",
+        "name": "brandName",
+        "type": "string",
+        "title": "Brand name"
+      },
+      {
+        "initialValue": "Transforming spaces into places that feel like you.",
+        "name": "tagline",
+        "type": "string"
+      },
+      {
+        "name": "email",
+        "type": "string",
+        "title": "Contact email"
+      },
+      {
+        "name": "phone",
+        "type": "string"
+      },
+      {
+        "validation": [
+          {
+            "rules": [
+              {
+                "flag": "uri",
+                "constraint": {
+                  "options": {
+                    "scheme": [
+                      "/^http$/",
+                      "/^https$/"
+                    ],
+                    "allowRelative": false,
+                    "relativeOnly": false,
+                    "allowCredentials": false
+                  }
+                }
+              }
+            ],
+            "level": "error"
+          }
+        ],
+        "name": "instagram",
+        "type": "url",
+        "title": "Instagram URL"
+      },
+      {
+        "name": "whatsapp",
+        "type": "string",
+        "title": "WhatsApp number"
+      }
+    ],
+    "name": "siteSettings",
+    "type": "document"
+  }
+]
