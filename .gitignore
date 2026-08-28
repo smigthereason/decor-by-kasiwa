@@ -34,3 +34,6 @@ pnpm-debug.log*
 .dbk-patch-backups/
 .sanity/
 dist/
+.dbk-patch-backups/
+.sanity/
+dist/
