@@ -10,7 +10,7 @@ import {
   type SanityCustomer,
 } from "@/lib/auth/sanity-users";
 
-type StaffSurface = "ADMIN" | "STORE";
+type StaffSurface = "ADMIN" | "STORE" | "STORE_MANAGER";
 
 type StaffAccess = {
   customer: SanityCustomer;
@@ -20,7 +20,10 @@ type StaffAccess = {
 const permissions: Record<StaffSurface, CustomerRole[]> = {
   ADMIN: ["ADMIN"],
 
-  STORE: ["ADMIN", "STORE"],
+  STORE: ["ADMIN", "STORE", "STORE_STAFF"],
+
+  // Inventory, shipment and dispatch management remain manager/owner functions.
+  STORE_MANAGER: ["ADMIN", "STORE"],
 };
 
 function loginUrl(nextPath: string) {

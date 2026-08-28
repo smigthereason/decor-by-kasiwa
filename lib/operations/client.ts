@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { OperationsSnapshot } from "./types";
+import type { BackofficeNotifications, OperationsSnapshot } from "./types";
 
 export function useLiveOperations() {
   const [data, setData] = useState<OperationsSnapshot | null>(null);
@@ -61,4 +61,41 @@ export async function mutateBackoffice(
   }
 
   return payload;
+}
+
+
+export function useBackofficeNotifications(pollMs = 30000) {
+  const [notifications, setNotifications] = useState<BackofficeNotifications>({
+    newOrders: 0,
+    deliveries: 0,
+    restockRequests: 0,
+  });
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const response = await fetch("/api/backoffice/notifications", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) return;
+
+      const payload = (await response.json()) as BackofficeNotifications;
+      setNotifications(payload);
+    } catch {
+      // Navigation alerts are supplementary; a temporary polling failure should
+      // never block staff from using the back-office.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshNotifications();
+
+    const timer = window.setInterval(() => {
+      void refreshNotifications();
+    }, pollMs);
+
+    return () => window.clearInterval(timer);
+  }, [pollMs, refreshNotifications]);
+
+  return { notifications, refreshNotifications };
 }

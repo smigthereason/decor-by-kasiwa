@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
 
   if (!staff.ok) {
     return NextResponse.json(
@@ -19,11 +19,12 @@ export async function GET() {
   try {
     const snapshot = await getLiveOperationsSnapshot();
 
-    // Store staff need fulfilment data, not the full customer directory.
-    const payload =
-      staff.role === "STORE"
-        ? { ...snapshot, customers: [] }
-        : snapshot;
+    // Store roles need operational data but not the full customer directory.
+    const payload = {
+      ...snapshot,
+      viewerRole: staff.role,
+      customers: staff.role === "ADMIN" ? snapshot.customers : [],
+    };
 
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "no-store" },

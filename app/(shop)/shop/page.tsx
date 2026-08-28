@@ -5,7 +5,17 @@ import type { ShopNavigation } from "@/types/commerce";
 import type { Metadata } from 'next';
 
 
-export const metadata: Metadata = { title: "Shop" };
+export const metadata: Metadata = {
+  title: "Shop Home Decor in Kenya",
+  description: "Shop Decor by Kasiwa for curated home décor, artificial plants, mirrors, lighting and finishing pieces in Kenya.",
+  alternates: { canonical: "/shop" },
+  openGraph: {
+    title: "Shop Home Decor in Kenya | Decor by Kasiwa",
+    description: "Browse curated décor and home accessories from Decor by Kasiwa.",
+    url: "/shop",
+    type: "website",
+  },
+};
 export const dynamic = "force-dynamic";
 
 type ShopParams = { category?: string; collection?: string; space?: string; style?: string; price?: string; q?: string };

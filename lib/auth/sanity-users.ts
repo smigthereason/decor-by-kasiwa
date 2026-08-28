@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createClient } from "@sanity/client";
 
-export type CustomerRole = "CUSTOMER" | "ADMIN" | "STORE";
+export type CustomerRole = "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
 export type CustomerStatus = "ACTIVE" | "SUSPENDED";
 export type CustomerSource = "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
 

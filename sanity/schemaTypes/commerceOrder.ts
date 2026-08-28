@@ -169,6 +169,39 @@ export const commerceOrder = defineType({
       type: "string",
     }),
     defineField({
+      name: "dispatchedAt",
+      title: "Dispatched At",
+      type: "datetime",
+      description: "Set once when an Admin or Store Manager hands this order to delivery staff.",
+    }),
+    defineField({
+      name: "dispatchedBy",
+      title: "Dispatched By",
+      type: "reference",
+      to: [{ type: "customerUser" }],
+    }),
+    defineField({
+      name: "dispatchedByName",
+      title: "Dispatched By Name",
+      type: "string",
+    }),
+    defineField({
+      name: "deliveredAt",
+      title: "Delivered At",
+      type: "datetime",
+    }),
+    defineField({
+      name: "deliveredBy",
+      title: "Delivery Confirmed By",
+      type: "reference",
+      to: [{ type: "customerUser" }],
+    }),
+    defineField({
+      name: "deliveredByName",
+      title: "Delivery Confirmed By Name",
+      type: "string",
+    }),
+    defineField({
       name: "paymentReference",
       title: "Payment Reference",
       type: "string",

@@ -5,15 +5,14 @@ import { structureTool } from "sanity/structure";
 import { visionTool } from "@sanity/vision";
 
 import { schema } from "./sanity/schemaTypes";
-import { dataset, projectId } from "./sanity/env";
 import { structure } from "./sanity/structure";
 
 export default defineConfig({
   name: "default",
   title: "Decor by Kasiwa",
 
-  projectId: projectId || "placeholder",
-  dataset,
+  projectId: "g34n810u",
+  dataset: "production",
 
   basePath: "/studio",
 
@@ -31,8 +30,7 @@ export default defineConfig({
       }
 
       return previousActions.filter(
-        (action) =>
-          action.action !== "schedule",
+        (action) => action.action !== "schedule",
       );
     },
   },

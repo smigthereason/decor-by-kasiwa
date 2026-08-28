@@ -14,11 +14,13 @@ import { siteSettings } from "./siteSettings";
 import { commerceOrder } from "./commerceOrder";
 import { inventoryRecord } from "./inventoryRecord";
 import { shipment } from "./shipment";
+import { restockRequest } from "./restockRequest";
 
 export const schema: { types: SchemaTypeDefinition[] } = {
   types: [
     inventoryRecord,
     shipment,
+    restockRequest,
     commerceOrder,
     product,
     collection,

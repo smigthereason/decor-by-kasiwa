@@ -29,6 +29,8 @@ type SanityProductRecord = {
   sku?: string;
 
   price?: number;
+  rating?: number;
+  reviewCount?: number;
 
   shortDescription?: string;
   description?: string;
@@ -85,6 +87,8 @@ const productProjection = `{
   "slug": slug.current,
   sku,
   price,
+  rating,
+  reviewCount,
   shortDescription,
   description,
   colours,
@@ -296,6 +300,16 @@ function mapProduct(
 
     currency:
       "KES",
+
+    rating:
+      typeof record.rating === "number"
+        ? record.rating
+        : undefined,
+
+    reviewCount:
+      typeof record.reviewCount === "number"
+        ? record.reviewCount
+        : undefined,
 
     description,
 

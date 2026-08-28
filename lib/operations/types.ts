@@ -1,3 +1,5 @@
+export type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF";
+
 export type OrderStatus =
   | "pending"
   | "paid"
@@ -23,6 +25,9 @@ export type ShipmentStatus =
 
 export type StockStatus = "healthy" | "low" | "out";
 
+export type RestockReason = "out_of_stock" | "low_stock" | "needs_restock";
+export type RestockRequestStatus = "open" | "acknowledged" | "resolved";
+
 export type Customer = {
   id: string;
   name: string;
@@ -37,7 +42,7 @@ export type Customer = {
   orders: number;
   lifetimeValue: number;
   lastOrderAt: string;
-  role?: "CUSTOMER" | "ADMIN" | "STORE";
+  role?: "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
   authenticated?: boolean;
@@ -63,6 +68,7 @@ export type Order = {
   customerPhone: string;
   deliveryLocation: string;
   createdAt: string;
+  updatedAt?: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   subtotal: number;
@@ -70,6 +76,10 @@ export type Order = {
   total: number;
   assignedStore?: string;
   paymentReference?: string;
+  dispatchedAt?: string;
+  dispatchedByName?: string;
+  deliveredAt?: string;
+  deliveredByName?: string;
   lineItems: OrderLine[];
 };
 
@@ -107,6 +117,27 @@ export type Shipment = {
   itemCount: number;
   totalUnits: number;
   notes?: string;
+  dispatchedAt?: string;
+  dispatchedByName?: string;
+  deliveredAt?: string;
+  deliveredByName?: string;
+  deliveryConfirmationNote?: string;
+};
+
+export type RestockRequest = {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  requestedById?: string;
+  requestedByName: string;
+  reason: RestockReason;
+  note?: string;
+  status: RestockRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolvedByName?: string;
 };
 
 export type ActivityEvent = {
@@ -132,6 +163,12 @@ export type StoreMetrics = {
   lowStock: number;
 };
 
+export type BackofficeNotifications = {
+  newOrders: number;
+  deliveries: number;
+  restockRequests: number;
+};
+
 export type OperationsSnapshot = {
   admin: AdminMetrics;
   store: StoreMetrics;
@@ -139,6 +176,8 @@ export type OperationsSnapshot = {
   customers: Customer[];
   orders: Order[];
   shipments: Shipment[];
+  restockRequests: RestockRequest[];
   activity: ActivityEvent[];
+  viewerRole?: StaffRole;
   source: "sanity-live";
 };

@@ -26,8 +26,6 @@ function shipmentStatusForOrder(status: OrderStatus): ShipmentStatus | null {
   if (status === "ready_for_store") return "awaiting_store";
   if (status === "picking") return "picking";
   if (status === "packed") return "packed";
-  if (status === "dispatched") return "dispatched";
-  if (status === "delivered") return "delivered";
   return null;
 }
 
@@ -35,7 +33,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
 
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });
@@ -57,10 +55,29 @@ export async function PATCH(
     return NextResponse.json({ message: "Invalid payment status." }, { status: 400 });
   }
 
-  if (staff.role === "STORE" && body.paymentStatus) {
+  if (staff.role === "STORE_STAFF") {
     return NextResponse.json(
-      { message: "Store users cannot change payment status." },
+      { message: "Sales Staff cannot change order workflow. Use Deliveries to confirm a completed delivery." },
       { status: 403 },
+    );
+  }
+
+  if (staff.role !== "ADMIN" && body.paymentStatus) {
+    return NextResponse.json(
+      { message: "Only Admin can change payment status." },
+      { status: 403 },
+    );
+  }
+
+  if (body.status === "dispatched" || body.status === "delivered") {
+    return NextResponse.json(
+      {
+        message:
+          body.status === "dispatched"
+            ? "Use the Dispatch order action so duplicate dispatch is prevented."
+            : "Delivery must be confirmed from the Deliveries workflow.",
+      },
+      { status: 409 },
     );
   }
 
@@ -70,6 +87,9 @@ export async function PATCH(
       orderNumber?: string;
       customerName?: string;
       deliveryLocation?: string;
+      dispatchedAt?: string;
+      status?: OrderStatus;
+      shipment?: { _id: string } | null;
       lineItems?: { quantity?: number }[];
     } | null>(
       `*[_type == "commerceOrder" && _id == $id][0]{
@@ -77,13 +97,26 @@ export async function PATCH(
         orderNumber,
         customerName,
         deliveryLocation,
+        dispatchedAt,
+        status,
+        "shipment": (*[_type == "shipment" && order._ref == ^._id] | order(updatedAt desc))[0]{_id},
         lineItems[]{quantity}
       }`,
       { id: orderId },
+      { cache: "no-store" },
     );
 
     if (!order) {
       return NextResponse.json({ message: "Order not found." }, { status: 404 });
+    }
+
+    if (order.dispatchedAt || order.status === "dispatched" || order.status === "delivered") {
+      if (body.status && body.status !== order.status) {
+        return NextResponse.json(
+          { message: "A dispatched order cannot be moved back into the preparation workflow." },
+          { status: 409 },
+        );
+      }
     }
 
     const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
@@ -97,30 +130,33 @@ export async function PATCH(
       const shipmentStatus = shipmentStatusForOrder(body.status);
 
       if (shipmentStatus) {
-        const id = shipmentId(orderId);
         const now = new Date().toISOString();
         const totalUnits = (order.lineItems || []).reduce(
           (sum, line) => sum + Number(line.quantity || 0),
           0,
         );
 
-        transaction.createIfNotExists({
-          _id: id,
-          _type: "shipment",
-          shipmentNumber: `SHP-${Date.now().toString().slice(-6)}`,
-          order: { _type: "reference", _ref: orderId },
-          orderNumber: order.orderNumber || orderId,
-          customerName: order.customerName || "Customer",
-          destination: order.deliveryLocation || "Not supplied",
-          createdAt: now,
-          updatedAt: now,
-          status: shipmentStatus,
-          itemCount: order.lineItems?.length || 0,
-          totalUnits,
-        });
-        transaction.patch(id, (patch) =>
-          patch.set({ status: shipmentStatus, updatedAt: now }),
-        );
+        if (order.shipment?._id) {
+          transaction.patch(order.shipment._id, (patch) =>
+            patch.set({ status: shipmentStatus, updatedAt: now }),
+          );
+        } else {
+          const id = shipmentId(orderId);
+          transaction.createIfNotExists({
+            _id: id,
+            _type: "shipment",
+            shipmentNumber: `SHP-${Date.now().toString().slice(-6)}`,
+            order: { _type: "reference", _ref: orderId },
+            orderNumber: order.orderNumber || orderId,
+            customerName: order.customerName || "Customer",
+            destination: order.deliveryLocation || "Not supplied",
+            createdAt: now,
+            updatedAt: now,
+            status: shipmentStatus,
+            itemCount: order.lineItems?.length || 0,
+            totalUnits,
+          });
+        }
       }
     }
 

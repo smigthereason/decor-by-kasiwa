@@ -1,33 +1,58 @@
-import EditorialHero from "@/components/root/home/EditorialHero";
-import FeatureRoom from "@/components/root/home/FeatureRoom";
-import ServiceIndex from "@/components/root/home/ServiceIndex";
-import SelectedProjects from "@/components/root/home/SelectedProjects";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import type { Metadata } from "next";
 
-export default function Home() {
+import ShopLanding from "@/components/root/home/ShopLanding";
+import { getShopNavigation, getStoreProducts } from "@/sanity/lib/catalog";
+import { getPublicSiteSettings } from "@/sanity/lib/siteSettings";
+import { getSiteUrl, SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getPublicSiteSettings();
+  const title = settings.seoTitle?.trim() || "Affordable Home Decor in Kenya";
+  const description = settings.seoDescription?.trim() || SITE_DESCRIPTION;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: "/" },
+    openGraph: {
+      title: `${title} | ${SITE_NAME}`,
+      description,
+      url: "/",
+      type: "website",
+    },
+  };
+}
+
+export default async function Home() {
+  const [products, navigation, settings] = await Promise.all([
+    getStoreProducts(),
+    getShopNavigation(),
+    getPublicSiteSettings(),
+  ]);
+
+  const siteUrl = getSiteUrl();
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: siteUrl,
+    description: settings.seoDescription?.trim() || SITE_DESCRIPTION,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${siteUrl}/shop?q={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <>
-      <EditorialHero />
-      <FeatureRoom />
-      <ServiceIndex />
-      <SelectedProjects />
-
-      {/*<section className="page-shell border-b hairline bg-[var(--forest)] px-4 py-16 text-[var(--paper)] md:px-8 md:py-24">
-        <div className="grid gap-10 md:grid-cols-[1fr_1.4fr] md:items-end">
-          <p className="kicker text-soft-cream/55">Our point of view</p>
-          <div>
-            <p className="text-[clamp(2rem,4.8vw,5rem)] font-medium leading-[1.02] tracking-[-0.055em]">
-              A beautiful space is not simply about how it looks.
-              <br />
-              It is about how it makes you feel.
-            </p>
-            <Link href="/process" className="editorial-link mt-8">
-              See our process <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </section>*/}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <ShopLanding products={products} navigation={navigation} settings={settings} />
     </>
   );
 }

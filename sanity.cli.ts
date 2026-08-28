@@ -2,7 +2,12 @@ import { defineCliConfig } from "sanity/cli";
 
 export default defineCliConfig({
   api: {
-    projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
-    dataset: process.env.NEXT_PUBLIC_SANITY_DATASET || "production",
+    projectId: "g34n810u",
+    dataset: "production",
+  },
+
+  deployment: {
+    appId: "mu8hnwrwizl5ytgja5nc5zuz",
+    autoUpdates: true,
   },
 });

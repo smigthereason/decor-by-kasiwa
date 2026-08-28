@@ -67,8 +67,8 @@ export default function AdminOverviewPage() {
               <p className="kicker text-[var(--muted)]">Recent orders</p>
               <p className="mt-1 text-xs text-[var(--muted)]">Newest live commerce orders.</p>
             </div>
-            <Link href="/admin/orders" className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em]">
-              View all <ArrowUpRight size={12} />
+            <Link href="/admin/orders" className="group inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em]">
+              View all <ArrowUpRight size={12} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
             </Link>
           </div>
           {data.orders.length > 0 ? (

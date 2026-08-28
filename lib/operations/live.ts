@@ -9,6 +9,7 @@ import type {
   InventoryItem,
   OperationsSnapshot,
   Order,
+  RestockRequest,
   Shipment,
 } from "./types";
 
@@ -39,7 +40,7 @@ type RawCustomer = {
   phone?: string;
   image?: string | null;
   googleId?: string | null;
-  role?: "CUSTOMER" | "ADMIN" | "STORE";
+  role?: "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
   address1?: string;
@@ -113,6 +114,7 @@ export async function getLiveOrders(): Promise<Order[]> {
       customerPhone,
       deliveryLocation,
       createdAt,
+      updatedAt,
       status,
       paymentStatus,
       subtotal,
@@ -120,6 +122,10 @@ export async function getLiveOrders(): Promise<Order[]> {
       total,
       assignedStore,
       paymentReference,
+      dispatchedAt,
+      dispatchedByName,
+      deliveredAt,
+      deliveredByName,
       "lineItems": lineItems[]{
         "id": coalesce(_key, product._ref),
         "productId": coalesce(product._ref, productId),
@@ -167,7 +173,12 @@ export async function getLiveShipments(): Promise<Shipment[]> {
       status,
       itemCount,
       totalUnits,
-      notes
+      notes,
+      dispatchedAt,
+      dispatchedByName,
+      deliveredAt,
+      deliveredByName,
+      deliveryConfirmationNote
     }`,
     {},
     { cache: "no-store" },
@@ -184,6 +195,39 @@ export async function getLiveShipments(): Promise<Shipment[]> {
     status: row.status || "awaiting_store",
     itemCount: Number(row.itemCount || 0),
     totalUnits: Number(row.totalUnits || 0),
+  }));
+}
+
+export async function getLiveRestockRequests(): Promise<RestockRequest[]> {
+  const rows = await serverClient.fetch<RestockRequest[]>(
+    `*[_type == "restockRequest"] | order(createdAt desc) {
+      "id": _id,
+      "productId": product._ref,
+      productName,
+      sku,
+      "requestedById": requestedBy._ref,
+      requestedByName,
+      reason,
+      note,
+      status,
+      createdAt,
+      updatedAt,
+      resolvedAt,
+      resolvedByName
+    }`,
+    {},
+    { cache: "no-store" },
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    productName: safeString(row.productName, "Product"),
+    sku: safeString(row.sku, "NO-SKU"),
+    requestedByName: safeString(row.requestedByName, "Sales staff"),
+    reason: row.reason || "needs_restock",
+    status: row.status || "open",
+    createdAt: row.createdAt || new Date(0).toISOString(),
+    updatedAt: row.updatedAt || row.createdAt || new Date(0).toISOString(),
   }));
 }
 
@@ -269,16 +313,23 @@ function buildActivity({
   const events: ActivityEvent[] = [
     ...orders.slice(0, 6).map((order) => ({
       id: `order-${order.id}`,
-      timestamp: order.createdAt,
-      actor: "Customer",
-      action: order.paymentStatus === "paid" ? "Paid order" : "Order created",
+      timestamp: order.updatedAt || order.createdAt,
+      actor: order.dispatchedByName || order.deliveredByName || "Customer",
+      action:
+        order.status === "delivered"
+          ? "Order delivered"
+          : order.status === "dispatched"
+            ? "Order dispatched"
+            : order.paymentStatus === "paid"
+              ? "Paid order"
+              : "Order created",
       detail: `${order.orderNumber} · ${order.customerName}`,
       type: "order" as const,
     })),
     ...shipments.slice(0, 6).map((shipment) => ({
       id: `shipment-${shipment.id}`,
       timestamp: shipment.updatedAt,
-      actor: "Operations",
+      actor: shipment.deliveredByName || shipment.dispatchedByName || "Operations",
       action: `Shipment ${shipment.status.replaceAll("_", " ")}`,
       detail: `${shipment.shipmentNumber} · ${shipment.customerName}`,
       type: "shipment" as const,
@@ -303,10 +354,11 @@ function buildActivity({
 }
 
 export async function getLiveOperationsSnapshot(): Promise<OperationsSnapshot> {
-  const [products, orders, shipments] = await Promise.all([
+  const [products, orders, shipments, restockRequests] = await Promise.all([
     getLiveProducts(),
     getLiveOrders(),
     getLiveShipments(),
+    getLiveRestockRequests(),
   ]);
 
   const customers = await getLiveCustomers(orders);
@@ -319,6 +371,7 @@ export async function getLiveOperationsSnapshot(): Promise<OperationsSnapshot> {
     customers,
     orders,
     shipments,
+    restockRequests,
     activity,
     source: "sanity-live",
   };

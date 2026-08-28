@@ -22,8 +22,9 @@ export const customerUser = defineType({
       name: "role", title: "Role", type: "string", initialValue: "CUSTOMER",
       options: { list: [
         { title: "Customer", value: "CUSTOMER" },
-        { title: "Store", value: "STORE" },
-        { title: "Admin", value: "ADMIN" },
+        { title: "Sales Staff / Cashier", value: "STORE_STAFF" },
+        { title: "Store Manager", value: "STORE" },
+        { title: "Admin / Store Owner", value: "ADMIN" },
       ], layout: "radio" }, validation: (Rule) => Rule.required(),
     }),
     defineField({

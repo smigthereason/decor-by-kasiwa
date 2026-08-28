@@ -1,21 +1,40 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, Calendar, Package, ChevronRight, ShoppingBag, Sparkles } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import { formatMoney } from "@/lib/money";
 import CustomerProfileForm from "@/components/root/account/CustomerProfileForm";
 
 export default function AccountPage() {
+  const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const { hydrated, user, orders, wishlist, logout } = useCommerce();
 
-  if (!hydrated) {
+  const authenticatedRole = session?.user?.role;
+  const shouldRouteToWorkspace =
+    sessionStatus === "authenticated" &&
+    authenticatedRole &&
+    authenticatedRole !== "CUSTOMER";
+
+  useEffect(() => {
+    if (shouldRouteToWorkspace) {
+      // Send staff through the server role router so the CURRENT Sanity role
+      // and suspension status are checked before choosing a workspace.
+      router.replace("/account/route");
+    }
+  }, [router, shouldRouteToWorkspace]);
+
+  if (!hydrated || sessionStatus === "loading" || shouldRouteToWorkspace) {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
           <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
-            Loading account…
+            {shouldRouteToWorkspace ? "Opening workspace…" : "Loading account…"}
           </p>
         </div>
       </div>

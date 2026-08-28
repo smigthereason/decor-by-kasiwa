@@ -1,5 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { CircleUserRound, Heart, ShoppingBag } from "lucide-react";
+
+import { getRoleHomePath } from "@/lib/auth/role-routing";
 
 interface HeaderActionsProps {
   user: { name: string } | null;
@@ -8,12 +13,27 @@ interface HeaderActionsProps {
 }
 
 export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps) {
+  const { data: session } = useSession();
+
+  const accountHref = user
+    ? getRoleHomePath(session?.user?.role, "/account")
+    : "/account";
+
+  const accountLabel =
+    session?.user?.role === "ADMIN"
+      ? "Open Admin workspace"
+      : session?.user?.role === "STORE" || session?.user?.role === "STORE_STAFF"
+        ? "Open Store workspace"
+        : user
+          ? "Open my account"
+          : "Sign in";
+
   return (
     <div className="flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
       {/* Desktop Account */}
       <Link
-        href="/account"
-        aria-label={user ? "Open my account" : "Sign in"}
+        href={accountHref}
+        aria-label={accountLabel}
         className="hidden h-10 items-center gap-2 rounded-full bg-[var(--soft-cream)] pl-3 pr-1.5 text-[10px] font-medium transition-transform hover:scale-[1.02] lg:inline-flex"
       >
         <span className="max-w-20 truncate">
@@ -54,8 +74,8 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
 
       {/* Mobile Profile */}
       <Link
-        href="/account"
-        aria-label={user ? `My account — signed in as ${user.name}` : "Sign in or create account"}
+        href={accountHref}
+        aria-label={user ? `${accountLabel} — signed in as ${user.name}` : "Sign in or create account"}
         title={user ? `Signed in as ${user.name}` : "Sign in"}
         className={[
           "relative grid size-[34px] place-items-center",

@@ -72,6 +72,22 @@ export const product = defineType({
       validation: (rule) => rule.min(0),
     }),
     defineField({
+      name: "rating",
+      title: "Display rating",
+      description: "Optional curated social-proof rating. Leave empty to use the deterministic 4.0–4.8 fallback.",
+      type: "number",
+      group: "core",
+      validation: (rule) => rule.min(4).max(4.8),
+    }),
+    defineField({
+      name: "reviewCount",
+      title: "Display review count",
+      description: "Optional display count used alongside the rating until verified customer reviews are introduced.",
+      type: "number",
+      group: "core",
+      validation: (rule) => rule.integer().min(0),
+    }),
+    defineField({
       name: "primaryCategory",
       title: "Primary category",
       type: "reference",

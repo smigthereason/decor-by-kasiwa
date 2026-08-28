@@ -18,8 +18,6 @@ const shipmentStatuses: ShipmentStatus[] = [
 function orderStatusForShipment(status: ShipmentStatus): OrderStatus | null {
   if (status === "picking" || status === "received") return "picking";
   if (status === "packed" || status === "ready_dispatch") return "packed";
-  if (status === "dispatched") return "dispatched";
-  if (status === "delivered") return "delivered";
   return null;
 }
 
@@ -46,14 +44,36 @@ export async function PATCH(
     return NextResponse.json({ message: "Invalid shipment status." }, { status: 400 });
   }
 
+  if (body.status === "dispatched" || body.status === "delivered") {
+    return NextResponse.json(
+      {
+        message:
+          body.status === "dispatched"
+            ? "Dispatch the related order from its order detail so duplicate dispatch is prevented."
+            : "Delivery must be confirmed from the Deliveries workflow.",
+      },
+      { status: 409 },
+    );
+  }
+
   try {
-    const shipment = await serverClient.fetch<{ orderId?: string } | null>(
-      `*[_type == "shipment" && _id == $id][0]{"orderId": order._ref}`,
+    const shipment = await serverClient.fetch<{ orderId?: string; dispatchedAt?: string; status?: ShipmentStatus } | null>(
+      `*[_type == "shipment" && _id == $id][0]{"orderId": order._ref, dispatchedAt, status}`,
       { id: shipmentId },
+      { cache: "no-store" },
     );
 
     if (!shipment) {
       return NextResponse.json({ message: "Shipment not found." }, { status: 404 });
+    }
+
+    if (shipment.dispatchedAt || shipment.status === "dispatched" || shipment.status === "delivered") {
+      if (body.status) {
+        return NextResponse.json(
+          { message: "A dispatched delivery cannot be moved back into preparation." },
+          { status: 409 },
+        );
+      }
     }
 
     const now = new Date().toISOString();

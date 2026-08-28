@@ -1,86 +1,51 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+
+import { authOptions } from "@/lib/auth/options";
 import {
-  getServerSession,
-} from "next-auth";
+  getRoleHomePath,
+  getSafeCustomerNextPath,
+} from "@/lib/auth/role-routing";
+import { getCustomerByDocumentId } from "@/lib/auth/sanity-users";
 
-import {
-  redirect,
-} from "next/navigation";
+export const dynamic = "force-dynamic";
 
-import {
-  authOptions,
-} from "@/lib/auth/options";
+type AccountRoleRouterPageProps = {
+  searchParams: Promise<{
+    next?: string | string[];
+  }>;
+};
 
-import {
-  getCustomerByDocumentId,
-} from "@/lib/auth/sanity-users";
-
-export const dynamic =
-  "force-dynamic";
-
-export default async function AccountRoleRouterPage() {
-  /*
-   * There must be an authenticated
-   * Google/NextAuth session.
-   */
-  const session =
-    await getServerSession(
-      authOptions,
-    );
+export default async function AccountRoleRouterPage({
+  searchParams,
+}: AccountRoleRouterPageProps) {
+  const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    redirect(
-      "/account/login",
-    );
+    redirect("/account/login");
   }
 
-  /*
-   * Read the CURRENT Sanity user.
-   *
-   * We intentionally don't rely
-   * only on the role stored in the
-   * JWT because roles can be
-   * changed from Sanity Studio.
-   */
-  const customer =
-    await getCustomerByDocumentId(
-      session.user.id,
-    );
+  // Always read the current Sanity record. A JWT role can be stale after an
+  // owner changes somebody's role from Admin/Sanity while their session lives.
+  const customer = await getCustomerByDocumentId(session.user.id);
 
   if (!customer) {
-    redirect(
-      "/account/access-denied?reason=account",
-    );
+    redirect("/account/access-denied?reason=account");
   }
 
-  /*
-   * Suspended accounts cannot enter
-   * a customer or staff workspace.
-   */
-  if (
-    customer.status !==
-    "ACTIVE"
-  ) {
-    redirect(
-      "/account/access-denied?reason=suspended",
-    );
+  if (customer.status !== "ACTIVE") {
+    redirect("/account/access-denied?reason=suspended");
   }
 
-  /*
-   * ROLE DESTINATIONS
-   *
-   * ADMIN    -> Admin Office
-   * STORE    -> Store Operations
-   * CUSTOMER -> Customer website
-   */
-  switch (customer.role) {
-    case "ADMIN":
-      redirect("/admin");
-
-    case "STORE":
-      redirect("/store");
-
-    case "CUSTOMER":
-    default:
-      redirect("/");
+  // Staff roles always enter their business workspace directly.
+  if (customer.role !== "CUSTOMER") {
+    redirect(getRoleHomePath(customer.role));
   }
+
+  // Customers stay in the customer journey. This preserves flows such as
+  // "sign in before checkout" while protecting against external/open redirects.
+  const params = await searchParams;
+  const requestedNext = Array.isArray(params.next) ? params.next[0] : params.next;
+
+  redirect(getSafeCustomerNextPath(requestedNext));
 }

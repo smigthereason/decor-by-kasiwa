@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "createdAt": "2026-08-28T12:18:03.541Z",
+  "workspaces": [
+    {
+      "name": "default",
+      "title": "Decor by Kasiwa",
+      "basePath": "/studio",
+      "projectId": "g34n810u",
+      "dataset": "production",
+      "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\"><rect width=\"32\" height=\"32\" rx=\"2\" fill=\"#ff8e42\"></rect><text x=\"50%\" y=\"50%\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"hsla(24, 100%, 23%, 1)\" style=\"font-family:Inter, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, &quot;Liberation Sans&quot;, Helvetica, Arial, system-ui, sans-serif;font-weight:500;font-size:13px;transform:translateY(1px)\">DB</text></svg>",
+      "mediaLibrary": {
+        "enabled": false
+      },
+      "schema": "c6f5cf41.create-schema.json",
+      "tools": "ba47da56.create-tools.json"
+    }
+  ],
+  "studioVersion": "4.22.0"
+}

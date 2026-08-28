@@ -489,19 +489,17 @@ export default function AdminCustomerDetailPage() {
                   }
                   className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
                 >
-                  <option value="CUSTOMER">
-                    Customer
-                  </option>
+                  <option value="CUSTOMER">Customer</option>
+                    <option value="STORE_STAFF">Sales Staff / Cashier</option>
 
-                  <option value="STORE">
-                    Store
-                  </option>
+                  <option value="STORE">Store Manager</option>
 
-                  <option value="ADMIN">
-                    Admin
-                  </option>
+                  <option value="ADMIN">Admin / Store Owner</option>
                 </select>
-              </label>
+                              <span className="text-[10px] font-normal normal-case leading-relaxed tracking-normal text-[var(--muted)]">
+                  Sales Staff can search inventory, receive dispatched deliveries and raise restock alerts. Store Manager handles orders, products, inventory, shipments and dispatch. Admin is the store owner with full access.
+                </span>
+</label>
 
               {/* STATUS */}
 

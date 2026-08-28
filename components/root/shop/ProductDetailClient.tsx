@@ -12,6 +12,7 @@ import {
   Minus,
   Plus,
   LockKeyhole,
+  Star,
   Zap,
 } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
@@ -19,6 +20,7 @@ import { formatMoney } from "@/lib/money";
 import { getMaximumPurchasableQuantity, isProductSoldOut } from "@/lib/catalogue";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import ProductCard from "@/components/root/shop/ProductCard";
+import { getProductRating } from "@/lib/product-rating";
 
 export default function ProductDetailClient({
   product,
@@ -36,6 +38,7 @@ export default function ProductDetailClient({
   const soldOut = isProductSoldOut(product);
   const maximumQuantity = getMaximumPurchasableQuantity(product);
   const purchasingUnavailable = !catalogueReady || Boolean(catalogueError);
+  const { rating, reviewCount } = getProductRating(product);
 
   function handleAdd() {
     if (soldOut || purchasingUnavailable) return;
@@ -192,6 +195,14 @@ export default function ProductDetailClient({
               <h1 className="mt-4 max-w-lg text-[clamp(2.5rem,5vw,4rem)] font-medium leading-[0.93] tracking-[-0.06em]">
                 {product.name}
               </h1>
+
+              <div className="mt-4 flex items-center gap-2" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+                <Star size={15} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
+                <span className="text-sm font-semibold">{rating.toFixed(1)} / 5</span>
+                {typeof reviewCount === "number" && (
+                  <span className="text-xs text-[var(--muted)]">({reviewCount} reviews)</span>
+                )}
+              </div>
 
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-b hairline pb-5">
                 <div>

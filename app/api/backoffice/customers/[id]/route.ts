@@ -4,7 +4,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import type { CustomerRole, CustomerStatus } from "@/lib/auth/sanity-users";
 import { serverClient } from "@/sanity/lib/serverClient";
 
-const roles: CustomerRole[] = ["CUSTOMER", "STORE", "ADMIN"];
+const roles: CustomerRole[] = ["CUSTOMER", "STORE_STAFF", "STORE", "ADMIN"];
 const statuses: CustomerStatus[] = ["ACTIVE", "SUSPENDED"];
 const clean = (value: unknown) => (typeof value === "string" ? value.trim() : undefined);
 

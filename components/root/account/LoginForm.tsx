@@ -21,23 +21,32 @@ export default function LoginForm() {
   const authError =
     searchParams.get("error");
 
+  const requestedNext =
+    searchParams.get("next");
+
+  const roleRouterUrl =
+    requestedNext
+      ? `/account/route?next=${encodeURIComponent(requestedNext)}`
+      : "/account/route";
+
   /*
    * If the user already has an active session,
    * always send them through the role router.
    *
-   * CUSTOMER -> /
-   * STORE    -> /store
-   * ADMIN    -> /admin
+   * CUSTOMER    -> requested customer page / account
+   * STORE_STAFF -> /store
+   * STORE       -> /store
+   * ADMIN       -> /admin
    */
   useEffect(() => {
     if (
       status === "authenticated"
     ) {
       router.replace(
-        "/account/route",
+        roleRouterUrl,
       );
     }
-  }, [status, router]);
+  }, [status, router, roleRouterUrl]);
 
   async function loginWithGoogle() {
     setLoading(true);
@@ -47,7 +56,7 @@ export default function LoginForm() {
         "google",
         {
           callbackUrl:
-            "/account/route",
+            roleRouterUrl,
         },
       );
     } catch (error) {

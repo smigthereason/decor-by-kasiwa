@@ -5,12 +5,18 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { getCustomerByDocumentId } from "@/lib/auth/sanity-users";
 
-export type ApiStaffRole = "ADMIN" | "STORE";
+export type ApiStaffRole = "ADMIN" | "STORE" | "STORE_STAFF";
 
 export async function getApiStaff(
   allowedRoles: ApiStaffRole[],
 ): Promise<
-  | { ok: true; role: ApiStaffRole; customerId: string }
+  | {
+      ok: true;
+      role: ApiStaffRole;
+      customerId: string;
+      customerName: string;
+      customerEmail: string;
+    }
   | { ok: false; status: 401 | 403 }
 > {
   const session = await getServerSession(authOptions);
@@ -25,7 +31,11 @@ export async function getApiStaff(
     return { ok: false, status: 403 };
   }
 
-  if (customer.role !== "ADMIN" && customer.role !== "STORE") {
+  if (
+    customer.role !== "ADMIN" &&
+    customer.role !== "STORE" &&
+    customer.role !== "STORE_STAFF"
+  ) {
     return { ok: false, status: 403 };
   }
 
@@ -37,5 +47,7 @@ export async function getApiStaff(
     ok: true,
     role: customer.role,
     customerId: customer._id,
+    customerName: customer.name || customer.email || "Staff",
+    customerEmail: customer.email,
   };
 }

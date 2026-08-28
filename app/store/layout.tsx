@@ -17,10 +17,12 @@ export default async function StoreLayout({
     "/store",
   );
 
-  const staffRole: "ADMIN" | "STORE" =
+  const staffRole: "ADMIN" | "STORE" | "STORE_STAFF" =
     customer.role === "ADMIN"
       ? "ADMIN"
-      : "STORE";
+      : customer.role === "STORE"
+        ? "STORE"
+        : "STORE_STAFF";
 
   return (
     <BackOfficeShell

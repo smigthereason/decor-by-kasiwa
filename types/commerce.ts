@@ -19,6 +19,9 @@ export type StoreProduct = {
   currency: "KES";
   demoPrice?: boolean;
 
+  rating?: number;
+  reviewCount?: number;
+
   description: string;
   story: string;
 

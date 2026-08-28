@@ -81,7 +81,7 @@ export default function OrderTable({
                   className="inline-grid size-8 place-items-center rounded-full border border-[var(--ink)]/10 transition-colors hover:bg-[var(--deep-green)] hover:text-soft-cream"
                   aria-label={`Open ${order.orderNumber}`}
                 >
-                  <ArrowUpRight size={13} strokeWidth={1.4} />
+                  <ArrowUpRight size={13} strokeWidth={1.4} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                 </Link>
               </td>
             </tr>

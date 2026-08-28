@@ -3,10 +3,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
 import { formatMoney } from "@/lib/money";
 import { isProductSoldOut } from "@/lib/catalogue";
+import { getProductRating } from "@/lib/product-rating";
 
 function getColorHex(colourName: string): string {
   const colorMap: Record<string, string> = {
@@ -48,6 +49,7 @@ function getColorHex(colourName: string): string {
 
 export default function ProductCard({ product }: { product: StoreProduct }) {
   const soldOut = isProductSoldOut(product);
+  const { rating, reviewCount } = getProductRating(product);
 
   return (
     <Link
@@ -97,6 +99,15 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
         <h3 className="text-sm font-medium leading-snug tracking-[-0.02em] text-[var(--ink)] group-hover:underline group-hover:underline-offset-4">
           {product.name}
         </h3>
+
+        <div className="mt-2 flex items-center gap-1.5" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+          <Star size={13} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
+          <span className="text-[11px] font-semibold text-[var(--ink)]">{rating.toFixed(1)}</span>
+          <span className="text-[10px] text-[var(--muted)]">/ 5</span>
+          {typeof reviewCount === "number" && (
+            <span className="text-[10px] text-[var(--muted)]">({reviewCount})</span>
+          )}
+        </div>
 
         <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
           {product.description}
