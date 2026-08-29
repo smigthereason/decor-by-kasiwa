@@ -22,6 +22,7 @@ import {
   SearchCheck,
   Settings,
   ShoppingBag,
+  ShoppingCart,
   Truck,
   Warehouse,
   X,
@@ -52,6 +53,7 @@ type Props = {
 
 const adminNavigation: NavigationItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
+  { label: "Point of Sale", href: "/admin/pos", icon: ShoppingCart },
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
   { label: "Customers", href: "/admin/customers", icon: ContactRound },
@@ -61,6 +63,7 @@ const adminNavigation: NavigationItem[] = [
 
 const storeManagerNavigation: NavigationItem[] = [
   { label: "Store Overview", href: "/store", icon: Warehouse },
+  { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Order Queue", href: "/store/orders", icon: ClipboardList, badge: "newOrders" },
   { label: "Products", href: "/store/products", icon: Boxes, badge: "restockRequests" },
   { label: "Inventory", href: "/store/inventory", icon: SearchCheck },
@@ -70,6 +73,7 @@ const storeManagerNavigation: NavigationItem[] = [
 
 const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
+  { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Inventory", href: "/store/inventory", icon: SearchCheck },
   { label: "Deliveries", href: "/store/deliveries", icon: Truck, badge: "deliveries" },
   { label: "Restock Alerts", href: "/store/restock", icon: AlertTriangle },
@@ -130,7 +134,7 @@ export default function BackOfficeShell({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--paper-2)] text-[var(--ink)]">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[var(--paper-2)] text-[var(--ink)]">
       <header className="sticky top-0 z-50 border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] lg:hidden">
         <div className="flex items-center justify-between px-4 py-4">
           <Link href={rootHref} className="flex items-center gap-3">
@@ -231,7 +235,7 @@ export default function BackOfficeShell({
         )}
       </AnimatePresence>
 
-      <div className="lg:grid lg:min-h-screen lg:grid-cols-[248px_minmax(0,1fr)]">
+      <div className="w-full max-w-full lg:grid lg:min-h-screen lg:grid-cols-[248px_minmax(0,1fr)]">
         <aside className="hidden border-r border-[var(--ink)]/[0.09] bg-[var(--deep-green)] text-[var(--paper)] lg:block">
           <div className="sticky top-0 flex min-h-screen flex-col px-4 py-5">
             <Link href={rootHref} className="block pb-5">
@@ -301,7 +305,7 @@ export default function BackOfficeShell({
           </div>
         </aside>
 
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-full overflow-x-hidden">
           <header className="hidden min-h-[78px] items-center justify-between border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] px-5 sm:px-7 lg:flex lg:px-9">
             <div>
               <p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Decor by Kasiwa</p>
@@ -316,7 +320,7 @@ export default function BackOfficeShell({
               <span className="size-1.5 rounded-full bg-[var(--sage-green)]" title="Live operations" />
             </div>
           </header>
-          <main>{children}</main>
+          <main className="min-w-0 max-w-full overflow-x-hidden">{children}</main>
         </div>
       </div>
     </div>

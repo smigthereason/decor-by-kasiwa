@@ -43,6 +43,7 @@ export default function StoreOverviewPage() {
             Check product availability, receive orders dispatched for delivery, confirm completed deliveries and alert management about stock issues.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
+            <QuickLink href="/store/pos" label="Open POS" />
             <QuickLink href="/store/inventory" label="Check inventory" />
             <QuickLink href="/store/deliveries" label="Open deliveries" />
             <QuickLink href="/store/restock" label="Send restock alert" />
@@ -98,6 +99,7 @@ export default function StoreOverviewPage() {
         <h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">Live fulfilment workspace</h1>
         <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">Review new paid orders, maintain the same product inventory as Admin, then dispatch approved orders to Sales Staff for delivery.</p>
         <div className="mt-5 flex flex-wrap gap-2">
+          <QuickLink href="/store/pos" label="Open POS" />
           <QuickLink href="/store/orders" label="Open order queue" />
           <QuickLink href="/store/products" label="Manage products" />
           <QuickLink href="/store/dispatch" label="Dispatch orders" />

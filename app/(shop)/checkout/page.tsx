@@ -528,7 +528,7 @@ export default function CheckoutPage() {
               {lineItems.map(({ line, product }, index) =>
                 product ? (
                   <article
-                    key={`${line.productId}-${line.colour || "default"}`}
+                    key={`${line.productId}-${line.variantId || line.colour || "default"}-${line.size || "default"}`}
                     className="flex items-start justify-between gap-3 sm:gap-4 py-4 sm:py-5"
                   >
                     <div className="flex gap-3 sm:gap-4">
@@ -539,12 +539,12 @@ export default function CheckoutPage() {
                         <p className="text-xs sm:text-sm font-semibold leading-snug">{product.name}</p>
                         <p className="mt-1 text-[10px] sm:text-xs text-[var(--muted)]">
                           Qty {line.quantity}
-                          {line.colour ? ` · ${line.colour}` : ""}
+                          {line.colour ? ` · ${line.colour}` : ""}{line.size ? ` · ${line.size}` : ""}
                         </p>
                       </div>
                     </div>
                     <span className="whitespace-nowrap text-xs sm:text-sm font-semibold">
-                      {formatMoney(product.price * line.quantity)}
+                      {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
                     </span>
                   </article>
                 ) : null

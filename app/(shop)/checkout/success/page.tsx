@@ -24,6 +24,7 @@ type VerifiedOrderItem = {
   productId: string;
   name: string;
   finish?: string;
+  size?: string;
   quantity: number;
   unitPrice: number;
 };
@@ -108,17 +109,6 @@ function SuccessContent() {
       clearCart;
   }, [clearCart]);
 
-  /*
-   * Prevent the same Paystack reference from
-   * being verified repeatedly because of:
-   *
-   * - CommerceProvider re-renders
-   * - local state changes
-   * - React Strict Mode development behaviour
-   */
-  const verificationStartedRef =
-    useRef<string | null>(null);
-
   useEffect(() => {
     if (!reference) {
       setState("error");
@@ -131,20 +121,6 @@ function SuccessContent() {
 
     const paymentReference =
       reference;
-
-    /*
-     * This reference has already started
-     * verification in this mounted page.
-     */
-    if (
-      verificationStartedRef.current ===
-      paymentReference
-    ) {
-      return;
-    }
-
-    verificationStartedRef.current =
-      paymentReference;
 
     let cancelled = false;
 
@@ -471,15 +447,15 @@ function SuccessContent() {
               {order.items.map(
                 (line) => (
                   <div
-                    key={`${line.productId}-${line.finish || "default"}`}
+                    key={`${line.productId}-${line.finish || "default"}-${line.size || "default"}`}
                     className="flex justify-between gap-4 py-3 text-xs"
                   >
                     <span>
                       {line.quantity} ×{" "}
                       {line.name}
 
-                      {line.finish
-                        ? ` (${line.finish})`
+                      {[line.finish, line.size].filter(Boolean).length
+                        ? ` (${[line.finish, line.size].filter(Boolean).join(" · ")})`
                         : ""}
                     </span>
 

@@ -26,7 +26,7 @@ export function TopNavigation({ pathname, shopMenuOpen, onShopOpen, onShopClose,
   const collection = searchParams.get("collection");
 
   return (
-    <nav aria-label="Primary shop navigation" className="h-[44px] bg-[var(--paper-2)]">
+    <nav aria-label="Primary shop navigation" className="h-[44px] border-t border-white/10 bg-[var(--deep-green)]">
       <div className="flex h-full items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {topNavigation.map((item) => (
           <Link
@@ -46,13 +46,13 @@ export function TopNavigation({ pathname, shopMenuOpen, onShopOpen, onShopClose,
             aria-expanded={item.key === "shop" ? shopMenuOpen : undefined}
             className={[
               "relative flex h-full shrink-0 items-center justify-center",
-              "px-[20px] text-[11px] font-medium text-[var(--charcoal)]",
+              "px-[20px] text-[11px] font-medium text-white/78",
               "transition-colors duration-200 sm:px-[24px] sm:text-[12px]",
               "focus-visible:z-20 focus-visible:outline-none",
-              "focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-charcoal/35",
+              "focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/45",
               isActive(item.key, pathname, collection)
-                ? "z-10 rounded-t-[8px] bg-[var(--paper)] shadow-[0_-2px_8px_rgba(0,0,0,0.02)]"
-                : "hover:bg-charcoal/[0.025]",
+                ? "z-10 bg-white/12 text-white"
+                : "hover:bg-white/[0.07] hover:text-white",
             ].join(" ")}
           >
             {item.label}

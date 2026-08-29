@@ -11,18 +11,18 @@ export function DesktopSearch({ search, setSearch, onSubmit }: DesktopSearchProp
   return (
     <form
       onSubmit={onSubmit}
-      className="hidden h-[38px] items-center rounded-full bg-[var(--soft-cream)] pl-4 pr-2 lg:flex"
+      className="hidden h-[38px] items-center rounded-full border border-white/15 bg-white/10 pl-4 pr-2 lg:flex"
     >
       <input
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        className="w-48 bg-transparent pr-3 text-[12px] font-medium text-[var(--charcoal)] outline-none placeholder:text-charcoal/40 xl:w-56"
+        className="w-48 bg-transparent pr-3 text-[12px] font-medium text-white outline-none placeholder:text-white/55 xl:w-56"
         placeholder="Light up your search"
         aria-label="Search the collection"
       />
       <button
         type="submit"
-        className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] text-soft-cream transition-transform hover:scale-[1.04]"
+        className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--soft-cream)] text-[var(--deep-green)] transition-transform hover:scale-[1.04]"
         aria-label="Submit search"
       >
         <Search size={13} strokeWidth={1.75} />

@@ -50,6 +50,12 @@ function getColorHex(colourName: string): string {
 export default function ProductCard({ product }: { product: StoreProduct }) {
   const soldOut = isProductSoldOut(product);
   const { rating, reviewCount } = getProductRating(product);
+  const displayColours = Array.from(
+    new Set([
+      ...(product.colours || []),
+      ...(product.variants || []).map((variant) => variant.colour).filter((value): value is string => Boolean(value)),
+    ]),
+  );
 
   return (
     <Link
@@ -118,9 +124,9 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
             {formatMoney(product.price)}
           </span>
 
-          {product.colours && product.colours.length > 0 && (
+          {displayColours.length > 0 && (
             <div className="flex items-center gap-1.5">
-              {product.colours.slice(0, 3).map((colour) => (
+              {displayColours.slice(0, 3).map((colour) => (
                 <span
                   key={colour}
                   className="size-3 rounded-full border border-[var(--ink)]/20"
@@ -128,9 +134,9 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
                   title={colour}
                 />
               ))}
-              {product.colours.length > 3 && (
+              {displayColours.length > 3 && (
                 <span className="text-[9px] text-[var(--muted)]">
-                  +{product.colours.length - 3}
+                  +{displayColours.length - 3}
                 </span>
               )}
             </div>

@@ -12,7 +12,7 @@ export function Logo() {
         height={300}
         priority
         quality={100}
-        className="h-auto w-[125px] object-contain sm:w-[160px] lg:w-[190px]"
+        className="h-auto w-[125px] object-contain brightness-0 invert sm:w-[160px] lg:w-[190px]"
       />
     </Link>
   );

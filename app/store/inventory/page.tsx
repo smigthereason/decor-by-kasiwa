@@ -63,9 +63,40 @@ export default function StoreInventoryPage() {
       </div>
       <section className="p-4 sm:p-6 lg:p-8">
         {filtered.length ? (
-          <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[950px] text-left">
+          <>
+            <div className="grid gap-3 md:hidden">
+              {filtered.map((item) => (
+                <article key={item.id} className="min-w-0 rounded-xl border hairline bg-[var(--paper)] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{item.name}</p>
+                      <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{item.sku} · {item.category}</p>
+                    </div>
+                    <Link
+                      href={`/shop/${item.slug || ""}`}
+                      className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                      aria-label={`Open ${item.name} in shop`}
+                    >
+                      <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </Link>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <StatusPill value={stockStatus(item)} />
+                    <span className="text-[10px] text-[var(--muted)]">{item.location}</span>
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t hairline pt-3 text-xs">
+                    <div><dt className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Available</dt><dd className="mt-1 font-semibold">{availableStock(item)}</dd></div>
+                    <div><dt className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">On hand</dt><dd className="mt-1 font-semibold">{item.onHand}</dd></div>
+                    <div><dt className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Incoming</dt><dd className="mt-1 font-semibold">{item.incoming}</dd></div>
+                    <div><dt className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Price</dt><dd className="mt-1 font-semibold">{formatKes(item.retailPrice)}</dd></div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-xl border hairline bg-[var(--paper)] md:block">
+              <div className="max-w-full overflow-x-auto">
+                <table className="w-full min-w-[950px] text-left">
                 <thead>
                   <tr className="border-b hairline">
                     {["Product", "SKU", "Location", "On hand", "Reserved", "Available", "Incoming", "Status", "Price", ""].map((heading) => (
@@ -97,9 +128,10 @@ export default function StoreInventoryPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="rounded-xl border hairline bg-[var(--paper)] p-12 text-center">
             <Boxes size={32} className="mx-auto text-[var(--muted)]" />

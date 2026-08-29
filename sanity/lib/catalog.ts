@@ -36,6 +36,16 @@ type SanityProductRecord = {
   description?: string;
 
   colours?: string[];
+  variants?: Array<{
+    _key?: string;
+    title?: string;
+    colour?: string;
+    size?: string;
+    sku?: string;
+    price?: number;
+    stockQuantity?: number;
+    image?: ImageSource;
+  }>;
   materials?: string[];
 
   dimensions?: string;
@@ -92,6 +102,16 @@ const productProjection = `{
   shortDescription,
   description,
   colours,
+  variants[]{
+    _key,
+    title,
+    colour,
+    size,
+    sku,
+    price,
+    stockQuantity,
+    image
+  },
   materials,
   dimensions,
   careInstructions,
@@ -344,6 +364,17 @@ function mapProduct(
     colours:
       record.colours ||
       [],
+
+    variants: (record.variants || []).map((variant, index) => ({
+      id: variant._key || `${record._id}-variant-${index}`,
+      title: variant.title?.trim() || undefined,
+      colour: variant.colour?.trim() || undefined,
+      size: variant.size?.trim() || undefined,
+      sku: variant.sku?.trim() || undefined,
+      price: typeof variant.price === "number" ? variant.price : undefined,
+      stockQuantity: typeof variant.stockQuantity === "number" ? variant.stockQuantity : null,
+      imageUrl: variant.image ? toImageUrl(variant.image) : undefined,
+    })),
 
     heroImage,
 

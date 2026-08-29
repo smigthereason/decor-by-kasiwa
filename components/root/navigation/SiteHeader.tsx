@@ -36,7 +36,7 @@ export default function SiteHeader({ navigation }: SiteHeaderProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-[var(--paper-2)] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      <header className="sticky top-0 z-50 w-full bg-[var(--deep-green)] text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)]">
         {/* Main Header Row */}
         <div className="grid h-[74px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-4 sm:h-[90px] sm:px-7 lg:px-7">
           {/* Left */}

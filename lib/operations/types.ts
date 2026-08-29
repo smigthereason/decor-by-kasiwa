@@ -55,6 +55,8 @@ export type OrderLine = {
   name: string;
   category: string;
   finish?: string;
+  size?: string;
+  variantId?: string;
   quantity: number;
   unitPrice: number;
 };
@@ -76,6 +78,12 @@ export type Order = {
   total: number;
   assignedStore?: string;
   paymentReference?: string;
+  salesChannel?: "ONLINE" | "POS";
+  fulfilmentType?: "DELIVERY" | "IN_STORE";
+  soldByName?: string;
+  soldByRole?: StaffRole;
+  soldAt?: string;
+  paymentChannel?: string;
   dispatchedAt?: string;
   dispatchedByName?: string;
   deliveredAt?: string;

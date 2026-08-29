@@ -96,11 +96,18 @@ export default function CartPage() {
               {cart.map((line) => {
                 const product = getProductById(line.productId);
                 if (!product) return null;
-                const maximumQuantity = getMaximumPurchasableQuantity(product);
+                const productMaximumQuantity = getMaximumPurchasableQuantity(product);
+                const selectedVariant = product.variants?.find((variant) => variant.id === line.variantId);
+                const maximumQuantity =
+                  typeof selectedVariant?.stockQuantity === "number"
+                    ? productMaximumQuantity === null
+                      ? selectedVariant.stockQuantity
+                      : Math.min(productMaximumQuantity, selectedVariant.stockQuantity)
+                    : productMaximumQuantity;
 
                 return (
                   <article
-                    key={`${line.productId}-${line.colour || "default"}`}
+                    key={`${line.productId}-${line.variantId || line.colour || "default"}-${line.size || "default"}`}
                     className="group flex flex-col sm:flex-row gap-4 sm:gap-6 rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] p-4 sm:p-5 transition-all hover:border-[var(--ink)]/30 hover:shadow-lg"
                   >
                     {/* PRODUCT IMAGE */}
@@ -130,10 +137,12 @@ export default function CartPage() {
                           >
                             {product.name}
                           </Link>
-                          {line.colour && (
-                            <p className="mt-2 inline-flex items-center gap-2 text-xs text-[var(--muted)]">
-                              Finish:
-                              <span className="font-medium text-[var(--ink)]">{line.colour}</span>
+                          {(line.colour || line.size) && (
+                            <p className="mt-2 inline-flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                              Variant:
+                              <span className="font-medium text-[var(--ink)]">
+                                {[line.colour, line.size].filter(Boolean).join(" · ")}
+                              </span>
                             </p>
                           )}
                           {maximumQuantity !== null && maximumQuantity <= 5 && (
@@ -141,7 +150,7 @@ export default function CartPage() {
                           )}
                         </div>
                         <p className="whitespace-nowrap text-base sm:text-lg font-semibold">
-                          {formatMoney(product.price * line.quantity)}
+                          {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
                         </p>
                       </div>
 
@@ -154,7 +163,9 @@ export default function CartPage() {
                               updateQuantity(
                                 line.productId,
                                 line.quantity - 1,
-                                line.colour
+                                line.colour,
+                                line.size,
+                                line.variantId,
                               )
                             }
                             className="focus-ring grid size-9 place-items-center rounded-full transition-colors hover:bg-[var(--paper-2)]"
@@ -171,7 +182,9 @@ export default function CartPage() {
                               updateQuantity(
                                 line.productId,
                                 line.quantity + 1,
-                                line.colour
+                                line.colour,
+                                line.size,
+                                line.variantId,
                               )
                             }
                             disabled={maximumQuantity !== null && line.quantity >= maximumQuantity}
@@ -184,14 +197,14 @@ export default function CartPage() {
 
                         {/* UNIT PRICE */}
                         <div className="hidden sm:block text-xs text-[var(--muted)]">
-                          {formatMoney(product.price)} each
+                          {formatMoney(product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price)} each
                         </div>
 
                         {/* REMOVE BUTTON */}
                         <button
                           type="button"
                           onClick={() =>
-                            removeFromCart(line.productId, line.colour)
+                            removeFromCart(line.productId, line.colour, line.size, line.variantId)
                           }
                           className="focus-ring group/remove inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)] transition-colors hover:text-red-600"
                         >
@@ -232,7 +245,7 @@ export default function CartPage() {
 
                 return (
                   <article
-                    key={`${line.productId}-${line.colour || "default"}`}
+                    key={`${line.productId}-${line.variantId || line.colour || "default"}-${line.size || "default"}`}
                     className="flex items-start justify-between gap-4 py-4"
                   >
                     <div className="flex gap-3">
@@ -243,12 +256,12 @@ export default function CartPage() {
                         <p className="text-sm font-medium leading-snug">{product.name}</p>
                         <p className="mt-1 text-xs text-[var(--muted)]">
                           Qty {line.quantity}
-                          {line.colour ? ` · ${line.colour}` : ""}
+                          {line.colour ? ` · ${line.colour}` : ""}{line.size ? ` · ${line.size}` : ""}
                         </p>
                       </div>
                     </div>
                     <span className="text-sm font-medium whitespace-nowrap">
-                      {formatMoney(product.price * line.quantity)}
+                      {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
                     </span>
                   </article>
                 );

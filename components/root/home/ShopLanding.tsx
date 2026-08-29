@@ -8,12 +8,15 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import AutoCategoryCarousel, {
+  type CategoryCarouselItem,
+} from "@/components/root/home/AutoCategoryCarousel";
 import ProductCard from "@/components/root/shop/ProductCard";
 import type { ShopCategory, ShopNavigation, StoreProduct } from "@/types/commerce";
 import type { PublicSiteSettings } from "@/sanity/lib/siteSettings";
 
 const trustItems = [
-  { Icon: BadgeCheck, title: "Curated value", description: "Beautiful pieces selected with everyday homes in mind." },
+  { Icon: BadgeCheck, title: "Curated value", description: "Beautiful pieces selected with everyday spaces in mind." },
   { Icon: ShieldCheck, title: "Quality first", description: "A considered catalogue with clear product details." },
   { Icon: PackageCheck, title: "Delivery support", description: "Simple fulfilment information for orders across Kenya." },
   { Icon: CreditCard, title: "Secure checkout", description: "Payments are completed through the secure checkout flow." },
@@ -28,14 +31,24 @@ function productsForCategory(products: StoreProduct[], category: ShopCategory) {
   );
 }
 
-function ProductRail({ products }: { products: StoreProduct[] }) {
+function ProductRail({
+  products,
+  compactOnMobile = false,
+}: {
+  products: StoreProduct[];
+  compactOnMobile?: boolean;
+}) {
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
       <div className="flex w-max gap-3 sm:gap-4 lg:gap-5">
         {products.map((product) => (
           <div
             key={product.id}
-            className="w-[72vw] max-w-[280px] shrink-0 sm:w-[300px] lg:w-[310px]"
+            className={
+              compactOnMobile
+                ? "w-[43vw] min-w-[156px] max-w-[205px] shrink-0 sm:w-[240px] sm:max-w-[240px] lg:w-[310px] lg:max-w-[310px]"
+                : "w-[72vw] max-w-[280px] shrink-0 sm:w-[300px] lg:w-[310px]"
+            }
           >
             <ProductCard product={product} />
           </div>
@@ -94,7 +107,9 @@ export default function ShopLanding({
   const newArrivalRail = (newArrivals.length ? newArrivals : [...availableProducts].reverse()).slice(0, 10);
 
   const heroEyebrow = settings?.homeHeroEyebrow?.trim() || "Beautiful home décor for Kenya";
-  const heroTitle = settings?.homeHeroTitle?.trim() || "Beautiful homes don't have to cost a fortune.";
+  const configuredHeroTitle = settings?.homeHeroTitle?.trim();
+  const heroTitle = (configuredHeroTitle || "Beautiful spaces don't have to cost a fortune.")
+    .replace(/beautiful homes/gi, "Beautiful spaces");
   const heroBody = settings?.homeHeroBody?.trim() || "Shop curated décor, greenery, mirrors, lighting and finishing pieces in a simpler, faster shopping experience.";
   const heroCtaLabel = settings?.homeHeroCtaLabel?.trim() || "Shop now";
   const heroImage = settings?.homeHeroImageUrl || featured?.heroImage;
@@ -106,6 +121,24 @@ export default function ShopLanding({
     }))
     .filter((section) => section.products.length > 0)
     .slice(0, 8);
+
+  const categoryCarouselItems: CategoryCarouselItem[] = [
+    {
+      id: "shop-by-look",
+      title: "Shop by Look",
+      href: "/shop-by-look",
+      imageUrl: heroImage || null,
+    },
+    ...navigation.categories.map((category) => {
+      const categoryProducts = productsForCategory(availableProducts, category);
+      return {
+        id: category.id,
+        title: category.title,
+        href: `/shop?category=${encodeURIComponent(category.slug)}`,
+        imageUrl: category.imageUrl || categoryProducts.find((product) => product.heroImage)?.heroImage || null,
+      };
+    }),
+  ];
 
   return (
     <div className="bg-[var(--paper)]">
@@ -150,7 +183,7 @@ export default function ShopLanding({
               />
             ) : (
               <div className="absolute inset-0 grid place-items-center px-8 text-center text-[var(--deep-green)]">
-                <p className="max-w-md text-3xl font-medium tracking-[-0.04em]">Curated pieces for considered Kenyan homes.</p>
+                <p className="max-w-md text-3xl font-medium tracking-[-0.04em]">Curated pieces for considered Kenyan spaces.</p>
               </div>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--charcoal)]/30 via-transparent to-transparent" />
@@ -170,59 +203,22 @@ export default function ShopLanding({
         </div>
       </section>
 
-      <section className="grid border-b hairline sm:grid-cols-2 lg:grid-cols-4">
-        {trustItems.map(({ Icon, title, description }) => (
-          <div key={title} className="flex gap-3 border-b hairline p-5 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0">
-            <Icon size={20} strokeWidth={1.5} className="shrink-0 text-[var(--deep-green)]" />
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</p>
-              <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">{description}</p>
-            </div>
-          </div>
-        ))}
-      </section>
-
       <section id="shop-by-category" className="border-b hairline px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
         <SectionHeading title="Shop by category" href="/shop" />
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
-          <div className="flex w-max gap-4 sm:gap-5">
-            {navigation.categories.map((category) => {
-              const categoryProducts = productsForCategory(availableProducts, category);
-              const image = category.imageUrl || categoryProducts.find((product) => product.heroImage)?.heroImage;
-              return (
-                <Link
-                  key={category.id}
-                  href={`/shop?category=${encodeURIComponent(category.slug)}`}
-                  className="group w-[112px] shrink-0 text-center sm:w-[132px]"
-                >
-                  <div className="relative mx-auto aspect-square w-full overflow-hidden rounded-full border hairline bg-[var(--paper-2)]">
-                    {image ? (
-                      <Image
-                        src={image}
-                        alt={category.title}
-                        fill
-                        unoptimized
-                        sizes="132px"
-                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 grid place-items-center px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]">
-                        {category.title}
-                      </div>
-                    )}
-                  </div>
-                  <p className="mt-3 text-[11px] font-semibold leading-snug">{category.title}</p>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+        <AutoCategoryCarousel items={categoryCarouselItems} />
       </section>
 
       {bestSellerRail.length > 0 && (
         <section className="border-b hairline px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
           <SectionHeading eyebrow="Popular right now" title="Best sellers" href="/shop?collection=best-sellers" />
           <ProductRail products={bestSellerRail} />
+        </section>
+      )}
+
+      {newArrivalRail.length > 0 && (
+        <section className="border-b hairline bg-[var(--paper-2)] px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
+          <SectionHeading eyebrow="Fresh for the home" title="New arrivals" href="/shop?collection=new-arrivals" />
+          <ProductRail products={newArrivalRail} />
         </section>
       )}
 
@@ -233,16 +229,27 @@ export default function ShopLanding({
             title={category.title}
             href={`/shop?category=${encodeURIComponent(category.slug)}`}
           />
-          <ProductRail products={categoryProducts} />
+          <ProductRail products={categoryProducts} compactOnMobile />
         </section>
       ))}
 
-      {newArrivalRail.length > 0 && (
-        <section className="border-b hairline bg-[var(--paper-2)] px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
-          <SectionHeading eyebrow="Fresh for the home" title="New arrivals" href="/shop?collection=new-arrivals" />
-          <ProductRail products={newArrivalRail} />
-        </section>
-      )}
+      <section className="border-b hairline bg-[var(--deep-green)] px-4 py-10 text-[var(--soft-cream)] sm:px-6 lg:px-10 lg:py-14">
+        <div className="grid items-center gap-6 lg:grid-cols-[1fr_auto]">
+          <div className="max-w-3xl">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">Coming soon</p>
+            <h2 className="mt-3 text-[clamp(2rem,5vw,3.8rem)] font-semibold tracking-[-0.05em]">Shop by Look</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
+              Curated room looks will bring individual Decor by Kasiwa pieces together. You will be able to buy the complete look or choose each element separately.
+            </p>
+          </div>
+          <Link
+            href="/shop-by-look"
+            className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--soft-cream)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]"
+          >
+            Preview the concept <ArrowRight size={14} />
+          </Link>
+        </div>
+      </section>
 
       <section className="grid border-b hairline sm:grid-cols-2 lg:grid-cols-5">
         {[
@@ -263,6 +270,18 @@ export default function ShopLanding({
             </div>
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
           </Link>
+        ))}
+      </section>
+
+      <section className="grid border-b hairline sm:grid-cols-2 lg:grid-cols-4">
+        {trustItems.map(({ Icon, title, description }) => (
+          <div key={title} className="flex gap-3 border-b hairline p-5 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0">
+            <Icon size={20} strokeWidth={1.5} className="shrink-0 text-[var(--deep-green)]" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</p>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">{description}</p>
+            </div>
+          </div>
         ))}
       </section>
     </div>

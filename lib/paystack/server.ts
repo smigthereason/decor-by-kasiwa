@@ -22,6 +22,8 @@ export type CheckoutCartLine = {
   productId: string;
   quantity: number;
   colour?: string;
+  size?: string;
+  variantId?: string;
 };
 
 type RawCheckoutProduct = {
@@ -32,6 +34,18 @@ type RawCheckoutProduct = {
   initialStock?: number;
   available?: boolean;
   category?: string;
+  variants?: Array<{
+    _key?: string;
+    _type?: string;
+    title?: string;
+    colour?: string;
+    size?: string;
+    sku?: string;
+    price?: number;
+    stockQuantity?: number;
+    image?: unknown;
+    [key: string]: unknown;
+  }>;
 };
 
 type PendingOrderLine = {
@@ -40,6 +54,8 @@ type PendingOrderLine = {
   name: string;
   category: string;
   finish?: string;
+  size?: string;
+  variantId?: string;
   quantity: number;
   unitPrice: number;
 };
@@ -109,6 +125,7 @@ export type VerifiedCheckoutOrder = {
     productId: string;
     name: string;
     finish?: string;
+    size?: string;
     quantity: number;
     unitPrice: number;
   }>;
@@ -156,9 +173,9 @@ function createOrderNumber(reference: string) {
   return reference;
 }
 
-function createLineKey(productId: string, finish: string | undefined, index: number) {
+function createLineKey(productId: string, finish: string | undefined, size: string | undefined, variantId: string | undefined, index: number) {
   return createHmac("sha256", "dbk-order-line")
-    .update(`${productId}|${finish || ""}|${index}`)
+    .update(`${productId}|${finish || ""}|${size || ""}|${variantId || ""}|${index}`)
     .digest("hex")
     .slice(0, 20);
 }
@@ -252,7 +269,8 @@ async function fetchCheckoutProducts(productIds: string[]) {
       price,
       initialStock,
       available,
-      "category": primaryCategory->title
+      "category": primaryCategory->title,
+      variants
     }`,
     { productIds },
     { cache: "no-store" },
@@ -262,24 +280,28 @@ async function fetchCheckoutProducts(productIds: string[]) {
 function normalizeCart(cart: CheckoutCartLine[]) {
   const normalized = new Map<
     string,
-    { productId: string; quantity: number; colour?: string }
+    { productId: string; quantity: number; colour?: string; size?: string; variantId?: string }
   >();
 
   cart.forEach((line) => {
     const productId = normalizeText(line.productId);
     const quantity = Number(line.quantity);
     const colour = normalizeText(line.colour) || undefined;
+    const size = normalizeText(line.size) || undefined;
+    const variantId = normalizeText(line.variantId) || undefined;
 
     if (!productId || !Number.isInteger(quantity) || quantity <= 0) {
       throw new Error("Your bag contains an invalid product quantity.");
     }
 
-    const key = `${productId}::${colour || ""}`;
+    const key = `${productId}::${variantId || ""}::${colour || ""}::${size || ""}`;
     const existing = normalized.get(key);
 
     normalized.set(key, {
       productId,
       colour,
+      size,
+      variantId,
       quantity: (existing?.quantity || 0) + quantity,
     });
   });
@@ -320,18 +342,64 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       );
     }
 
+    const variant = line.variantId
+      ? product.variants?.find((item) => item._key === line.variantId)
+      : product.variants?.find(
+          (item) =>
+            (!line.colour || item.colour === line.colour) &&
+            (!line.size || item.size === line.size),
+        );
+
+    if (line.variantId && !variant) {
+      throw new Error(`${product.name || "A product"} variant is no longer available.`);
+    }
+
+    if (
+      variant &&
+      typeof variant.stockQuantity === "number" &&
+      variant.stockQuantity < line.quantity
+    ) {
+      throw new Error(
+        `${product.name || "A product"} selected variant only has ${Math.max(variant.stockQuantity, 0)} unit(s) available.`,
+      );
+    }
+
     return {
-      _key: createLineKey(line.productId, line.colour, index),
+      _key: createLineKey(line.productId, line.colour, line.size, line.variantId, index),
       productId: product._id,
       name: product.name?.trim() || "Product",
       category: product.category?.trim() || "Uncategorised",
-      finish: line.colour,
+      finish: line.colour || variant?.colour,
+      size: line.size || variant?.size,
+      variantId: line.variantId || variant?._key,
       quantity: line.quantity,
-      unitPrice: product.price,
+      unitPrice: typeof variant?.price === "number" ? variant.price : product.price,
     };
   });
 
   return { lineItems, products };
+}
+
+function decrementVariantStock(
+  product: RawCheckoutProduct,
+  lines: PendingOrderLine[],
+) {
+  if (!product.variants?.length) return undefined;
+
+  let changed = false;
+  const nextVariants = product.variants.map((variant) => {
+    if (!variant._key || typeof variant.stockQuantity !== "number") return variant;
+
+    const soldQuantity = lines
+      .filter((line) => line.productId === product._id && line.variantId === variant._key)
+      .reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+
+    if (soldQuantity <= 0) return variant;
+    changed = true;
+    return { ...variant, stockQuantity: Math.max(0, variant.stockQuantity - soldQuantity) };
+  });
+
+  return changed ? nextVariants : undefined;
 }
 
 export async function initializePaystackCheckout({
@@ -405,6 +473,8 @@ export async function initializePaystackCheckout({
     deliveryFee,
     total,
     currency: CURRENCY,
+    salesChannel: "ONLINE",
+    fulfilmentType: "DELIVERY",
     paymentReference: reference,
     paymentProvider: "paystack",
     paymentChannel,
@@ -419,6 +489,8 @@ export async function initializePaystackCheckout({
       name: line.name,
       category: line.category,
       finish: line.finish,
+      size: line.size,
+      variantId: line.variantId,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
     })),
@@ -505,6 +577,8 @@ async function fetchPendingOrder(reference: string) {
         name,
         category,
         finish,
+        size,
+        variantId,
         quantity,
         unitPrice
       }
@@ -563,6 +637,7 @@ function toVerifiedOrder(
       productId: line.productId,
       name: line.name,
       finish: line.finish,
+      size: line.size,
       quantity: Number(line.quantity || 0),
       unitPrice: Number(line.unitPrice || 0),
     })),
@@ -652,26 +727,28 @@ export async function finalizePaystackPayment(reference: string) {
 
   const mutation = serverClient.transaction();
 
-  for (const line of order.lineItems || []) {
-    const product = productById.get(line.productId);
+  for (const product of liveProducts) {
+    const productLines = (order.lineItems || []).filter((line) => line.productId === product._id);
+    const soldQuantity = productLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
 
-    if (!product || typeof product.initialStock !== "number") {
+    if (soldQuantity <= 0 || typeof product.initialStock !== "number") {
       continue;
     }
 
-    const nextStock = Math.max(0, product.initialStock - line.quantity);
-
-    if (product.initialStock < line.quantity) {
+    const nextStock = Math.max(0, product.initialStock - soldQuantity);
+    if (product.initialStock < soldQuantity) {
       stockWarnings.push(
-        `${product.name || line.name}: paid quantity ${line.quantity}, available before finalisation ${product.initialStock}.`,
+        `${product.name || "Product"}: paid quantity ${soldQuantity}, available before finalisation ${product.initialStock}.`,
       );
     }
 
+    const nextVariants = decrementVariantStock(product, productLines);
     mutation.patch(product._id, (patch) =>
       patch
         .ifRevisionId(product._rev)
         .set({
           initialStock: nextStock,
+          ...(nextVariants ? { variants: nextVariants } : {}),
           ...(nextStock <= 0 ? { available: false } : {}),
         }),
     );

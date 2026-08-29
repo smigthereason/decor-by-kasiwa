@@ -48,17 +48,23 @@ type CommerceContextType = {
     productId: string,
     quantity: number,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) => boolean;
 
   updateQuantity: (
     productId: string,
     quantity: number,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) => void;
 
   removeFromCart: (
     productId: string,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) => void;
 
   toggleWishlist: (
@@ -87,11 +93,32 @@ function sameLine(
   line: CartLine,
   productId: string,
   colour?: string,
+  size?: string,
+  variantId?: string,
 ) {
   return (
     line.productId === productId &&
-    (line.colour || "") === (colour || "")
+    (line.colour || "") === (colour || "") &&
+    (line.size || "") === (size || "") &&
+    (line.variantId || "") === (variantId || "")
   );
+}
+
+function clampLineQuantity(
+  product: StoreProduct,
+  quantity: number,
+  variantId?: string,
+) {
+  const base = clampProductQuantity(product, quantity);
+  const variant = variantId
+    ? product.variants?.find((item) => item.id === variantId)
+    : undefined;
+
+  if (typeof variant?.stockQuantity === "number") {
+    return Math.max(0, Math.min(base, variant.stockQuantity));
+  }
+
+  return base;
 }
 
 export function CommerceProvider({
@@ -447,11 +474,14 @@ export function CommerceProvider({
               line.productId,
             );
 
+          const variantPrice = product?.variants?.find(
+            (variant) => variant.id === line.variantId,
+          )?.price;
+
           return (
             total +
             (product
-              ? product.price *
-                line.quantity
+              ? (variantPrice ?? product.price) * line.quantity
               : 0)
           );
         },
@@ -468,22 +498,26 @@ export function CommerceProvider({
     productId: string,
     quantity: number,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) {
     const product =
       productMap.get(productId);
 
+    const variant = variantId
+      ? product?.variants?.find((item) => item.id === variantId)
+      : undefined;
+
     if (
       !product ||
-      isProductSoldOut(product)
+      isProductSoldOut(product) ||
+      variant?.stockQuantity === 0
     ) {
       return false;
     }
 
-    const requested =
-      clampProductQuantity(
-        product,
-        quantity,
-      );
+    const requested = clampLineQuantity(product, quantity, variantId);
+    if (requested <= 0) return false;
 
     setCart((current) => {
       const existingIndex =
@@ -493,6 +527,8 @@ export function CommerceProvider({
               line,
               productId,
               colour,
+              size,
+              variantId,
             ),
         );
 
@@ -515,11 +551,11 @@ export function CommerceProvider({
             existingIndex
           ],
 
-          quantity:
-            clampProductQuantity(
-              product,
-              combinedQuantity,
-            ),
+          quantity: clampLineQuantity(
+            product,
+            combinedQuantity,
+            variantId,
+          ),
         };
 
         return updated;
@@ -532,6 +568,8 @@ export function CommerceProvider({
           quantity:
             requested,
           colour,
+          size,
+          variantId,
         },
       ];
     });
@@ -543,6 +581,8 @@ export function CommerceProvider({
     productId: string,
     quantity: number,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) {
     setCart((current) => {
       if (quantity <= 0) {
@@ -552,6 +592,8 @@ export function CommerceProvider({
               line,
               productId,
               colour,
+              size,
+              variantId,
             ),
         );
       }
@@ -571,15 +613,17 @@ export function CommerceProvider({
               line,
               productId,
               colour,
+              size,
+              variantId,
             ),
         );
       }
 
-      const safeQuantity =
-        clampProductQuantity(
-          product,
-          quantity,
-        );
+      const safeQuantity = clampLineQuantity(
+        product,
+        quantity,
+        variantId,
+      );
 
       return current.map(
         (line) =>
@@ -587,6 +631,8 @@ export function CommerceProvider({
             line,
             productId,
             colour,
+            size,
+            variantId,
           )
             ? {
                 ...line,
@@ -601,6 +647,8 @@ export function CommerceProvider({
   function removeFromCart(
     productId: string,
     colour?: string,
+    size?: string,
+    variantId?: string,
   ) {
     setCart((current) =>
       current.filter(
@@ -609,6 +657,8 @@ export function CommerceProvider({
             line,
             productId,
             colour,
+            size,
+            variantId,
           ),
       ),
     );
@@ -709,11 +759,14 @@ export function CommerceProvider({
               line.productId,
             );
 
+          const variantPrice = product?.variants?.find(
+            (variant) => variant.id === line.variantId,
+          )?.price;
+
           return (
             total +
             (product
-              ? product.price *
-                line.quantity
+              ? (variantPrice ?? product.price) * line.quantity
               : 0)
           );
         },

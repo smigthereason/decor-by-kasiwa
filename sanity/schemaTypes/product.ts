@@ -128,6 +128,37 @@ export const product = defineType({
     defineField({ name: "shortDescription", title: "Short description", type: "text", rows: 3, group: "details" }),
     defineField({ name: "description", title: "Full description", type: "text", rows: 6, group: "details" }),
     defineField({ name: "colours", title: "Colours", type: "array", group: "details", of: [{ type: "string" }] }),
+    defineField({
+      name: "variants",
+      title: "Product variants",
+      description: "Optional colour/size variants. Add an image to a variant so selecting that colour or size switches the customer-facing product image.",
+      type: "array",
+      group: "details",
+      of: [
+        {
+          type: "object",
+          fields: [
+            defineField({ name: "title", title: "Variant label", type: "string" }),
+            defineField({ name: "colour", title: "Colour", type: "string" }),
+            defineField({ name: "size", title: "Size", type: "string" }),
+            defineField({ name: "sku", title: "Variant SKU", type: "string" }),
+            defineField({ name: "price", title: "Variant price (KES)", type: "number", validation: (rule) => rule.min(1) }),
+            defineField({ name: "stockQuantity", title: "Variant stock", type: "number", validation: (rule) => rule.min(0) }),
+            defineField({ name: "image", title: "Variant image", type: "image", options: { hotspot: true } }),
+          ],
+          preview: {
+            select: { title: "title", colour: "colour", size: "size", media: "image" },
+            prepare({ title, colour, size, media }) {
+              return {
+                title: title || [colour, size].filter(Boolean).join(" · ") || "Variant",
+                subtitle: [colour, size].filter(Boolean).join(" · "),
+                media,
+              };
+            },
+          },
+        },
+      ],
+    }),
     defineField({ name: "materials", title: "Materials / finishes", type: "array", group: "details", of: [{ type: "string" }] }),
     defineField({ name: "dimensions", title: "Dimensions", type: "string", group: "details" }),
     defineField({ name: "careInstructions", title: "Care instructions", type: "text", rows: 4, group: "details" }),

@@ -31,7 +31,7 @@ export const commerceOrder = defineType({
       name: "customerEmail",
       title: "Customer Email",
       type: "string",
-      validation: (Rule) => Rule.required().email(),
+      validation: (Rule) => Rule.email(),
     }),
     defineField({
       name: "customerPhone",
@@ -169,6 +169,56 @@ export const commerceOrder = defineType({
       type: "string",
     }),
     defineField({
+      name: "salesChannel",
+      title: "Sales Channel",
+      type: "string",
+      initialValue: "ONLINE",
+      options: {
+        list: [
+          { title: "Online", value: "ONLINE" },
+          { title: "Point of Sale", value: "POS" },
+        ],
+      },
+    }),
+    defineField({
+      name: "fulfilmentType",
+      title: "Fulfilment Type",
+      type: "string",
+      options: {
+        list: [
+          { title: "Delivery", value: "DELIVERY" },
+          { title: "In-store handover", value: "IN_STORE" },
+        ],
+      },
+    }),
+    defineField({
+      name: "soldBy",
+      title: "Sold By",
+      type: "reference",
+      to: [{ type: "customerUser" }],
+    }),
+    defineField({
+      name: "soldByName",
+      title: "Sold By Name",
+      type: "string",
+    }),
+    defineField({
+      name: "soldByRole",
+      title: "Sold By Role",
+      type: "string",
+    }),
+    defineField({
+      name: "soldAt",
+      title: "Sold At",
+      type: "datetime",
+    }),
+    defineField({
+      name: "cashReceived",
+      title: "Cash Received",
+      type: "boolean",
+      initialValue: false,
+    }),
+    defineField({
       name: "dispatchedAt",
       title: "Dispatched At",
       type: "datetime",
@@ -259,7 +309,17 @@ export const commerceOrder = defineType({
             }),
             defineField({
               name: "finish",
-              title: "Finish",
+              title: "Finish / Colour",
+              type: "string",
+            }),
+            defineField({
+              name: "size",
+              title: "Size",
+              type: "string",
+            }),
+            defineField({
+              name: "variantId",
+              title: "Variant ID",
               type: "string",
             }),
             defineField({

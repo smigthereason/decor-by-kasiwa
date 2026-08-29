@@ -122,6 +122,12 @@ export async function getLiveOrders(): Promise<Order[]> {
       total,
       assignedStore,
       paymentReference,
+      salesChannel,
+      fulfilmentType,
+      soldByName,
+      soldByRole,
+      soldAt,
+      paymentChannel,
       dispatchedAt,
       dispatchedByName,
       deliveredAt,
@@ -132,6 +138,8 @@ export async function getLiveOrders(): Promise<Order[]> {
         name,
         category,
         finish,
+        size,
+        variantId,
         quantity,
         unitPrice
       }
@@ -313,16 +321,18 @@ function buildActivity({
   const events: ActivityEvent[] = [
     ...orders.slice(0, 6).map((order) => ({
       id: `order-${order.id}`,
-      timestamp: order.updatedAt || order.createdAt,
-      actor: order.dispatchedByName || order.deliveredByName || "Customer",
+      timestamp: order.soldAt || order.updatedAt || order.createdAt,
+      actor: order.soldByName || order.dispatchedByName || order.deliveredByName || "Customer",
       action:
-        order.status === "delivered"
-          ? "Order delivered"
-          : order.status === "dispatched"
-            ? "Order dispatched"
-            : order.paymentStatus === "paid"
-              ? "Paid order"
-              : "Order created",
+        order.salesChannel === "POS"
+          ? `POS ${order.paymentChannel === "cash" ? "cash" : "M-PESA"} sale`
+          : order.status === "delivered"
+            ? "Order delivered"
+            : order.status === "dispatched"
+              ? "Order dispatched"
+              : order.paymentStatus === "paid"
+                ? "Paid order"
+                : "Order created",
       detail: `${order.orderNumber} · ${order.customerName}`,
       type: "order" as const,
     })),

@@ -3,6 +3,17 @@ export type CatalogTag = {
   slug: string;
 };
 
+export type ProductVariant = {
+  id: string;
+  title?: string;
+  colour?: string;
+  size?: string;
+  sku?: string;
+  price?: number;
+  stockQuantity?: number | null;
+  imageUrl?: string;
+};
+
 export type StoreProduct = {
   id: string;
   slug: string;
@@ -33,6 +44,7 @@ export type StoreProduct = {
   stockQuantity?: number | null;
 
   colours: string[];
+  variants?: ProductVariant[];
 
   heroImage: string;
   images: string[];
@@ -79,6 +91,8 @@ export type CartLine = {
   productId: string;
   quantity: number;
   colour?: string;
+  size?: string;
+  variantId?: string;
 };
 
 export type DemoUser = {

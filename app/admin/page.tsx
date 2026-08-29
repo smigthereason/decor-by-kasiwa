@@ -43,6 +43,9 @@ export default function AdminOverviewPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/admin/pos" className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]">
+              <ShoppingBag size={13} /> POS
+            </Link>
             <Link href="/admin/products" className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]">
               <Boxes size={13} /> Products
             </Link>

@@ -29,7 +29,7 @@ export const siteSettings = defineType({
       title: "Hero title",
       type: "string",
       group: "home",
-      initialValue: "Beautiful homes don't have to cost a fortune.",
+      initialValue: "Beautiful spaces don't have to cost a fortune.",
     }),
     defineField({
       name: "homeHeroBody",

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -30,19 +30,80 @@ export default function ProductDetailClient({
   relatedProducts: StoreProduct[];
 }) {
   const { addToCart, toggleWishlist, isWishlisted, catalogueReady, catalogueError } = useCommerce();
+  const variants = product.variants || [];
+  const initialVariant = variants[0];
   const [quantity, setQuantity] = useState(1);
-  const [colour, setColour] = useState(product.colours[0] || "");
+  const [selectedVariantId, setSelectedVariantId] = useState(initialVariant?.id || "");
+  const [colour, setColour] = useState(initialVariant?.colour || product.colours[0] || "");
+  const [size, setSize] = useState(initialVariant?.size || "");
+  const [activeImage, setActiveImage] = useState(initialVariant?.imageUrl || product.images[0] || product.heroImage || "");
   const [added, setAdded] = useState(false);
   const [buyingNow, setBuyingNow] = useState(false);
   const wishlisted = isWishlisted(product.id);
-  const soldOut = isProductSoldOut(product);
-  const maximumQuantity = getMaximumPurchasableQuantity(product);
+  const selectedVariant = variants.find((variant) => variant.id === selectedVariantId);
+  const soldOut = isProductSoldOut(product) || selectedVariant?.stockQuantity === 0;
+  const productMaximumQuantity = getMaximumPurchasableQuantity(product);
+  const maximumQuantity =
+    typeof selectedVariant?.stockQuantity === "number"
+      ? productMaximumQuantity === null
+        ? selectedVariant.stockQuantity
+        : Math.min(productMaximumQuantity, selectedVariant.stockQuantity)
+      : productMaximumQuantity;
   const purchasingUnavailable = !catalogueReady || Boolean(catalogueError);
   const { rating, reviewCount } = getProductRating(product);
+  const displayPrice = selectedVariant?.price ?? product.price;
+  const colourOptions = useMemo(
+    () => Array.from(new Set([...(product.colours || []), ...variants.map((variant) => variant.colour).filter((value): value is string => Boolean(value))])),
+    [product.colours, variants],
+  );
+  const sizeOptions = useMemo(
+    () => Array.from(new Set(variants.map((variant) => variant.size).filter((value): value is string => Boolean(value)))),
+    [variants],
+  );
+  const productImages = useMemo(
+    () => Array.from(new Set([product.heroImage, ...product.images, ...variants.map((variant) => variant.imageUrl || "")].filter(Boolean))),
+    [product.heroImage, product.images, variants],
+  );
+
+  function selectVariant(variant: NonNullable<StoreProduct["variants"]>[number]) {
+    setSelectedVariantId(variant.id);
+    if (variant.colour) setColour(variant.colour);
+    if (variant.size) setSize(variant.size);
+    if (variant.imageUrl) setActiveImage(variant.imageUrl);
+    setQuantity(1);
+  }
+
+  function selectColour(nextColour: string) {
+    setColour(nextColour);
+    const matching =
+      variants.find((variant) => variant.colour === nextColour && (!size || variant.size === size)) ||
+      variants.find((variant) => variant.colour === nextColour);
+    if (matching) {
+      selectVariant(matching);
+    } else {
+      setSelectedVariantId("");
+      setSize("");
+      setQuantity(1);
+    }
+  }
+
+  function selectSize(nextSize: string) {
+    setSize(nextSize);
+    const matching =
+      variants.find((variant) => variant.size === nextSize && (!colour || variant.colour === colour)) ||
+      variants.find((variant) => variant.size === nextSize);
+    if (matching) selectVariant(matching);
+  }
+
+  function selectImage(image: string) {
+    setActiveImage(image);
+    const matching = variants.find((variant) => variant.imageUrl === image);
+    if (matching) selectVariant(matching);
+  }
 
   function handleAdd() {
     if (soldOut || purchasingUnavailable) return;
-    const addedToCart = addToCart(product.id, quantity, colour);
+    const addedToCart = addToCart(product.id, quantity, colour, size, selectedVariantId || undefined);
     if (!addedToCart) return;
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
@@ -50,7 +111,7 @@ export default function ProductDetailClient({
 
   function handleBuyNow() {
     if (soldOut || purchasingUnavailable) return;
-    const addedToCart = addToCart(product.id, quantity, colour);
+    const addedToCart = addToCart(product.id, quantity, colour, size, selectedVariantId || undefined);
     if (!addedToCart) return;
     setBuyingNow(true);
     window.setTimeout(() => {
@@ -94,7 +155,7 @@ export default function ProductDetailClient({
         <div className="grid flex-1 items-stretch lg:grid-cols-[1.35fr_0.65fr]">
           {/* LEFT COLUMN: IMAGES */}
           <div className="flex flex-col border-b hairline lg:border-b-0 lg:border-r">
-            {product.images.length > 0 ? (
+            {productImages.length > 0 ? (
               <div className="flex flex-col lg:flex-row gap-4 p-4 lg:p-6 lg:sticky lg:top-24 h-fit">
 
                 {/* Primary / Hero Image Container */}
@@ -105,7 +166,7 @@ export default function ProductDetailClient({
                   transition={{ duration: 0.5, ease: "easeOut" }}
                 >
                   <Image
-                    src={product.images[0]}
+                    src={activeImage || productImages[0]}
                     alt={`${product.name} - main view`}
                     fill
                     priority
@@ -123,15 +184,18 @@ export default function ProductDetailClient({
                 </motion.div>
 
                 {/* Side Thumbnail Rail (Horizontal on Mobile, Vertical Scroll on Desktop) */}
-                {product.images.slice(1).length > 0 && (
-                  <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto max-h-[75vh] scrollbar-none py-1">
-                    {product.images.slice(1).map((image, index) => (
-                      <motion.div
+                {productImages.filter((image) => image !== activeImage).length > 0 && (
+                  <div className="flex max-h-[75vh] gap-3 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:overflow-y-auto">
+                    {productImages.filter((image) => image !== activeImage).map((image, index) => (
+                      <motion.button
+                        type="button"
                         key={image}
-                        className="group relative flex-shrink-0 w-20 lg:w-24 aspect-[4/5] overflow-hidden rounded-xl bg-[var(--paper-2)] border border-[var(--line)] cursor-pointer transition-all duration-300 hover:border-[var(--deep-green)]"
+                        onClick={() => selectImage(image)}
+                        className="group relative aspect-[4/5] w-20 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-2)] transition-all duration-300 hover:border-[var(--deep-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deep-green)]/30 lg:w-24"
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: (index + 1) * 0.08, duration: 0.4 }}
+                        aria-label={`Show ${product.name} image ${index + 2}`}
                       >
                         <Image
                           src={image}
@@ -141,14 +205,7 @@ export default function ProductDetailClient({
                           sizes="100px"
                           unoptimized
                         />
-
-                        {/* Subtle Overlay */}
-                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-2">
-                          <span className="text-[10px] text-white font-medium backdrop-blur-sm px-2 py-0.5 rounded bg-black/40">
-                            {index + 2}
-                          </span>
-                        </div>
-                      </motion.div>
+                      </motion.button>
                     ))}
                   </div>
                 )}
@@ -206,7 +263,7 @@ export default function ProductDetailClient({
 
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-b hairline pb-5">
                 <div>
-                  <p className="text-xl font-medium">{formatMoney(product.price)}</p>
+                  <p className="text-xl font-medium">{formatMoney(displayPrice)}</p>
                   {product.demoPrice && (
                     <p className="mt-1 text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">
                       Prototype price — replace from Sanity before launch
@@ -228,23 +285,58 @@ export default function ProductDetailClient({
                 {product.description}
               </p>
 
-              {product.colours.length > 0 && (
+              {colourOptions.length > 0 && (
                 <div className="mt-7">
                   <div className="mb-3 flex justify-between text-[10px] uppercase tracking-[0.08em]">
                     <span>Finish / colour</span>
                     <span className="text-[var(--muted)]">{colour}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {product.colours.map((item) => (
+                    {colourOptions.map((item) => {
+                      const variantImage = variants.find((variant) => variant.colour === item)?.imageUrl;
+                      return (
+                        <button
+                          type="button"
+                          key={item}
+                          onClick={() => selectColour(item)}
+                          className={`focus-ring inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] uppercase tracking-[0.08em] transition-colors ${
+                            colour === item
+                              ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
+                              : "hairline"
+                          }`}
+                          aria-pressed={colour === item}
+                        >
+                          {variantImage && (
+                            <span className="relative size-6 overflow-hidden rounded-full border border-current/20 bg-[var(--paper-2)]">
+                              <Image src={variantImage} alt="" fill unoptimized sizes="24px" className="object-cover" />
+                            </span>
+                          )}
+                          {item}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {sizeOptions.length > 0 && (
+                <div className="mt-6">
+                  <div className="mb-3 flex justify-between text-[10px] uppercase tracking-[0.08em]">
+                    <span>Size</span>
+                    <span className="text-[var(--muted)]">{size}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {sizeOptions.map((item) => (
                       <button
                         type="button"
                         key={item}
-                        onClick={() => setColour(item)}
-                        className={`focus-ring rounded-full border px-4 py-2 text-[10px] uppercase tracking-[0.08em] transition-colors ${
-                          colour === item
+                        onClick={() => selectSize(item)}
+                        className={`focus-ring min-w-12 rounded-full border px-4 py-2 text-[10px] uppercase tracking-[0.08em] transition-colors ${
+                          size === item
                             ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
                             : "hairline"
                         }`}
+                        aria-pressed={size === item}
                       >
                         {item}
                       </button>

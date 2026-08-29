@@ -84,9 +84,52 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
             <p className="mt-4 text-sm font-medium">No products found</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left">
+          <>
+            <div className="grid gap-3 md:hidden">
+              {filteredProducts.map((product) => (
+                <article key={product.id} className="min-w-0 rounded-xl border hairline bg-[var(--paper)] p-4">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="size-14 shrink-0 rounded-lg border hairline bg-[var(--paper-2)] bg-cover bg-center"
+                      style={product.image ? { backgroundImage: `url("${product.image}")` } : undefined}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{product.name}</p>
+                          <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{product.sku} · {product.category}</p>
+                        </div>
+                        <Link
+                          href={`${basePath}/${encodeURIComponent(product.id)}`}
+                          className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                          aria-label={`Open ${product.name}`}
+                        >
+                          <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                        </Link>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <StatusPill value={stockStatus(product)} />
+                        <span className="text-[10px] text-[var(--muted)]">{product.onHand} on hand</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 border-t hairline pt-3">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Location</p>
+                      <p className="mt-1 truncate text-xs font-medium">{product.location}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Retail price</p>
+                      <p className="mt-1 text-xs font-semibold">{formatKes(product.retailPrice)}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-xl border hairline bg-[var(--paper)] md:block">
+              <div className="max-w-full overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left">
                 <thead>
                   <tr className="border-b hairline">
                     {["Product", "SKU", "Category", "Stock", "Available", "Price", ""].map((heading) => (
@@ -126,9 +169,10 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </section>
     </div>

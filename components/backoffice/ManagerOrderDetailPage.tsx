@@ -49,8 +49,9 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
   }
 
   const liveOrderId = order.id;
-  const dispatched = Boolean(order.dispatchedAt) || ["dispatched", "delivered"].includes(order.status);
-  const canDispatch = order.paymentStatus === "paid" && !dispatched && order.status !== "cancelled";
+  const isPosSale = order.salesChannel === "POS";
+  const dispatched = !isPosSale && (Boolean(order.dispatchedAt) || ["dispatched", "delivered"].includes(order.status));
+  const canDispatch = !isPosSale && order.paymentStatus === "paid" && !dispatched && order.status !== "cancelled";
   const availableStatuses = mode === "admin" ? adminStatuses : storeStatuses;
 
   async function update(values: { status?: OrderStatus; paymentStatus?: PaymentStatus }) {
@@ -112,7 +113,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               <div key={line.id} className="flex items-start justify-between gap-4 py-4">
                 <div>
                   <p className="text-sm font-semibold">{line.name}</p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">{line.category}{line.finish ? ` · ${line.finish}` : ""} · Qty {line.quantity}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">{line.category}{line.finish ? ` · ${line.finish}` : ""}{line.size ? ` · ${line.size}` : ""} · Qty {line.quantity}</p>
                 </div>
                 <p className="text-sm font-semibold">{formatKes(line.unitPrice * line.quantity)}</p>
               </div>
@@ -137,7 +138,20 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
           <section className="rounded-xl border hairline bg-[var(--paper)] p-5">
             <p className="kicker text-[var(--muted)]">Workflow</p>
 
-            {!dispatched && (
+            {isPosSale && (
+              <div className="mt-4 rounded-lg border border-[var(--deep-green)]/15 bg-[var(--deep-green)]/[0.04] p-4">
+                <p className="text-xs font-semibold text-[var(--deep-green)]">Physical POS sale</p>
+                <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
+                  Sold by {order.soldByName || "staff"}{order.soldByRole ? ` · ${order.soldByRole.replaceAll("_", " ")}` : ""}
+                  {order.soldAt ? ` · ${formatDateTime(order.soldAt)}` : ""}.
+                </p>
+                <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
+                  Payment channel: {order.paymentChannel === "cash" ? "Cash" : order.paymentChannel || "POS"}. This sale is fulfilled in-store and is not part of the delivery dispatch workflow.
+                </p>
+              </div>
+            )}
+
+            {!isPosSale && !dispatched && (
               <>
                 <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Preparation status</label>
                 <div className="relative mt-2 w-full">
@@ -154,7 +168,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </>
             )}
 
-            {mode === "admin" && !dispatched && (
+            {mode === "admin" && !isPosSale && !dispatched && (
               <>
                 <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Payment status</label>
                 <div className="relative mt-2 w-full">
@@ -171,7 +185,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </>
             )}
 
-            {!dispatched ? (
+            {!isPosSale && !dispatched ? (
               <button
                 type="button"
                 disabled={saving || !canDispatch}
@@ -180,7 +194,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               >
                 <Send size={14} /> {saving ? "Working…" : "Dispatch for delivery"}
               </button>
-            ) : (
+            ) : !isPosSale ? (
               <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-green-900">
                 <p className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck size={15} /> Dispatched once</p>
                 <p className="mt-2 text-[10px] leading-5">
@@ -188,9 +202,9 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                 </p>
                 <p className="mt-2 text-[10px]">This action is locked so the same order cannot be dispatched twice.</p>
               </div>
-            )}
+            ) : null}
 
-            {!canDispatch && !dispatched && order.paymentStatus !== "paid" && (
+            {!isPosSale && !canDispatch && !dispatched && order.paymentStatus !== "paid" && (
               <p className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]"><Check size={12} /> Dispatch becomes available after payment is confirmed.</p>
             )}
           </section>

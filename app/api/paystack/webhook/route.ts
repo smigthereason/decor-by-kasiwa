@@ -4,6 +4,7 @@ import {
   finalizePaystackPayment,
   verifyPaystackWebhookSignature,
 } from "@/lib/paystack/server";
+import { verifyPosMpesaSale } from "@/lib/pos/server";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    await finalizePaystackPayment(reference);
+    if (reference.startsWith("DBK-POS-")) {
+      await verifyPosMpesaSale(reference);
+    } else {
+      await finalizePaystackPayment(reference);
+    }
 
     return NextResponse.json({
       received: true,
