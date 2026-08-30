@@ -91,6 +91,23 @@ type PaystackChargeResponse = {
     reference?: string;
     status?: string;
     display_text?: string;
+    message?: string;
+    gateway_response?: string | null;
+  };
+};
+
+type PaystackChargeStatusResponse = {
+  status: boolean;
+  message: string;
+  data?: {
+    id?: number;
+    status?: string;
+    reference?: string;
+    amount?: number;
+    currency?: string;
+    paid_at?: string | null;
+    gateway_response?: string | null;
+    message?: string;
   };
 };
 
@@ -155,11 +172,30 @@ async function paystackRequest<T>(path: string, init: RequestInit): Promise<T> {
     },
   });
 
-  const payload = (await response.json()) as T & { message?: string };
+  const payload = (await response.json()) as T & {
+    message?: string;
+    code?: string;
+    data?: {
+      message?: string;
+      gateway_response?: string | null;
+    };
+  };
+
   if (!response.ok) {
-    throw new Error(payload.message || `Paystack request failed with HTTP ${response.status}.`);
+    const detail =
+      cleanText(payload.data?.message) ||
+      cleanText(payload.data?.gateway_response) ||
+      cleanText(payload.message) ||
+      `Paystack request failed with HTTP ${response.status}.`;
+
+    throw new Error(`Paystack M-PESA: ${detail}`);
   }
+
   return payload;
+}
+
+function isPaystackTestMode() {
+  return getPaystackSecret().startsWith("sk_test_");
 }
 
 function normalizeKenyanPhone(value: string) {
@@ -172,6 +208,23 @@ function normalizeKenyanPhone(value: string) {
 
 function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function customerDetails(input: PosSaleInput, options?: { mpesa?: boolean }) {
+  const name = cleanText(input.customerName);
+  if (!name) throw new Error("Customer name is required.");
+
+  const rawPhone = cleanText(input.customerPhone);
+  if (!rawPhone) throw new Error("Customer phone is required.");
+
+  const email = cleanText(input.customerEmail).toLowerCase();
+  if (email && !isEmail(email)) throw new Error("Enter a valid customer email or leave it blank.");
+
+  return {
+    name,
+    email,
+    phone: options?.mpesa ? normalizeKenyanPhone(rawPhone) : rawPhone,
+  };
 }
 
 async function fetchProducts(productIds: string[]) {
@@ -350,6 +403,7 @@ function summary(order: PosOrder) {
 
 export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) {
   if (!input.cashConfirmed) throw new Error("Confirm that cash was received before completing the sale.");
+  const customer = customerDetails(input);
 
   const reference = referenceFor(input.requestId);
   const existing = await fetchPosOrder(reference);
@@ -381,9 +435,9 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
     _id: orderId,
     _type: "commerceOrder",
     orderNumber: reference,
-    customerName: cleanText(input.customerName) || "Walk-in customer",
-    customerEmail: cleanText(input.customerEmail).toLowerCase() || undefined,
-    customerPhone: cleanText(input.customerPhone) || undefined,
+    customerName: customer.name,
+    customerEmail: customer.email || undefined,
+    customerPhone: customer.phone,
     deliveryLocation: "In-store purchase",
     createdAt: now,
     updatedAt: now,
@@ -414,11 +468,16 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
 }
 
 export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller) {
-  const customerEmail = cleanText(input.customerEmail).toLowerCase();
-  if (customerEmail && !isEmail(customerEmail)) throw new Error("Enter a valid customer email or leave it blank.");
-  const paystackEmail = customerEmail || seller.email;
+  const customer = customerDetails(input, { mpesa: true });
+  const paystackEmail = customer.email || seller.email;
   if (!isEmail(paystackEmail)) throw new Error("A valid staff email is required to initiate the M-PESA charge.");
-  const phone = normalizeKenyanPhone(cleanText(input.customerPhone));
+
+  const testMode = isPaystackTestMode();
+  if (testMode && customer.phone !== "+254710000000") {
+    throw new Error(
+      "Paystack test mode only simulates Kenyan M-PESA with +254 710 000 000. Use that test number now; real customer STK pushes require live Paystack keys.",
+    );
+  }
 
   const reference = referenceFor(input.requestId);
   const existing = await fetchPosOrder(reference);
@@ -438,9 +497,9 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
     _id: orderId,
     _type: "commerceOrder",
     orderNumber: reference,
-    customerName: cleanText(input.customerName) || "Walk-in customer",
-    customerEmail: customerEmail || undefined,
-    customerPhone: phone,
+    customerName: customer.name,
+    customerEmail: customer.email || undefined,
+    customerPhone: customer.phone,
     deliveryLocation: "In-store purchase",
     createdAt: now,
     updatedAt: now,
@@ -471,7 +530,7 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
         amount: String(Math.round(total * 100)),
         currency: CURRENCY,
         reference,
-        mobile_money: { phone, provider: "mpesa" },
+        mobile_money: { phone: customer.phone, provider: "mpesa" },
         metadata: {
           channel: "POS",
           sold_by: seller.name,
@@ -495,6 +554,7 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
       soldByName: seller.name,
       soldAt: now,
       displayText: payload.data.display_text || "Ask the customer to complete the M-PESA prompt on their phone.",
+      testMode,
     };
   } catch (cause) {
     await serverClient.patch(orderId).set({
@@ -515,13 +575,43 @@ export async function verifyPosMpesaSale(reference: string) {
   if (order.paymentStatus === "paid") return { state: "paid" as const, order: summary(order) };
   if (order.paymentStatus === "failed") return { state: "failed" as const, order: summary(order), message: "Payment failed." };
 
-  const payload = await paystackRequest<PaystackVerifyResponse>(
+  const charge = await paystackRequest<PaystackChargeStatusResponse>(
+    `/charge/${encodeURIComponent(reference)}`,
+    { method: "GET" },
+  );
+
+  if (!charge.status || !charge.data) throw new Error(charge.message || "Unable to check the M-PESA charge.");
+  const chargeStatus = cleanText(charge.data.status).toLowerCase();
+
+  if (["failed", "abandoned", "reversed"].includes(chargeStatus)) {
+    const reason = cleanText(charge.data.gateway_response) || cleanText(charge.data.message) || `Paystack status: ${chargeStatus}`;
+    await serverClient.patch(order._id).ifRevisionId(order._rev).set({
+      paymentStatus: "failed",
+      status: "cancelled",
+      failureReason: reason,
+      updatedAt: new Date().toISOString(),
+    }).commit();
+    const failed = await fetchPosOrder(reference);
+    return { state: "failed" as const, order: failed ? summary(failed) : summary(order), message: reason };
+  }
+
+  if (chargeStatus !== "success") {
+    return {
+      state: "pending" as const,
+      order: summary(order),
+      message: cleanText(charge.data.message) || "Waiting for the customer to approve the M-PESA STK prompt.",
+    };
+  }
+
+  // Once the mobile-money charge reports success, verify the final transaction
+  // before changing stock or marking the POS order as paid.
+  const verified = await paystackRequest<PaystackVerifyResponse>(
     `/transaction/verify/${encodeURIComponent(reference)}`,
     { method: "GET" },
   );
 
-  if (!payload.status || !payload.data) throw new Error(payload.message || "Unable to verify M-PESA payment.");
-  const payment = payload.data;
+  if (!verified.status || !verified.data) throw new Error(verified.message || "Unable to verify M-PESA payment.");
+  const payment = verified.data;
   const expectedAmount = Math.round(Number(order.total || 0) * 100);
 
   if (payment.reference !== reference || payment.currency !== CURRENCY || Number(payment.amount) !== expectedAmount) {
@@ -529,21 +619,10 @@ export async function verifyPosMpesaSale(reference: string) {
   }
 
   if (payment.status !== "success") {
-    if (["failed", "abandoned", "reversed"].includes(payment.status)) {
-      await serverClient.patch(order._id).ifRevisionId(order._rev).set({
-        paymentStatus: "failed",
-        status: "cancelled",
-        failureReason: payment.gateway_response || `Paystack status: ${payment.status}`,
-        updatedAt: new Date().toISOString(),
-      }).commit();
-      const failed = await fetchPosOrder(reference);
-      return { state: "failed" as const, order: failed ? summary(failed) : summary(order), message: payment.gateway_response || "Payment failed." };
-    }
-
     return {
       state: "pending" as const,
       order: summary(order),
-      message: "Waiting for the customer to approve the M-PESA STK prompt.",
+      message: "M-PESA charge is complete but transaction verification is still pending.",
     };
   }
 

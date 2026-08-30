@@ -48,7 +48,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
       <Link
         href="/wishlist"
         aria-label="Open saved items"
-        className="relative grid size-[34px] place-items-center rounded-full bg-white/10 text-white transition-transform hover:scale-[1.05] sm:size-10"
+        className="relative hidden size-[34px] place-items-center rounded-full bg-white/10 text-white transition-transform hover:scale-[1.05] sm:grid sm:size-10"
       >
         <Heart size={18} strokeWidth={1.45} className="sm:h-5 sm:w-5" />
         {wishlist.length > 0 && (
@@ -78,20 +78,20 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
         aria-label={user ? `${accountLabel} — signed in as ${user.name}` : "Sign in or create account"}
         title={user ? `Signed in as ${user.name}` : "Sign in"}
         className={[
-          "relative grid size-[34px] place-items-center",
-          "rounded-full transition-all hover:scale-[1.05]",
+          "relative z-10 grid size-[34px] shrink-0 place-items-center",
+          "rounded-full border transition-all hover:scale-[1.05]",
           "sm:size-10",
           "lg:hidden",
           user
-            ? "bg-[var(--soft-cream)] text-[var(--deep-green)]"
-            : "bg-white/10 text-white",
+            ? "border-white/70 bg-white text-[var(--deep-green)] shadow-sm"
+            : "border-white/10 bg-white/10 text-white",
         ].join(" ")}
       >
         <CircleUserRound size={19} strokeWidth={1.35} className="sm:h-5 sm:w-5" />
         {user && (
           <span
             aria-hidden="true"
-            className="absolute bottom-[1px] right-[1px] size-[8px] rounded-full border-2 border-[var(--deep-green)] bg-[var(--soft-cream)] sm:bottom-[2px] sm:right-[2px]"
+            className="absolute bottom-[1px] right-[1px] size-[8px] rounded-full border-2 border-[var(--deep-green)] bg-[var(--brand-gold)] sm:bottom-[2px] sm:right-[2px]"
           />
         )}
       </Link>

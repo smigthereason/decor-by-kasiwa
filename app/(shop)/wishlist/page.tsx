@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Heart, ShoppingBag, LockKeyhole, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Heart, ShoppingCart, LockKeyhole, Trash2 } from "lucide-react";
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import { formatMoney } from "@/lib/money";
 import { isProductSoldOut } from "@/lib/catalogue";
@@ -199,8 +199,8 @@ export default function WishlistPage() {
                     disabled={soldOut}
                     className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    <ShoppingBag size={12} />
-                    <span>{soldOut ? "Out of stock" : "Add to Bag"}</span>
+                    <ShoppingCart size={12} />
+                    <span>{soldOut ? "Out of stock" : "Add to Cart"}</span>
                   </button>
                   <button
                     type="button"

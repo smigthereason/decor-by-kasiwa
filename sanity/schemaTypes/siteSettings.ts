@@ -22,7 +22,7 @@ export const siteSettings = defineType({
       title: "Hero eyebrow",
       type: "string",
       group: "home",
-      initialValue: "Beautiful home décor for Kenya",
+      initialValue: "Beautiful spaces decor",
     }),
     defineField({
       name: "homeHeroTitle",

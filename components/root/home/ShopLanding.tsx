@@ -33,10 +33,8 @@ function productsForCategory(products: StoreProduct[], category: ShopCategory) {
 
 function ProductRail({
   products,
-  compactOnMobile = false,
 }: {
   products: StoreProduct[];
-  compactOnMobile?: boolean;
 }) {
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
@@ -44,13 +42,9 @@ function ProductRail({
         {products.map((product) => (
           <div
             key={product.id}
-            className={
-              compactOnMobile
-                ? "w-[43vw] min-w-[156px] max-w-[205px] shrink-0 sm:w-[240px] sm:max-w-[240px] lg:w-[310px] lg:max-w-[310px]"
-                : "w-[72vw] max-w-[280px] shrink-0 sm:w-[300px] lg:w-[310px]"
-            }
+            className="w-[38vw] min-w-[132px] max-w-[156px] shrink-0 sm:w-[240px] sm:max-w-[240px] lg:w-[290px] lg:max-w-[290px]"
           >
-            <ProductCard product={product} />
+            <ProductCard product={product} homeCompact />
           </div>
         ))}
       </div>
@@ -68,10 +62,10 @@ function SectionHeading({
   href: string;
 }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-5 sm:mb-7">
+    <div className="mb-3 flex items-end justify-between gap-4 sm:mb-7">
       <div>
         {eyebrow && <p className="kicker text-[var(--muted)]">{eyebrow}</p>}
-        <h2 className="mt-2 text-[clamp(1.7rem,4vw,2.8rem)] font-semibold tracking-[-0.045em]">
+        <h2 className="mt-1.5 text-[clamp(1.35rem,4vw,2.8rem)] font-semibold tracking-[-0.045em] sm:mt-2">
           {title}
         </h2>
       </div>
@@ -106,7 +100,7 @@ export default function ShopLanding({
   const newArrivals = availableProducts.filter((product) => product.newArrival);
   const newArrivalRail = (newArrivals.length ? newArrivals : [...availableProducts].reverse()).slice(0, 10);
 
-  const heroEyebrow = settings?.homeHeroEyebrow?.trim() || "Beautiful home décor for Kenya";
+  const heroEyebrow = settings?.homeHeroEyebrow?.trim() || "Beautiful spaces decor";
   const configuredHeroTitle = settings?.homeHeroTitle?.trim();
   const heroTitle = (configuredHeroTitle || "Beautiful spaces don't have to cost a fortune.")
     .replace(/beautiful homes/gi, "Beautiful spaces");
@@ -123,12 +117,8 @@ export default function ShopLanding({
     .slice(0, 8);
 
   const categoryCarouselItems: CategoryCarouselItem[] = [
-    {
-      id: "shop-by-look",
-      title: "Shop by Look",
-      href: "/shop-by-look",
-      imageUrl: heroImage || null,
-    },
+    // Shop by Look is intentionally hidden for now. Re-add it here when the
+    // curated-look experience is ready to be shown to customers.
     ...navigation.categories.map((category) => {
       const categoryProducts = productsForCategory(availableProducts, category);
       return {
@@ -209,47 +199,31 @@ export default function ShopLanding({
       </section>
 
       {bestSellerRail.length > 0 && (
-        <section className="border-b hairline px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
+        <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
           <SectionHeading eyebrow="Popular right now" title="Best sellers" href="/shop?collection=best-sellers" />
           <ProductRail products={bestSellerRail} />
         </section>
       )}
 
       {newArrivalRail.length > 0 && (
-        <section className="border-b hairline bg-[var(--paper-2)] px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
+        <section className="border-b hairline bg-[var(--paper-2)] px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
           <SectionHeading eyebrow="Fresh for the home" title="New arrivals" href="/shop?collection=new-arrivals" />
           <ProductRail products={newArrivalRail} />
         </section>
       )}
 
       {categorySections.map(({ category, products: categoryProducts }) => (
-        <section key={category.id} className="border-b hairline px-4 py-9 sm:px-6 lg:px-10 lg:py-12">
+        <section key={category.id} className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
           <SectionHeading
             eyebrow="Shop the collection"
             title={category.title}
             href={`/shop?category=${encodeURIComponent(category.slug)}`}
           />
-          <ProductRail products={categoryProducts} compactOnMobile />
+          <ProductRail products={categoryProducts} />
         </section>
       ))}
 
-      <section className="border-b hairline bg-[var(--deep-green)] px-4 py-10 text-[var(--soft-cream)] sm:px-6 lg:px-10 lg:py-14">
-        <div className="grid items-center gap-6 lg:grid-cols-[1fr_auto]">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">Coming soon</p>
-            <h2 className="mt-3 text-[clamp(2rem,5vw,3.8rem)] font-semibold tracking-[-0.05em]">Shop by Look</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70">
-              Curated room looks will bring individual Decor by Kasiwa pieces together. You will be able to buy the complete look or choose each element separately.
-            </p>
-          </div>
-          <Link
-            href="/shop-by-look"
-            className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--soft-cream)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]"
-          >
-            Preview the concept <ArrowRight size={14} />
-          </Link>
-        </div>
-      </section>
+      {/* Shop by Look is intentionally hidden until the client is ready to resume it. */}
 
       <section className="grid border-b hairline sm:grid-cols-2 lg:grid-cols-5">
         {[

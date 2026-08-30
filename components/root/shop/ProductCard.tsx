@@ -47,7 +47,13 @@ function getColorHex(colourName: string): string {
   return colorMap[colourName.toLowerCase()] || "#CCCCCC";
 }
 
-export default function ProductCard({ product }: { product: StoreProduct }) {
+export default function ProductCard({
+  product,
+  homeCompact = false,
+}: {
+  product: StoreProduct;
+  homeCompact?: boolean;
+}) {
   const soldOut = isProductSoldOut(product);
   const { rating, reviewCount } = getProductRating(product);
   const displayColours = Array.from(
@@ -63,7 +69,12 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
       className="group flex flex-col overflow-hidden rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] transition-all hover:border-[var(--ink)]/30 hover:shadow-lg"
     >
       {/* PRODUCT IMAGE */}
-      <div className="relative aspect-[4/5] overflow-hidden bg-[var(--paper-2)]">
+      <div
+        className={[
+          "relative overflow-hidden bg-[var(--paper-2)]",
+          homeCompact ? "aspect-square sm:aspect-[4/5]" : "aspect-[4/5]",
+        ].join(" ")}
+      >
         {product.heroImage ? (
           <Image
             src={product.heroImage}
@@ -83,15 +94,19 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
           </div>
         )}
 
-        {/* CATEGORY BADGE */}
-        <span className="absolute left-3 top-3 rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
-          {product.category === "Decor" ? "Décor" : product.category}
-        </span>
+        {!homeCompact && (
+          <>
+            {/* CATEGORY BADGE */}
+            <span className="absolute left-3 top-3 rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
+              {product.category === "Decor" ? "Décor" : product.category}
+            </span>
 
-        {/* QUICK VIEW INDICATOR */}
-        <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-[var(--paper)]/90 opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
-          <ArrowRight size={14} className="text-[var(--ink)]" />
-        </span>
+            {/* QUICK VIEW INDICATOR */}
+            <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-[var(--paper)]/90 opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
+              <ArrowRight size={14} className="text-[var(--ink)]" />
+            </span>
+          </>
+        )}
 
         {soldOut && (
           <span className="absolute bottom-3 left-3 rounded-full bg-[var(--charcoal)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--soft-cream)]">
@@ -101,30 +116,37 @@ export default function ProductCard({ product }: { product: StoreProduct }) {
       </div>
 
       {/* PRODUCT DETAILS */}
-      <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <h3 className="text-sm font-medium leading-snug tracking-[-0.02em] text-[var(--ink)] group-hover:underline group-hover:underline-offset-4">
+      <div className={homeCompact ? "flex flex-1 flex-col p-2.5 sm:p-4" : "flex flex-1 flex-col p-4 sm:p-5"}>
+        <h3
+          className={[
+            "font-medium leading-snug tracking-[-0.02em] text-[var(--ink)] group-hover:underline group-hover:underline-offset-4",
+            homeCompact ? "line-clamp-2 text-[12px] sm:text-sm" : "text-sm",
+          ].join(" ")}
+        >
           {product.name}
         </h3>
 
-        <div className="mt-2 flex items-center gap-1.5" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
-          <Star size={13} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
+        <div className={homeCompact ? "mt-1.5 flex items-center gap-1" : "mt-2 flex items-center gap-1.5"} aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+          <Star size={homeCompact ? 11 : 13} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
           <span className="text-[11px] font-semibold text-[var(--ink)]">{rating.toFixed(1)}</span>
           <span className="text-[10px] text-[var(--muted)]">/ 5</span>
-          {typeof reviewCount === "number" && (
+          {!homeCompact && typeof reviewCount === "number" && (
             <span className="text-[10px] text-[var(--muted)]">({reviewCount})</span>
           )}
         </div>
 
-        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
-          {product.description}
-        </p>
+        {!homeCompact && (
+          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
+            {product.description}
+          </p>
+        )}
 
-        <div className="mt-auto flex items-center justify-between pt-4">
-          <span className="text-sm font-semibold text-[var(--ink)]">
+        <div className={homeCompact ? "mt-auto flex items-center justify-between pt-2" : "mt-auto flex items-center justify-between pt-4"}>
+          <span className={homeCompact ? "text-xs font-semibold text-[var(--ink)]" : "text-sm font-semibold text-[var(--ink)]"}>
             {formatMoney(product.price)}
           </span>
 
-          {displayColours.length > 0 && (
+          {!homeCompact && displayColours.length > 0 && (
             <div className="flex items-center gap-1.5">
               {displayColours.slice(0, 3).map((colour) => (
                 <span

@@ -387,15 +387,15 @@ export default function ProductDetailClient({
                   {catalogueError ? (
                     <>Catalogue unavailable</>
                   ) : !catalogueReady ? (
-                    <>Preparing bag…</>
+                    <>Preparing cart…</>
                   ) : soldOut ? (
                     <>Out of stock</>
                   ) : added ? (
                     <>
-                      <Check size={14} /> Added to bag
+                      <Check size={14} /> Added to cart
                     </>
                   ) : (
-                    <>Add to bag <ArrowRight size={14} className="text-soft-cream" /></>
+                    <>Add to cart <ArrowRight size={14} className="text-soft-cream" /></>
                   )}
                 </button>
 

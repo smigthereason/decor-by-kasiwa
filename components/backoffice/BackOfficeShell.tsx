@@ -134,7 +134,7 @@ export default function BackOfficeShell({
   }
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[var(--paper-2)] text-[var(--ink)]">
+    <div className="min-h-screen w-full max-w-full bg-[var(--paper-2)] text-[var(--ink)] lg:h-screen lg:overflow-hidden">
       <header className="sticky top-0 z-50 border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] lg:hidden">
         <div className="flex items-center justify-between px-4 py-4">
           <Link href={rootHref} className="flex items-center gap-3">
@@ -235,9 +235,9 @@ export default function BackOfficeShell({
         )}
       </AnimatePresence>
 
-      <div className="w-full max-w-full lg:grid lg:min-h-screen lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-[var(--ink)]/[0.09] bg-[var(--deep-green)] text-[var(--paper)] lg:block">
-          <div className="sticky top-0 flex min-h-screen flex-col px-4 py-5">
+      <div className="w-full max-w-full lg:h-screen lg:pl-[248px]">
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] border-r border-[var(--ink)]/[0.09] bg-[var(--deep-green)] text-[var(--paper)] lg:block">
+          <div className="flex h-full min-h-0 flex-col px-4 py-5">
             <Link href={rootHref} className="block pb-5">
               <Image src={Logo} alt="Decor by Kasiwa" width={260} height={130} priority className="h-auto w-[160px] brightness-0 invert" />
               <div className="mt-5 flex items-center gap-3">
@@ -246,7 +246,7 @@ export default function BackOfficeShell({
               </div>
             </Link>
 
-            <nav className="mt-8 flex-1" aria-label={`${title} navigation`}>
+            <nav className="mt-8 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label={`${title} navigation`}>
               {navigation.map((item) => {
                 const active = isActive(item.href);
                 const count = countFor(item);
@@ -278,7 +278,7 @@ export default function BackOfficeShell({
               })}
             </nav>
 
-            <div className="border-t border-white/15 pt-4">
+            <div className="shrink-0 border-t border-white/15 bg-[var(--deep-green)] pt-4">
               <p className="mb-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/30">Switch workspace</p>
               <Link href="/" className="group flex items-center gap-3 py-2 text-[12px] uppercase tracking-[0.12em] text-white/50 transition-all duration-300 hover:text-white">
                 <ArrowLeft size={15} strokeWidth={1.4} className="transition-transform duration-300 group-hover:-translate-x-1" /> Customer site
@@ -305,8 +305,8 @@ export default function BackOfficeShell({
           </div>
         </aside>
 
-        <div className="min-w-0 max-w-full overflow-x-hidden">
-          <header className="hidden min-h-[78px] items-center justify-between border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] px-5 sm:px-7 lg:flex lg:px-9">
+        <div className="min-w-0 max-w-full overflow-x-hidden lg:flex lg:h-screen lg:min-h-0 lg:flex-col lg:overflow-hidden">
+          <header className="hidden min-h-[78px] shrink-0 items-center justify-between border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] px-5 sm:px-7 lg:flex lg:px-9">
             <div>
               <p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">Decor by Kasiwa</p>
               <p className="mt-1 text-[11px] font-medium">{title}</p>
@@ -320,7 +320,7 @@ export default function BackOfficeShell({
               <span className="size-1.5 rounded-full bg-[var(--sage-green)]" title="Live operations" />
             </div>
           </header>
-          <main className="min-w-0 max-w-full overflow-x-hidden">{children}</main>
+          <main className="min-w-0 max-w-full overflow-x-hidden lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">{children}</main>
         </div>
       </div>
     </div>
