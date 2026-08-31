@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Layers3 } from "lucide-react";
+import { Metadata } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Shop by Look",
   description: "Curated Decor by Kasiwa room looks are coming soon. Shop complete room edits or individual pieces once the collection launches.",
   alternates: { canonical: "/shop-by-look" },

@@ -18,7 +18,7 @@ export function CategoryCard({ title, slug, imageUrl, children, onNavigate }: Ca
         <Link
           href={categoryHref(slug)}
           onClick={onNavigate}
-          className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] text-[var(--ink)] transition-opacity hover:opacity-60"
+          className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] !text-[var(--ink)] transition-opacity hover:opacity-80"
         >
           {title}
         </Link>
@@ -33,7 +33,7 @@ export function CategoryCard({ title, slug, imageUrl, children, onNavigate }: Ca
                 key={child.slug}
                 href={categoryHref(child.slug)}
                 onClick={onNavigate}
-                className="truncate text-[12px] leading-[1.5] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+                className="truncate text-[12px] leading-[1.5] !text-[var(--ink)] transition-opacity hover:opacity-60"
               >
                 {child.title}
               </Link>

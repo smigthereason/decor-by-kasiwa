@@ -20,7 +20,7 @@ export function SaleCard({ onNavigate, clearanceCategory }: SaleCardProps) {
           <Link
             href="/shop?collection=clearance"
             onClick={onNavigate}
-            className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] text-[var(--deep-green)] transition-opacity hover:opacity-60"
+            className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] !text-[var(--deep-green)] transition-opacity hover:opacity-60"
           >
             Sale
           </Link>
@@ -32,14 +32,14 @@ export function SaleCard({ onNavigate, clearanceCategory }: SaleCardProps) {
             <Link
               href="/shop?collection=offers"
               onClick={onNavigate}
-              className="truncate text-[12px] leading-[1.5] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+              className="truncate text-[12px] leading-[1.5] !text-[var(--ink)] transition-opacity hover:opacity-60"
             >
               Offers
             </Link>
             <Link
               href="/shop?collection=clearance"
               onClick={onNavigate}
-              className="truncate text-[12px] leading-[1.5] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+              className="truncate text-[12px] leading-[1.5] !text-[var(--ink)] transition-opacity hover:opacity-60"
             >
               Clearance
             </Link>

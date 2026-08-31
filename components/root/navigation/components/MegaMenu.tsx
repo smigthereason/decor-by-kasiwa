@@ -18,7 +18,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
     <div
       role="menu"
       aria-label="Shop categories"
-      className="absolute left-0 right-0 top-full hidden max-h-[calc(100vh-134px)] overflow-y-auto bg-[var(--paper)] shadow-[0_18px_50px_rgba(0,0,0,0.09)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block"
+      className="absolute left-0 right-0 top-full hidden max-h-[calc(100vh-134px)] overflow-y-auto bg-[var(--paper-2)] shadow-[0_18px_50px_rgba(0,0,0,0.09)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:block"
     >
       <div className="px-7 pb-8 pt-6 xl:px-9">
         {/* Menu Intro */}
@@ -64,7 +64,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
                   key={space.slug}
                   href={`/shop?space=${encodeURIComponent(space.slug)}`}
                   onClick={onNavigate}
-                  className="text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+                  className="text-[11px] !text-[var(--ink)] transition-opacity hover:opacity-60"
                 >
                   {space.title}
                 </Link>
@@ -82,7 +82,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
                   key={style.slug}
                   href={`/shop?style=${encodeURIComponent(style.slug)}`}
                   onClick={onNavigate}
-                  className="text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+                  className="text-[11px] !text-[var(--ink)] transition-opacity hover:opacity-60"
                 >
                   {style.title}
                 </Link>
@@ -100,7 +100,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
                   key={item.href}
                   href={item.href}
                   onClick={onNavigate}
-                  className="text-[11px] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
+                  className="text-[11px] !text-[var(--ink)] transition-opacity hover:opacity-60"
                 >
                   {item.label}
                 </Link>
