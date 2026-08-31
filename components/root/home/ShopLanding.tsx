@@ -1014,24 +1014,21 @@ export default function ShopLanding({
       )}
 
       {/* ====== COMMENTED OUT: CAROUSELS AFTER "SHOP BY LOOK" ====== */}
-      {/*
-      Category Sections - HORIZONTAL CAROUSELS
-      {categorySections.map(({ category, products: categoryProducts }) => (
-        <CategorySectionRail key={category.id} category={category} products={categoryProducts} />
-      ))}
 
-      Shop by Price - HORIZONTAL CAROUSEL
+
+
+
       <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
         <SectionHeading title="Shop by price" href="/shop" />
         <PriceRangeCarousel />
       </section>
 
-      Trust Items - HORIZONTAL CAROUSEL
+
       <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
         <SectionHeading eyebrow="Why shop with us" title="Trusted & curated" href="/about" />
         <TrustCarousel />
       </section>
-      */}
+
     </div>
   );
 }
