@@ -933,14 +933,15 @@ export default function ShopLanding({
               <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-black/10 to-transparent" />
 
               {/* Badge - Bottom on mobile, top-left on tablet+ */}
-              <div className="absolute  left-3 right-3 bottom-3 sm:left-4 sm:right-4 sm:bottom-4 sm:p-4 md:left-5 md:top-5 md:bottom-auto md:right-auto md:max-w-[220px] md:p-4 lg:left-7 lg:top-7 lg:max-w-[270px] lg:p-5">
-                <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--paper)] sm:text-[10px]">
-                  Shop the look
-                </p>
-                <p className="mt-1 text-[9px] leading-4 text-[var(--paper-2)] sm:mt-1.5 sm:text-[10px] sm:leading-4 md:text-[11px] md:leading-5 lg:text-xs">
-                  Everything in this room is from Decor by Kasiwa.
-                </p>
-
+              <div className="absolute left-3 right-3 bottom-3 sm:left-4 sm:right-4 sm:bottom-4 md:left-5 md:top-5 md:bottom-auto md:right-auto md:max-w-[260px] lg:left-7 lg:top-7 lg:max-w-[320px]">
+                <div className=" backdrop-blur-sm opacity-80 p-4 sm:p-5 md:p-6 lg:p-7 ">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-white/80 sm:text-[11px] md:text-[16px]">
+                    Shop the look
+                  </p>
+                  <p className="mt-1.5 text-[13px] font-bold leading-tight text-white sm:text-[15px] md:text-[18px] lg:text-[16px]">
+                    Everything in this room is from Decor by Kasiwa.
+                  </p>
+                </div>
               </div>
             </Link>
 
