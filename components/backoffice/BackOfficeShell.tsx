@@ -117,6 +117,7 @@ export default function BackOfficeShell({
 
   const title = mode === "admin" ? "Admin Office" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";
+  const settingsHref = mode === "admin" ? "/admin/settings" : "/store/settings";
   const staffRoleLabel =
     staffRole === "ADMIN"
       ? "STORE OWNER / ADMIN"
@@ -229,9 +230,14 @@ export default function BackOfficeShell({
                   {staffRole === "ADMIN" && mode === "admin" && <Link href="/store" onClick={() => setMenuOpen(false)} className="transition-opacity hover:opacity-60">Store operations</Link>}
                   {staffRole === "ADMIN" && mode === "store" && <Link href="/admin" onClick={() => setMenuOpen(false)} className="transition-opacity hover:opacity-60">Admin</Link>}
                 </div>
-                <button type="button" onClick={handleSignOut} className="mt-7 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-white/50 transition-colors hover:text-white">
-                  <LogOut size={15} strokeWidth={1.4} /> Sign out
-                </button>
+                <div className="mt-7 flex items-center gap-5">
+                  <Link href={settingsHref} onClick={() => setMenuOpen(false)} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-white/50 transition-colors hover:text-white">
+                    <Settings size={15} strokeWidth={1.4} /> Settings
+                  </Link>
+                  <button type="button" onClick={handleSignOut} className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-white/50 transition-colors hover:text-white">
+                    <LogOut size={15} strokeWidth={1.4} /> Sign out
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -297,9 +303,9 @@ export default function BackOfficeShell({
                 </Link>
               )}
               <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
-                <button type="button" className="group text-white/60 transition-all duration-300 hover:text-white" aria-label="Settings">
+                <Link href={settingsHref} className="group text-white/60 transition-all duration-300 hover:text-white" aria-label="Settings" title="Settings">
                   <Settings size={20} strokeWidth={1.3} className="transition-transform duration-300 group-hover:rotate-90" />
-                </button>
+                </Link>
                 <button type="button" onClick={handleSignOut} className="group text-white/60 transition-all duration-300 hover:text-white" aria-label="Sign out">
                   <LogOut size={20} strokeWidth={1.3} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </button>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowUpRight, Boxes, ChevronDown, Search } from "lucide-react";
 
+import ExportButtons from "@/components/backoffice/ExportButtons";
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { useLiveOperations } from "@/lib/operations/client";
@@ -59,6 +60,7 @@ export default function StoreInventoryPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
+          <div className="sm:ml-auto"><ExportButtons title="Store Inventory" columns={[{key:"name",label:"Product"},{key:"sku",label:"SKU"},{key:"category",label:"Category"},{key:"location",label:"Location"},{key:"onHand",label:"On Hand"},{key:"reserved",label:"Reserved"},{key:"available",label:"Available Stock"},{key:"incoming",label:"Incoming"},{key:"price",label:"Price (KES)"}]} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,price:item.retailPrice}))}/></div>
         </div>
       </div>
       <section className="p-4 sm:p-6 lg:p-8">

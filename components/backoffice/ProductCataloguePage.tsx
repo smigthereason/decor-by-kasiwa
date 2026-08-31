@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowUpRight, Boxes, ChevronDown, Search } from "lucide-react";
+import { ArrowUpRight, Boxes, ChevronDown, Plus, Search } from "lucide-react";
 
+import ExportButtons from "@/components/backoffice/ExportButtons";
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import RestockRequestsPanel from "@/components/backoffice/RestockRequestsPanel";
 import StatusPill from "@/components/backoffice/StatusPill";
@@ -43,9 +44,9 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
         <h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">
           Live product catalogue
         </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
+        <div className="flex flex-wrap items-end justify-between gap-4"><p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
           Admin and Store Manager use the same live Sanity catalogue and can update stock, incoming inventory, reorder levels, prices and shop visibility.
-        </p>
+        </p>{mode === "admin" && <Link href="/admin/products/new" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Plus size={14}/>Add product</Link>}</div>
       </div>
 
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
@@ -69,9 +70,8 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:ml-auto">
-            {filteredProducts.length} products
-          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:ml-auto">{filteredProducts.length} products</span>
+          <ExportButtons title="Product Catalogue" columns={[{key:"name",label:"Product"},{key:"sku",label:"SKU"},{key:"category",label:"Category"},{key:"location",label:"Location"},{key:"onHand",label:"On Hand"},{key:"reserved",label:"Reserved"},{key:"incoming",label:"Incoming"},{key:"retailPrice",label:"Retail Price (KES)"},{key:"unitCost",label:"Unit Cost (KES)"},{key:"available",label:"Shop Visible"}]} rows={filteredProducts.map((product)=>({name:product.name,sku:product.sku,category:product.category,location:product.location,onHand:product.onHand,reserved:product.reserved,incoming:product.incoming,retailPrice:product.retailPrice,unitCost:product.unitCost,available:product.available===false?"No":"Yes"}))}/>
         </div>
       </div>
 

@@ -56,6 +56,8 @@ export type PosHistoryOrder = {
   total: number;
   amountPaid: number;
   balanceDue: number;
+  cashTendered: number;
+  cashChangeDue: number;
   refundedAmount: number;
   paymentReference: string;
   paymentProvider: string;
@@ -81,6 +83,8 @@ const historyProjection = `{
   "total": coalesce(total,0),
   "amountPaid": coalesce(amountPaid, select(paymentStatus == "paid" => total, 0)),
   "balanceDue": coalesce(balanceDue, select(paymentStatus == "paid" => 0, total)),
+  "cashTendered": coalesce(cashTendered,0),
+  "cashChangeDue": coalesce(cashChangeDue,0),
   "refundedAmount": coalesce(refundedAmount,0),
   "paymentReference": coalesce(paymentReference,""),
   "paymentProvider": coalesce(paymentProvider,""),

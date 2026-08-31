@@ -18,6 +18,8 @@ import {
   User,
   Phone,
   Mail,
+  Maximize2,
+  Minimize2,
   Store,
   Sparkles,
   RefreshCw,
@@ -53,6 +55,8 @@ type SaleResponse = {
   paymentStatus?: string;
   amountPaid?: number;
   balanceDue?: number;
+  cashTendered?: number;
+  cashChangeDue?: number;
   displayText?: string;
   authorizationUrl?: string;
   testMode?: boolean;
@@ -102,6 +106,7 @@ export default function PointOfSalePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<{ orderId: string; receiptNumber?: string } | null>(null);
+  const [salePanelExpanded, setSalePanelExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +148,20 @@ export default function PointOfSalePage() {
 
     return () => window.clearTimeout(timer);
   }, [customerSearch]);
+
+  useEffect(() => {
+    if (!salePanelExpanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSalePanelExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [salePanelExpanded]);
 
   useEffect(() => {
     if (!paymentReference) return;
@@ -239,6 +258,9 @@ export default function PointOfSalePage() {
     : 0;
   const total = Math.max(0, subtotal - discountAmount);
   const units = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const cashTendered = Math.max(0, Number(cashAmountReceived || 0));
+  const cashChangeDue = paymentMethod === "cash" && cashTendered > total ? cashTendered - total : 0;
+  const cashShortfall = paymentMethod === "cash" && cashTendered > 0 && cashTendered < total ? total - cashTendered : 0;
 
   function selectedVariant(product: StoreProduct) {
     const selectedId = variantSelections[product.id];
@@ -344,10 +366,13 @@ export default function PointOfSalePage() {
 
       if (paymentMethod === "cash") {
         const balance = Number(payload.balanceDue || 0);
+        const change = Number(payload.cashChangeDue ?? Math.max(0, Number(cashAmountReceived || 0) - total));
         setMessage(
           balance > 0
             ? `Cash sale ${payload.orderNumber || ""} recorded. Outstanding balance: ${formatMoney(balance)}.`
-            : `Cash sale ${payload.orderNumber || ""} recorded successfully.`,
+            : change > 0
+              ? `Cash sale ${payload.orderNumber || ""} recorded. Change due to customer: ${formatMoney(change)}.`
+              : `Cash sale ${payload.orderNumber || ""} recorded successfully.`,
         );
         if (payload.orderId) {
           setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
@@ -581,7 +606,9 @@ export default function PointOfSalePage() {
         {/* Right Pane: Active Transaction Panel */}
         <aside
           id="pos-cart-panel"
-          className="flex w-full flex-col bg-[var(--paper)] lg:w-[380px] xl:w-[420px] shrink-0 border-l hairline shadow-lg lg:shadow-none"
+          className={salePanelExpanded
+            ? "fixed inset-0 z-[90] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--paper)] shadow-2xl"
+            : "flex w-full shrink-0 flex-col border-l hairline bg-[var(--paper)] shadow-lg lg:w-[380px] lg:shadow-none xl:w-[420px]"}
         >
           {/* Order Header */}
           <div className="flex items-center justify-between border-b hairline p-4 sm:px-6">
@@ -589,13 +616,25 @@ export default function PointOfSalePage() {
               <ShoppingCart size={18} className="text-[var(--deep-green)]" />
               <h2 className="text-sm font-semibold tracking-tight">Current Sale</h2>
             </div>
-            <span className="rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-bold tabular-nums text-[var(--deep-green)]">
-              {units} {units === 1 ? "unit" : "units"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-bold tabular-nums text-[var(--deep-green)]">
+                {units} {units === 1 ? "unit" : "units"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSalePanelExpanded((current) => !current)}
+                className="inline-grid size-9 place-items-center rounded-full border hairline bg-[var(--paper)] transition hover:border-[var(--deep-green)]"
+                aria-label={salePanelExpanded ? "Exit full screen current sale" : "Open current sale full screen"}
+                title={salePanelExpanded ? "Exit full screen (Esc)" : "Full screen current sale"}
+              >
+                {salePanelExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+              </button>
+            </div>
           </div>
 
+          <div className={salePanelExpanded ? "grid min-h-0 flex-1 grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)] lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "contents"}>
           {/* Cart Item Stream */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin]">
+          <div className={`flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 border-r hairline" : ""}`}>
             {cart.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-[var(--muted)] py-12">
                 <div className="grid size-12 place-items-center rounded-2xl bg-[var(--paper-2)] mb-3">
@@ -656,7 +695,7 @@ export default function PointOfSalePage() {
           </div>
 
           {/* Checkout Drawer Section */}
-          <div className="border-t hairline bg-[var(--paper-2)] p-4 sm:p-6 space-y-4">
+          <div className={`border-t hairline bg-[var(--paper-2)] p-4 sm:p-6 space-y-4 ${salePanelExpanded ? "min-h-0 overflow-y-auto lg:border-t-0" : ""}`}>
             {/* Customer Inputs */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Customer Information</span>
@@ -830,9 +869,19 @@ export default function PointOfSalePage() {
                     placeholder={`Cash received — ${formatMoney(total)}`}
                     className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
                   />
-                  {cashAmountReceived && Number(cashAmountReceived) < total && (
-                    <p className="text-[10px] font-medium text-amber-700">
-                      Partial payment: {formatMoney(total - Number(cashAmountReceived || 0))} will remain receivable.
+                  {cashChangeDue > 0 && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-700">Change to return</p>
+                      <p className="mt-1 text-xl font-extrabold tabular-nums text-emerald-800">{formatMoney(cashChangeDue)}</p>
+                      <p className="mt-1 text-[10px] text-emerald-700">Cash received {formatMoney(cashTendered)} · Sale total {formatMoney(total)}</p>
+                    </div>
+                  )}
+                  {cashTendered > 0 && cashTendered === total && (
+                    <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-medium text-emerald-700">Exact cash received — no change is due.</p>
+                  )}
+                  {cashShortfall > 0 && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-medium text-amber-700">
+                      Partial payment: {formatMoney(cashShortfall)} will remain receivable.
                     </p>
                   )}
                   <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-tight">
@@ -864,7 +913,13 @@ export default function PointOfSalePage() {
                   <div className="flex justify-between"><span>Discount</span><span>-{formatMoney(discountAmount)}</span></div>
                 </div>
               )}
-              <div className={`flex items-baseline justify-between ${discountAmount > 0 ? "" : "border-t hairline pt-3"}`}>
+              {paymentMethod === "cash" && cashTendered > 0 && (
+                <div className="grid gap-1 border-t hairline pt-3 text-[10px] text-[var(--muted)]">
+                  <div className="flex justify-between"><span>Cash tendered</span><span>{formatMoney(cashTendered)}</span></div>
+                  <div className="flex justify-between font-semibold text-[var(--ink)]"><span>Change due</span><span>{formatMoney(cashChangeDue)}</span></div>
+                </div>
+              )}
+              <div className={`flex items-baseline justify-between ${discountAmount > 0 || (paymentMethod === "cash" && cashTendered > 0) ? "" : "border-t hairline pt-3"}`}>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Total Amount</span>
                 <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--deep-green)]">
                   {formatMoney(total)}
@@ -896,6 +951,7 @@ export default function PointOfSalePage() {
                 )}
               </button>
             </div>
+          </div>
           </div>
         </aside>
       </div>

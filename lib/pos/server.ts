@@ -89,6 +89,8 @@ type PosOrder = {
   total?: number;
   amountPaid?: number;
   balanceDue?: number;
+  cashTendered?: number;
+  cashChangeDue?: number;
   receiptNumber?: string;
   paymentReference?: string;
   paymentProvider?: string;
@@ -449,6 +451,8 @@ async function fetchPosOrder(reference: string) {
       total,
       amountPaid,
       balanceDue,
+      cashTendered,
+      cashChangeDue,
       receiptNumber,
       paymentReference,
       paymentProvider,
@@ -490,6 +494,8 @@ function summary(order: PosOrder) {
     total: Number(order.total || 0),
     amountPaid: Number(order.amountPaid || 0),
     balanceDue: Number(order.balanceDue || 0),
+    cashTendered: Number(order.cashTendered || 0),
+    cashChangeDue: Number(order.cashChangeDue || 0),
     soldByName: order.soldByName || "Staff",
     soldAt: order.soldAt || "",
   };
@@ -667,6 +673,7 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
   if (!Number.isFinite(requestedPayment) || requestedPayment <= 0) throw new Error("Enter the cash amount received.");
   const amountPaid = Math.min(requestedPayment, total);
   const balanceDue = Math.max(0, total - amountPaid);
+  const cashChangeDue = Math.max(0, requestedPayment - total);
   const paymentStatus = balanceDue > 0 ? "partially_paid" : "paid";
   const now = new Date().toISOString();
   const orderId = orderIdFor(reference);
@@ -695,6 +702,8 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
     total,
     amountPaid,
     balanceDue,
+    cashTendered: requestedPayment,
+    cashChangeDue,
     refundedAmount: 0,
     receiptNumber,
     currency: CURRENCY,
@@ -735,7 +744,7 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
     entityId: orderId,
     entityLabel: reference,
     seller,
-    detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} cash sale · KES ${total.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
+    detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} cash sale · total KES ${total.toLocaleString("en-KE")} · tendered KES ${requestedPayment.toLocaleString("en-KE")} · change KES ${cashChangeDue.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
     now,
   });
 
@@ -1078,6 +1087,8 @@ export async function getPosReceipt(orderId: string) {
     total?: number;
     amountPaid?: number;
     balanceDue?: number;
+    cashTendered?: number;
+    cashChangeDue?: number;
     refundedAmount?: number;
     paymentStatus?: string;
     paymentChannel?: string;
@@ -1089,7 +1100,7 @@ export async function getPosReceipt(orderId: string) {
   } | null>(
     `*[_type == "commerceOrder" && _id == $orderId][0]{
       _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountAmount,total,
-      amountPaid,balanceDue,refundedAmount,paymentStatus,paymentChannel,paymentReference,providerReceiptNumber,
+      amountPaid,balanceDue,cashTendered,cashChangeDue,refundedAmount,paymentStatus,paymentChannel,paymentReference,providerReceiptNumber,
       soldByName,soldAt,"lineItems": lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
     }`,
     { orderId },

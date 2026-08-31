@@ -81,6 +81,8 @@ export type Order = {
   discountAmount?: number;
   amountPaid?: number;
   balanceDue?: number;
+  cashTendered?: number;
+  cashChangeDue?: number;
   refundedAmount?: number;
   receiptNumber?: string;
   paymentProvider?: string;

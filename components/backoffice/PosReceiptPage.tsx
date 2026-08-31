@@ -43,6 +43,8 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           {Number(receipt.discountAmount || 0) > 0 && <div className="flex justify-between py-1.5"><span>Discount</span><span>-{formatMoney(Number(receipt.discountAmount || 0))}</span></div>}
           <div className="flex justify-between py-2 text-base font-semibold"><span>Total</span><span>{formatMoney(Number(receipt.total || 0))}</span></div>
           <div className="flex justify-between py-1.5"><span>Paid</span><span>{formatMoney(Number(receipt.amountPaid || 0))}</span></div>
+          {Number(receipt.cashTendered || 0) > 0 && <div className="flex justify-between py-1.5"><span>Cash tendered</span><span>{formatMoney(Number(receipt.cashTendered || 0))}</span></div>}
+          {Number(receipt.cashChangeDue || 0) > 0 && <div className="flex justify-between py-1.5 font-semibold text-emerald-700"><span>Change returned</span><span>{formatMoney(Number(receipt.cashChangeDue || 0))}</span></div>}
           {Number(receipt.balanceDue || 0) > 0 && <div className="flex justify-between py-1.5 font-semibold text-amber-700"><span>Balance due</span><span>{formatMoney(Number(receipt.balanceDue || 0))}</span></div>}
           {Number(receipt.refundedAmount || 0) > 0 && <div className="flex justify-between py-1.5"><span>Refunded</span><span>{formatMoney(Number(receipt.refundedAmount || 0))}</span></div>}
         </div>

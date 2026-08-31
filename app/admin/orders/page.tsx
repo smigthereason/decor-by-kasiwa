@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Search, ShoppingBag } from "lucide-react";
 
+import ExportButtons from "@/components/backoffice/ExportButtons";
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import OrderTable from "@/components/backoffice/OrderTable";
 import { useLiveOperations } from "@/lib/operations/client";
@@ -38,7 +39,7 @@ export default function AdminOrdersPage() {
         </p>
       </div>
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-sm">
             <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search orders..." className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10" />
@@ -49,6 +50,7 @@ export default function AdminOrdersPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
+          <div className="sm:ml-auto"><ExportButtons title="Decor by Kasiwa Orders" columns={[{key:"order",label:"Order"},{key:"channel",label:"Channel"},{key:"customer",label:"Customer"},{key:"email",label:"Email"},{key:"status",label:"Status"},{key:"payment",label:"Payment"},{key:"total",label:"Total (KES)"},{key:"soldBy",label:"Sold By"},{key:"placed",label:"Placed"}]} rows={filtered.map((order)=>({order:order.orderNumber,channel:order.salesChannel||"ONLINE",customer:order.customerName,email:order.customerEmail,status:order.status,payment:order.paymentStatus,total:order.total,soldBy:order.soldByName||"Online checkout",placed:order.soldAt||order.createdAt}))}/></div>
         </div>
       </div>
       <section className="p-4 sm:p-6 lg:p-8">

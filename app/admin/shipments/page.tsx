@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Search, Truck } from "lucide-react";
 
+import ExportButtons from "@/components/backoffice/ExportButtons";
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { useLiveOperations } from "@/lib/operations/client";
@@ -57,6 +58,7 @@ export default function AdminShipmentsPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
+          <div className="sm:ml-auto"><ExportButtons title="Shipments" columns={[{key:"shipment",label:"Shipment"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"destination",label:"Destination"},{key:"status",label:"Status"},{key:"updated",label:"Updated"}]} rows={filtered.map((item)=>({shipment:item.shipmentNumber,order:item.orderNumber,customer:item.customerName,destination:item.destination,status:item.status,updated:item.updatedAt}))}/></div>
         </div>
       </div>
 

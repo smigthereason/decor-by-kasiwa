@@ -127,6 +127,8 @@ export async function getLiveOrders(): Promise<Order[]> {
       discountAmount,
       amountPaid,
       balanceDue,
+      cashTendered,
+      cashChangeDue,
       refundedAmount,
       receiptNumber,
       salesChannel,
@@ -171,6 +173,8 @@ export async function getLiveOrders(): Promise<Order[]> {
     total: Number(row.total || 0),
     amountPaid: Number(row.amountPaid ?? (row.paymentStatus === "paid" ? row.total : 0)),
     balanceDue: Number(row.balanceDue ?? (row.paymentStatus === "paid" ? 0 : row.total) ?? 0),
+    cashTendered: Number(row.cashTendered || 0),
+    cashChangeDue: Number(row.cashChangeDue || 0),
     refundedAmount: Number(row.refundedAmount || 0),
     lineItems: Array.isArray(row.lineItems) ? row.lineItems : [],
   }));

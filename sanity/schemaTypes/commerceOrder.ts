@@ -168,6 +168,8 @@ export const commerceOrder = defineType({
     }),
     defineField({ name: "amountPaid", title: "Amount Paid", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "balanceDue", title: "Balance Due", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "cashTendered", title: "Cash Tendered", type: "number", validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "cashChangeDue", title: "Cash Change Due", type: "number", validation: (Rule) => Rule.min(0) }),
     defineField({ name: "refundedAmount", title: "Refunded Amount", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "receiptNumber", title: "Receipt Number", type: "string" }),
     defineField({
