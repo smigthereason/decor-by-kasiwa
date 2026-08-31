@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { getSiteUrl } from "@/lib/site";
-import { getStoreProducts } from "@/sanity/lib/catalog";
+import { getShopLooks, getStoreProducts } from "@/sanity/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes = [
     "",
     "/shop",
-    // "/shop-by-look", // Intentionally hidden until the curated-look experience returns.
+    "/shop-by-look",
     "/about",
     "/services",
     "/portfolio",
@@ -22,9 +22,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   let productRoutes: MetadataRoute.Sitemap = [];
+  let lookRoutes: MetadataRoute.Sitemap = [];
 
   try {
-    const products = await getStoreProducts();
+    const [products, looks] = await Promise.all([getStoreProducts(), getShopLooks()]);
     productRoutes = products
       .filter((product) => product.available !== false && Boolean(product.slug))
       .map((product) => ({
@@ -32,6 +33,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         changeFrequency: "weekly" as const,
         priority: 0.8,
       }));
+
+    lookRoutes = looks.map((look) => ({
+      url: `${siteUrl}/shop-by-look/${look.slug}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }));
   } catch (error) {
     console.warn("Sitemap product fetch failed; serving static URLs only.", error);
   }
@@ -43,5 +50,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: index === 0 ? 1 : route === "/shop" ? 0.95 : 0.6,
     })),
     ...productRoutes,
+    ...lookRoutes,
   ];
 }

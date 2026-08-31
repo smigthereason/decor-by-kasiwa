@@ -4,6 +4,8 @@ import type {
   CatalogTag,
   ShopCategory,
   ShopNavigation,
+  ShopLook,
+  ShopLookProduct,
   StoreProduct,
 } from "@/types/commerce";
 
@@ -68,6 +70,28 @@ type SanityProductRecord = {
   spaces?: SanityReferenceLabel[];
   styles?: SanityReferenceLabel[];
   collections?: SanityReferenceLabel[];
+};
+
+type SanityShopLookRecord = {
+  _id: string;
+  title?: string;
+  slug?: string;
+  eyebrow?: string;
+  description?: string;
+  heroImage?: ImageSource;
+  space?: SanityReferenceLabel;
+  style?: SanityReferenceLabel;
+  featured?: boolean;
+  active?: boolean;
+  displayOrder?: number;
+  seoTitle?: string;
+  seoDescription?: string;
+  products?: Array<{
+    _key?: string;
+    quantity?: number;
+    note?: string;
+    product?: SanityProductRecord | null;
+  }>;
 };
 
 type SanityCategoryRecord = {
@@ -418,6 +442,118 @@ function mapProduct(
       record.available !==
       false,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* SHOP BY LOOK                                                               */
+/* -------------------------------------------------------------------------- */
+
+const shopLookProjection = `{
+  _id,
+  title,
+  "slug": slug.current,
+  eyebrow,
+  description,
+  heroImage,
+  "space": space->{_id, title, "slug": slug.current},
+  "style": style->{_id, title, "slug": slug.current},
+  featured,
+  active,
+  displayOrder,
+  seoTitle,
+  seoDescription,
+  products[]{
+    _key,
+    quantity,
+    note,
+    "product": product->${productProjection}
+  }
+}`;
+
+function mapShopLook(record: SanityShopLookRecord): ShopLook {
+  const products: ShopLookProduct[] = (record.products || [])
+    .filter(
+      (line): line is NonNullable<typeof line> & { product: SanityProductRecord } =>
+        Boolean(
+          line?.product?._id &&
+            line.product.available !== false &&
+            typeof line.product.price === "number" &&
+            line.product.price > 0,
+        ),
+    )
+    .map((line, index) => ({
+      id: line._key || `${record._id}-product-${index}`,
+      quantity:
+        typeof line.quantity === "number" && line.quantity > 0
+          ? Math.floor(line.quantity)
+          : 1,
+      note: line.note?.trim() || undefined,
+      product: mapProduct(line.product),
+    }));
+
+  const firstProductImage = products.find((line) => line.product.heroImage)?.product.heroImage;
+  const totalPrice = products.reduce(
+    (sum, line) => sum + line.product.price * line.quantity,
+    0,
+  );
+  const totalUnits = products.reduce((sum, line) => sum + line.quantity, 0);
+
+  return {
+    id: record._id,
+    title: record.title?.trim() || "Untitled look",
+    slug: record.slug || record._id,
+    eyebrow: record.eyebrow?.trim() || undefined,
+    description:
+      record.description?.trim() ||
+      "A curated Decor by Kasiwa room edit combining complementary pieces.",
+    heroImageUrl: toImageUrl(record.heroImage) || firstProductImage || undefined,
+    space: tagFromReference(record.space) || undefined,
+    style: tagFromReference(record.style) || undefined,
+    products,
+    featured: record.featured,
+    active: record.active !== false,
+    displayOrder: record.displayOrder,
+    seoTitle: record.seoTitle?.trim() || undefined,
+    seoDescription: record.seoDescription?.trim() || undefined,
+    totalPrice,
+    totalUnits,
+  };
+}
+
+export async function getShopLooks(): Promise<ShopLook[]> {
+  if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return [];
+
+  const records = await client.fetch<SanityShopLookRecord[]>(
+    `*[
+      _type == "shopLook" &&
+      defined(slug.current) &&
+      active != false
+    ] | order(featured desc, displayOrder asc, title asc) ${shopLookProjection}`,
+  );
+
+  return records.map(mapShopLook).filter((look) => look.products.length > 0);
+}
+
+export async function getFeaturedShopLook(): Promise<ShopLook | null> {
+  const looks = await getShopLooks();
+  return looks.find((look) => look.featured) || looks[0] || null;
+}
+
+export async function getShopLookBySlug(slug: string): Promise<ShopLook | null> {
+  if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return null;
+
+  const record = await client.fetch<SanityShopLookRecord | null>(
+    `*[
+      _type == "shopLook" &&
+      slug.current == $slug &&
+      active != false
+    ][0] ${shopLookProjection}`,
+    { slug },
+  );
+
+  if (!record) return null;
+  const look = mapShopLook(record);
+  return look.products.length > 0 ? look : null;
 }
 
 /* -------------------------------------------------------------------------- */

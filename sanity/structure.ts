@@ -28,6 +28,7 @@ export const structure: StructureResolver = (
       S.documentTypeListItem("category").title("Categories"),
       S.documentTypeListItem("shopSpace").title("Shop by Space"),
       S.documentTypeListItem("shopStyle").title("Shop by Style"),
+      S.documentTypeListItem("shopLook").title("Shop by Look"),
 
       S.divider(),
 

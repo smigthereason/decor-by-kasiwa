@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import ShopLanding from "@/components/root/home/ShopLanding";
-import { getShopNavigation, getStoreProducts } from "@/sanity/lib/catalog";
+import { getFeaturedShopLook, getShopNavigation, getStoreProducts } from "@/sanity/lib/catalog";
 import { getPublicSiteSettings } from "@/sanity/lib/siteSettings";
 import { getSiteUrl, SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 
@@ -26,10 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Home() {
-  const [products, navigation, settings] = await Promise.all([
+  const [products, navigation, settings, featuredLook] = await Promise.all([
     getStoreProducts(),
     getShopNavigation(),
     getPublicSiteSettings(),
+    getFeaturedShopLook(),
   ]);
 
   const siteUrl = getSiteUrl();
@@ -52,7 +53,7 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <ShopLanding products={products} navigation={navigation} settings={settings} />
+      <ShopLanding products={products} navigation={navigation} settings={settings} featuredLook={featuredLook} />
     </>
   );
 }

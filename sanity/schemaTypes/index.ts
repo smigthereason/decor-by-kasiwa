@@ -15,6 +15,7 @@ import { commerceOrder } from "./commerceOrder";
 import { inventoryRecord } from "./inventoryRecord";
 import { shipment } from "./shipment";
 import { restockRequest } from "./restockRequest";
+import { shopLook } from "./shopLook";
 
 export const schema: { types: SchemaTypeDefinition[] } = {
   types: [
@@ -22,6 +23,7 @@ export const schema: { types: SchemaTypeDefinition[] } = {
     shipment,
     restockRequest,
     commerceOrder,
+    shopLook,
     product,
     collection,
     category,

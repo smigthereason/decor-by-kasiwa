@@ -87,6 +87,32 @@ export type ShopNavigation = {
   collections: CatalogTag[];
 };
 
+export type ShopLookProduct = {
+  id: string;
+  quantity: number;
+  note?: string;
+  product: StoreProduct;
+};
+
+export type ShopLook = {
+  id: string;
+  title: string;
+  slug: string;
+  eyebrow?: string;
+  description: string;
+  heroImageUrl?: string;
+  space?: CatalogTag;
+  style?: CatalogTag;
+  products: ShopLookProduct[];
+  featured?: boolean;
+  active?: boolean;
+  displayOrder?: number;
+  seoTitle?: string;
+  seoDescription?: string;
+  totalPrice: number;
+  totalUnits: number;
+};
+
 export type CartLine = {
   productId: string;
   quantity: number;

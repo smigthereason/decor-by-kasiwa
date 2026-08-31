@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Layers3 } from "lucide-react";
 import { CategoryCard } from "./CategoryCard";
 import { SaleCard } from "./SaleCard";
 import { priceLinks } from "../constants/navigation";
@@ -38,7 +39,18 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
 
         {/* Category Grid */}
         <div className="grid grid-cols-4 items-stretch gap-x-5 gap-y-7 xl:grid-cols-6">
-          {/* Shop by Look intentionally hidden until the client is ready to resume it. */}
+          <Link
+            href="/shop-by-look"
+            onClick={onNavigate}
+            className="group flex min-h-[190px] flex-col justify-between rounded-xl border hairline bg-[var(--deep-green)] p-4 text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
+          >
+            <div className="grid size-10 place-items-center rounded-full bg-white/10"><Layers3 size={18} /></div>
+            <div>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-white/55">Curated room edits</p>
+              <p className="mt-2 text-sm font-semibold">Shop by Look</p>
+              <p className="mt-1 text-[10px] leading-4 text-white/60">Buy the complete look or choose individual pieces.</p>
+            </div>
+          </Link>
           {navigation.categories.map((category) => (
             <CategoryCard
               key={category.slug}

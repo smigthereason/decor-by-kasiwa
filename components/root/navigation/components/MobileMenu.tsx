@@ -107,7 +107,13 @@ export function MobileMenu({ isOpen, onClose, navigation, search, setSearch, onS
                   >
                     Shop all
                   </Link>
-                  {/* Shop by Look intentionally hidden until the client is ready to resume it. */}
+                  <Link
+                    href="/shop-by-look"
+                    onClick={onClose}
+                    className="flex min-h-12 items-center border-b border-soft-cream/5 text-[14px] font-semibold text-soft-cream transition-colors hover:text-soft-cream/80"
+                  >
+                    Shop by Look <span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-soft-cream/45">Curated edits</span>
+                  </Link>
                   {navigation.categories.map((category) => (
                     <MobileCategoryRow
                       key={category.slug}
