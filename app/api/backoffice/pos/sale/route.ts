@@ -4,6 +4,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import {
   createPosCashSale,
   createPosMpesaSale,
+  createPosPaystackSale,
   type PosSaleInput,
 } from "@/lib/pos/server";
 
@@ -15,8 +16,8 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as PosSaleInput;
-    if (body.paymentMethod !== "cash" && body.paymentMethod !== "mpesa") {
-      return NextResponse.json({ message: "Select Cash or M-PESA." }, { status: 400 });
+    if (!["cash", "mpesa", "paystack"].includes(body.paymentMethod)) {
+      return NextResponse.json({ message: "Select Cash, M-PESA or Paystack." }, { status: 400 });
     }
 
     const seller = {
@@ -26,9 +27,12 @@ export async function POST(request: Request) {
       role: staff.role,
     };
 
+    const origin = new URL(request.url).origin;
     const result = body.paymentMethod === "cash"
       ? await createPosCashSale(body, seller)
-      : await createPosMpesaSale(body, seller);
+      : body.paymentMethod === "mpesa"
+        ? await createPosMpesaSale(body, seller)
+        : await createPosPaystackSale(body, seller, origin);
 
     return NextResponse.json(result);
   } catch (cause) {

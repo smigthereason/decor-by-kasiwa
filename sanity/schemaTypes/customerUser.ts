@@ -6,7 +6,7 @@ export const customerUser = defineType({
   type: "document",
   fields: [
     defineField({ name: "name", title: "Name", type: "string", validation: (Rule) => Rule.required() }),
-    defineField({ name: "email", title: "Email", type: "string", validation: (Rule) => Rule.required().email() }),
+    defineField({ name: "email", title: "Email", type: "string", validation: (Rule) => Rule.email(), description: "Optional for in-store/POS customers; required for Google-authenticated staff and online checkout customers." }),
     defineField({ name: "phone", title: "Phone", type: "string", description: "Best contact number collected from account details or checkout." }),
     defineField({ name: "image", title: "Google profile image URL", type: "url" }),
     defineField({ name: "googleId", title: "Google account ID", type: "string", description: "Empty for guest purchasers until they sign in with Google." }),
@@ -16,6 +16,7 @@ export const customerUser = defineType({
         { title: "Google account", value: "GOOGLE" },
         { title: "Guest checkout", value: "GUEST_CHECKOUT" },
         { title: "Created by admin", value: "ADMIN" },
+        { title: "Point of Sale", value: "POS" },
       ] },
     }),
     defineField({
@@ -41,6 +42,8 @@ export const customerUser = defineType({
     defineField({ name: "country", title: "Country", type: "string", initialValue: "Kenya" }),
     defineField({ name: "firstPurchaseAt", title: "First purchase", type: "datetime", readOnly: true }),
     defineField({ name: "lastPurchaseAt", title: "Last purchase", type: "datetime", readOnly: true }),
+    defineField({ name: "outstandingBalance", title: "Outstanding Balance (KES)", type: "number", initialValue: 0, readOnly: true }),
+    defineField({ name: "lastPosPurchaseAt", title: "Last POS purchase", type: "datetime", readOnly: true }),
     defineField({ name: "createdAt", title: "Created at", type: "datetime", readOnly: true }),
     defineField({ name: "lastLoginAt", title: "Last Google login", type: "datetime", readOnly: true }),
     defineField({ name: "updatedAt", title: "Updated at", type: "datetime", readOnly: true }),

@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
+import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -471,7 +472,12 @@ export async function initializePaystackCheckout({
     paymentStatus: "pending",
     subtotal,
     deliveryFee,
+    discountAmount: 0,
     total,
+    amountPaid: 0,
+    balanceDue: total,
+    refundedAmount: 0,
+    receiptNumber: `RCT-${orderNumber}`,
     currency: CURRENCY,
     salesChannel: "ONLINE",
     fulfilmentType: "DELIVERY",
@@ -494,6 +500,24 @@ export async function initializePaystackCheckout({
       quantity: line.quantity,
       unitPrice: line.unitPrice,
     })),
+  });
+
+  await serverClient.createIfNotExists({
+    _id: `paymentTransaction.${documentReference}`,
+    _type: "paymentTransaction",
+    reference,
+    order: { _type: "reference", _ref: orderId },
+    orderNumber,
+    customerName: deliveryAddress.fullName,
+    customerPhone: deliveryAddress.phone,
+    salesChannel: "ONLINE",
+    provider: "paystack",
+    channel: paymentChannel,
+    status: "pending",
+    amount: total,
+    currency: CURRENCY,
+    createdAt: now,
+    updatedAt: now,
   });
 
   const cleanBase = callbackBaseUrl.replace(/\/+$/, "");
@@ -531,16 +555,12 @@ export async function initializePaystackCheckout({
       total,
     };
   } catch (cause) {
-    await serverClient
-      .patch(orderId)
-      .set({
-        paymentStatus: "failed",
-        status: "cancelled",
-        failureReason:
-          cause instanceof Error ? cause.message : "Paystack initialization failed.",
-        updatedAt: new Date().toISOString(),
-      })
-      .commit();
+    const failureReason = cause instanceof Error ? cause.message : "Paystack initialization failed.";
+    const failedAt = new Date().toISOString();
+    await Promise.all([
+      serverClient.patch(orderId).set({ paymentStatus: "failed", status: "cancelled", failureReason, updatedAt: failedAt }).commit(),
+      serverClient.patch(`paymentTransaction.${documentReference}`).set({ status: "failed", failureReason, updatedAt: failedAt }).commit(),
+    ]);
 
     throw cause;
   }
@@ -676,15 +696,12 @@ export async function finalizePaystackPayment(reference: string) {
 
   if (transaction.status !== "success") {
     if (["failed", "abandoned", "reversed"].includes(transaction.status)) {
-      await serverClient
-        .patch(order._id)
-        .set({
-          paymentStatus: "failed",
-          failureReason:
-            transaction.gateway_response || `Paystack status: ${transaction.status}`,
-          updatedAt: new Date().toISOString(),
-        })
-        .commit();
+      const failureReason = transaction.gateway_response || `Paystack status: ${transaction.status}`;
+      const failedAt = new Date().toISOString();
+      await Promise.all([
+        serverClient.patch(order._id).set({ paymentStatus: "failed", failureReason, updatedAt: failedAt }).commit(),
+        serverClient.patch(`paymentTransaction.${safeReferenceForDocumentId(reference)}`).set({ status: "failed", failureReason, updatedAt: failedAt }).commit(),
+      ]);
     }
 
     throw new Error(`Paystack payment is currently ${transaction.status}.`);
@@ -726,6 +743,7 @@ export async function finalizePaystackPayment(reference: string) {
   const stockWarnings: string[] = [];
 
   const mutation = serverClient.transaction();
+  const stockMovements: Array<{ productId: string; productName: string; variantId?: string; quantityChange: number; stockBefore?: number; stockAfter?: number }> = [];
 
   for (const product of liveProducts) {
     const productLines = (order.lineItems || []).filter((line) => line.productId === product._id);
@@ -743,6 +761,14 @@ export async function finalizePaystackPayment(reference: string) {
     }
 
     const nextVariants = decrementVariantStock(product, productLines);
+    productLines.forEach((line) => stockMovements.push({
+      productId: product._id,
+      productName: product.name || "Product",
+      variantId: line.variantId,
+      quantityChange: -Number(line.quantity || 0),
+      stockBefore: product.initialStock,
+      stockAfter: nextStock,
+    }));
     mutation.patch(product._id, (patch) =>
       patch
         .ifRevisionId(product._rev)
@@ -775,12 +801,82 @@ export async function finalizePaystackPayment(reference: string) {
         paymentReference: reference,
         paymentChannel: transaction.channel || order.paymentChannel || "paystack",
         paystackTransactionId: String(transaction.id),
+        providerReceiptNumber: String(transaction.id),
+        amountPaid: Number(order.total || 0),
+        balanceDue: 0,
+        receiptNumber: `RCT-${order.orderNumber}`,
         paidAt,
         currency: transaction.currency,
         failureReason: "",
         updatedAt: now,
       }),
   );
+
+  addInventoryMovementsToTransaction({
+    transaction: mutation,
+    movementKey: `online-sale|${order.orderNumber}`,
+    movementType: "SALE",
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    movements: stockMovements,
+    note: "Inventory deducted after verified online Paystack payment.",
+    createdAt: now,
+  });
+
+  mutation.createIfNotExists({
+    _id: `paymentTransaction.${safeReferenceForDocumentId(reference)}`,
+    _type: "paymentTransaction",
+    reference,
+    order: { _type: "reference", _ref: order._id },
+    orderNumber: order.orderNumber,
+    customer: { _type: "reference", _ref: customer._id },
+    customerName: order.customerName,
+    customerPhone: order.customerPhone || deliveryAddress.phone,
+    salesChannel: "ONLINE",
+    provider: "paystack",
+    channel: transaction.channel || order.paymentChannel || "paystack",
+    status: "paid",
+    amount: Number(order.total || 0),
+    currency: transaction.currency,
+    providerTransactionId: String(transaction.id),
+    providerReceiptNumber: String(transaction.id),
+    createdAt: now,
+    updatedAt: now,
+    paidAt,
+  });
+
+  mutation.patch(`paymentTransaction.${safeReferenceForDocumentId(reference)}`, (patch) => patch.set({
+    order: { _type: "reference", _ref: order._id },
+    orderNumber: order.orderNumber,
+    customer: { _type: "reference", _ref: customer._id },
+    customerName: order.customerName,
+    customerPhone: order.customerPhone || deliveryAddress.phone,
+    salesChannel: "ONLINE",
+    provider: "paystack",
+    channel: transaction.channel || order.paymentChannel || "paystack",
+    status: "paid",
+    amount: Number(order.total || 0),
+    currency: transaction.currency,
+    providerTransactionId: String(transaction.id),
+    providerReceiptNumber: String(transaction.id),
+    updatedAt: now,
+    paidAt,
+    failureReason: "",
+  }));
+
+  mutation.createIfNotExists({
+    _id: `auditEvent.online-${safeReferenceForDocumentId(reference)}`,
+    _type: "auditEvent",
+    eventNumber: `AUD-ONLINE-${safeReferenceForDocumentId(reference).slice(-10).toUpperCase()}`,
+    eventType: "ONLINE_PAYMENT_CONFIRMED",
+    entityType: "commerceOrder",
+    entityId: order._id,
+    entityLabel: order.orderNumber,
+    actorName: "Online Shop",
+    actorRole: "CUSTOMER",
+    detail: `Verified Paystack payment · ${transaction.channel || order.paymentChannel || "paystack"} · transaction ${transaction.id}`,
+    createdAt: now,
+  });
 
   mutation.create({
     _id: shipmentId,

@@ -36,6 +36,15 @@ export const structure: StructureResolver = (
 
       S.divider(),
 
+      S.documentTypeListItem("commerceOrder").title("Orders / Sales"),
+      S.documentTypeListItem("paymentTransaction").title("Payment Transactions"),
+      S.documentTypeListItem("inventoryMovement").title("Inventory Movements"),
+      S.documentTypeListItem("returnTransaction").title("Returns & Refunds"),
+      S.documentTypeListItem("expenseTransaction").title("Expenditure & Petty Cash"),
+      S.documentTypeListItem("auditEvent").title("Audit Trail"),
+
+      S.divider(),
+
       S.documentTypeListItem("project").title(
         "Portfolio Projects",
       ),

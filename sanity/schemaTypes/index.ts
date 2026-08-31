@@ -1,6 +1,11 @@
 import type { SchemaTypeDefinition } from "sanity";
 
 import { branding } from "./branding";
+import { auditEvent } from "./auditEvent";
+import { expenseTransaction } from "./expenseTransaction";
+import { inventoryMovement } from "./inventoryMovement";
+import { paymentTransaction } from "./paymentTransaction";
+import { returnTransaction } from "./returnTransaction";
 import { category } from "./category";
 import { collection } from "./collection";
 import { consultation } from "./consultation";
@@ -19,6 +24,11 @@ import { shopLook } from "./shopLook";
 
 export const schema: { types: SchemaTypeDefinition[] } = {
   types: [
+    auditEvent,
+    expenseTransaction,
+    inventoryMovement,
+    paymentTransaction,
+    returnTransaction,
     inventoryRecord,
     shipment,
     restockRequest,

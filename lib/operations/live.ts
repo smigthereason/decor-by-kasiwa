@@ -122,6 +122,13 @@ export async function getLiveOrders(): Promise<Order[]> {
       total,
       assignedStore,
       paymentReference,
+      paymentProvider,
+      providerReceiptNumber,
+      discountAmount,
+      amountPaid,
+      balanceDue,
+      refundedAmount,
+      receiptNumber,
       salesChannel,
       fulfilmentType,
       soldByName,
@@ -160,7 +167,11 @@ export async function getLiveOrders(): Promise<Order[]> {
     paymentStatus: row.paymentStatus || "pending",
     subtotal: Number(row.subtotal || 0),
     deliveryFee: Number(row.deliveryFee || 0),
+    discountAmount: Number(row.discountAmount || 0),
     total: Number(row.total || 0),
+    amountPaid: Number(row.amountPaid ?? (row.paymentStatus === "paid" ? row.total : 0)),
+    balanceDue: Number(row.balanceDue ?? (row.paymentStatus === "paid" ? 0 : row.total) ?? 0),
+    refundedAmount: Number(row.refundedAmount || 0),
     lineItems: Array.isArray(row.lineItems) ? row.lineItems : [],
   }));
 }
@@ -270,9 +281,13 @@ export async function getLiveCustomers(orders?: Order[]): Promise<Customer[]> {
 
   return rows.map((row) => {
     const email = (row.email || "").toLowerCase();
-    const customerOrders = liveOrders.filter(
-      (order) => order.customerEmail.toLowerCase() === email,
-    );
+    const phone = (row.phone || "").replace(/\D/g, "");
+    const customerOrders = liveOrders.filter((order) => {
+      if (order.customerId && order.customerId === row._id) return true;
+      if (email && order.customerEmail.toLowerCase() === email) return true;
+      const orderPhone = (order.customerPhone || "").replace(/\D/g, "");
+      return Boolean(phone && orderPhone && phone === orderPhone);
+    });
     const latestOrder = customerOrders[0];
 
     const profileLocation = [row.address1, row.city, row.region, row.country]
@@ -292,8 +307,8 @@ export async function getLiveCustomers(orders?: Order[]): Promise<Customer[]> {
       country: row.country,
       orders: customerOrders.length,
       lifetimeValue: customerOrders
-        .filter((order) => order.paymentStatus === "paid")
-        .reduce((sum, order) => sum + order.total, 0),
+        .filter((order) => order.paymentStatus === "paid" || order.paymentStatus === "partially_paid" || order.paymentStatus === "refunded")
+        .reduce((sum, order) => sum + Math.max(0, Number(order.amountPaid || 0) - Number(order.refundedAmount || 0)), 0),
       lastOrderAt:
         latestOrder?.createdAt ||
         row.lastPurchaseAt ||
@@ -325,7 +340,7 @@ function buildActivity({
       actor: order.soldByName || order.dispatchedByName || order.deliveredByName || "Customer",
       action:
         order.salesChannel === "POS"
-          ? `POS ${order.paymentChannel === "cash" ? "cash" : "M-PESA"} sale`
+          ? `POS ${order.paymentChannel === "cash" ? "cash" : order.paymentChannel === "mobile_money" ? "M-PESA" : "Paystack"} sale`
           : order.status === "delivered"
             ? "Order delivered"
             : order.status === "dispatched"

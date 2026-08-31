@@ -11,7 +11,7 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
-export type PaymentStatus = "pending" | "paid" | "refunded" | "failed";
+export type PaymentStatus = "pending" | "paid" | "partially_paid" | "refunded" | "failed";
 
 export type ShipmentStatus =
   | "awaiting_store"
@@ -44,7 +44,7 @@ export type Customer = {
   lastOrderAt: string;
   role?: "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
-  source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
+  source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
   authenticated?: boolean;
   image?: string | null;
 };
@@ -78,6 +78,13 @@ export type Order = {
   total: number;
   assignedStore?: string;
   paymentReference?: string;
+  discountAmount?: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  refundedAmount?: number;
+  receiptNumber?: string;
+  paymentProvider?: string;
+  providerReceiptNumber?: string;
   salesChannel?: "ONLINE" | "POS";
   fulfilmentType?: "DELIVERY" | "IN_STORE";
   soldByName?: string;

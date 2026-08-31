@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   Banknote,
   Check,
@@ -20,6 +22,10 @@ import {
   Sparkles,
   RefreshCw,
   AlertCircle,
+  CreditCard,
+  Percent,
+  ReceiptText,
+  UserRoundSearch,
 } from "lucide-react";
 
 import { formatMoney } from "@/lib/money";
@@ -36,14 +42,28 @@ type PosLine = {
   unitPrice: number;
 };
 
-type PaymentMethod = "cash" | "mpesa";
+type PaymentMethod = "cash" | "mpesa" | "paystack";
 
 type SaleResponse = {
   message?: string;
   reference?: string;
+  orderId?: string;
   orderNumber?: string;
+  receiptNumber?: string;
+  paymentStatus?: string;
+  amountPaid?: number;
+  balanceDue?: number;
   displayText?: string;
+  authorizationUrl?: string;
   testMode?: boolean;
+};
+
+type CustomerMatch = {
+  _id: string;
+  name: string;
+  email?: string;
+  phone: string;
+  outstandingBalance?: number;
 };
 
 function variantLabel(variant: ProductVariant) {
@@ -57,19 +77,31 @@ function stockLabel(product: StoreProduct, variant?: ProductVariant) {
 }
 
 export default function PointOfSalePage() {
+  const { data: session } = useSession();
+  const manager = session?.user?.role === "ADMIN" || session?.user?.role === "STORE";
+  const basePath = session?.user?.role === "ADMIN" ? "/admin" : "/store";
+
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<PosLine[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerMatches, setCustomerMatches] = useState<CustomerMatch[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("+254");
+  const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [cashAmountReceived, setCashAmountReceived] = useState("");
   const [cashConfirmed, setCashConfirmed] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<{ orderId: string; receiptNumber?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +125,26 @@ export default function PointOfSalePage() {
   }, []);
 
   useEffect(() => {
+    const term = customerSearch.trim();
+    if (term.length < 2) {
+      setCustomerMatches([]);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/backoffice/pos/customers?q=${encodeURIComponent(term)}`, { cache: "no-store" })
+        .then(async (response) => {
+          const payload = (await response.json()) as { customers?: CustomerMatch[] };
+          if (!response.ok) throw new Error("Unable to search customers.");
+          setCustomerMatches(payload.customers || []);
+        })
+        .catch(() => setCustomerMatches([]));
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [customerSearch]);
+
+  useEffect(() => {
     if (!paymentReference) return;
     let stopped = false;
     let attempts = 0;
@@ -102,18 +154,30 @@ export default function PointOfSalePage() {
       attempts += 1;
       try {
         const response = await fetch(`/api/backoffice/pos/verify?reference=${encodeURIComponent(paymentReference)}`, { cache: "no-store" });
-        const payload = (await response.json()) as { state?: string; message?: string; order?: { orderNumber?: string } };
-        if (!response.ok) throw new Error(payload.message || "Unable to verify M-PESA payment.");
+        const payload = (await response.json()) as {
+          state?: string;
+          message?: string;
+          order?: { orderId?: string; orderNumber?: string; receiptNumber?: string };
+        };
+        if (!response.ok) throw new Error(payload.message || "Unable to verify payment.");
         if (stopped) return;
 
         if (payload.state === "paid") {
-          setMessage(`M-PESA payment confirmed. Sale ${payload.order?.orderNumber || paymentReference} recorded.`);
+          setMessage(`Payment confirmed. Sale ${payload.order?.orderNumber || paymentReference} recorded.`);
+          if (payload.order?.orderId) {
+            setLastReceipt({ orderId: payload.order.orderId, receiptNumber: payload.order.receiptNumber });
+          }
           setPaymentReference(null);
           setCart([]);
           setProcessing(false);
+          setSelectedCustomerId("");
+          setCustomerSearch("");
           setCustomerName("");
           setCustomerEmail("");
           setCustomerPhone("+254");
+          setDiscountValue("");
+          setDiscountReason("");
+          setCashAmountReceived("");
           return;
         }
 
@@ -124,7 +188,7 @@ export default function PointOfSalePage() {
           return;
         }
 
-        setMessage(payload.message || "Waiting for customer to approve the M-PESA prompt…");
+        setMessage(payload.message || "Waiting for the customer to complete the payment…");
       } catch (cause) {
         if (!stopped) setMessage(cause instanceof Error ? cause.message : "Unable to verify M-PESA payment.");
       }
@@ -132,9 +196,18 @@ export default function PointOfSalePage() {
       if (!stopped && attempts < 18) {
         timer = window.setTimeout(check, 10_000);
       } else if (!stopped) {
+        try {
+          await fetch("/api/backoffice/pos/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reference: paymentReference, action: "timeout" }),
+          });
+        } catch {
+          // Reconciliation remains available even if the timeout marker fails.
+        }
         setProcessing(false);
         setPaymentReference(null);
-        setMessage("M-PESA confirmation timed out. Please check transaction log.");
+        setMessage("Payment confirmation timed out. It has been flagged for reconciliation before another payment is attempted.");
       }
     };
 
@@ -154,7 +227,17 @@ export default function PointOfSalePage() {
       .slice(0, 80);
   }, [products, search]);
 
-  const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const subtotal = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const discountNumeric = Math.max(0, Number(discountValue || 0));
+  const discountAmount = manager
+    ? Math.min(
+        subtotal,
+        discountType === "percent"
+          ? subtotal * (Math.min(discountNumeric, 100) / 100)
+          : discountNumeric,
+      )
+    : 0;
+  const total = Math.max(0, subtotal - discountAmount);
   const units = cart.reduce((sum, line) => sum + line.quantity, 0);
 
   function selectedVariant(product: StoreProduct) {
@@ -215,6 +298,17 @@ export default function PointOfSalePage() {
       setMessage("Please confirm cash receipt before proceeding.");
       return;
     }
+    if (manager && discountNumeric > 0 && !discountReason.trim()) {
+      setMessage("Enter a reason for the authorised discount.");
+      return;
+    }
+    if (paymentMethod === "cash") {
+      const cashAmount = Number(cashAmountReceived || total);
+      if (!Number.isFinite(cashAmount) || cashAmount <= 0) {
+        setMessage("Enter the cash amount received.");
+        return;
+      }
+    }
 
     setProcessing(true);
     setMessage(null);
@@ -228,9 +322,14 @@ export default function PointOfSalePage() {
           requestId,
           paymentMethod,
           cashConfirmed,
+          cashAmountReceived: paymentMethod === "cash" ? Number(cashAmountReceived || total) : undefined,
+          customerId: selectedCustomerId || undefined,
           customerName,
           customerEmail,
           customerPhone,
+          discount: manager && discountNumeric > 0
+            ? { type: discountType, value: discountNumeric, reason: discountReason }
+            : undefined,
           cart: cart.map((line) => ({
             productId: line.productId,
             quantity: line.quantity,
@@ -244,17 +343,33 @@ export default function PointOfSalePage() {
       if (!response.ok) throw new Error(payload.message || "POS sale failed.");
 
       if (paymentMethod === "cash") {
-        setMessage(`Cash sale ${payload.orderNumber || ""} recorded successfully.`);
+        const balance = Number(payload.balanceDue || 0);
+        setMessage(
+          balance > 0
+            ? `Cash sale ${payload.orderNumber || ""} recorded. Outstanding balance: ${formatMoney(balance)}.`
+            : `Cash sale ${payload.orderNumber || ""} recorded successfully.`,
+        );
+        if (payload.orderId) {
+          setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
+        }
         setCart([]);
         setCashConfirmed(false);
+        setCashAmountReceived("");
+        setSelectedCustomerId("");
+        setCustomerSearch("");
         setCustomerName("");
         setCustomerEmail("");
         setCustomerPhone("+254");
+        setDiscountValue("");
+        setDiscountReason("");
         setProcessing(false);
       } else {
-        if (!payload.reference) throw new Error("M-PESA charge started without a payment reference.");
+        if (!payload.reference) throw new Error("Payment started without a payment reference.");
+        if (payload.authorizationUrl) {
+          window.open(payload.authorizationUrl, "dbk-paystack-pos", "popup=yes,width=520,height=760");
+        }
         const prefix = payload.testMode ? "Paystack test mode: " : "";
-        setMessage(`${prefix}${payload.displayText || "Customer STK prompt sent."}`);
+        setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the payment."}`);
         setPaymentReference(payload.reference);
       }
     } catch (cause) {
@@ -282,7 +397,21 @@ export default function PointOfSalePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href={`${basePath}/pos/operations`}
+            className="hidden h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[10px] font-bold uppercase tracking-wider text-[var(--deep-green)] transition hover:bg-[var(--paper-2)] md:inline-flex"
+          >
+            <ReceiptText size={14} /> Sales operations
+          </Link>
+          {lastReceipt && (
+            <Link
+              href={`${basePath}/pos/receipt/${encodeURIComponent(lastReceipt.orderId)}`}
+              className="hidden h-10 items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[10px] font-bold uppercase tracking-wider text-soft-cream md:inline-flex"
+            >
+              <ReceiptText size={14} /> {lastReceipt.receiptNumber || "Receipt"}
+            </Link>
+          )}
           <a
             href="#pos-cart-panel"
             className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-xs font-semibold text-soft-cream shadow-sm transition-transform active:scale-95 lg:hidden"
@@ -533,6 +662,49 @@ export default function PointOfSalePage() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Customer Information</span>
               <div className="grid gap-2">
                 <div className="relative">
+                  <UserRoundSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+                  <input
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setSelectedCustomerId("");
+                    }}
+                    placeholder="Find existing customer"
+                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                  />
+                  {customerMatches.length > 0 && !selectedCustomerId && (
+                    <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-y-auto rounded-xl border hairline bg-[var(--paper)] p-1 shadow-xl">
+                      {customerMatches.map((customer) => (
+                        <button
+                          key={customer._id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCustomerId(customer._id);
+                            setCustomerSearch(customer.name);
+                            setCustomerName(customer.name);
+                            updateCustomerPhone(customer.phone || "+254");
+                            setCustomerEmail(customer.email || "");
+                            setCustomerMatches([]);
+                          }}
+                          className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-[var(--paper-2)]"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-semibold">{customer.name}</span>
+                            <span className="block truncate text-[10px] text-[var(--muted)]">
+                              {customer.phone}{customer.email ? ` · ${customer.email}` : ""}
+                            </span>
+                          </span>
+                          {Number(customer.outstandingBalance || 0) > 0 && (
+                            <span className="shrink-0 text-[9px] font-semibold text-amber-700">
+                              Due {formatMoney(Number(customer.outstandingBalance || 0))}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="relative">
                   <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
                   <input
                     value={customerName}
@@ -568,10 +740,49 @@ export default function PointOfSalePage() {
               </div>
             </div>
 
+            {manager && (
+              <div className="space-y-2 rounded-xl border hairline bg-[var(--paper)] p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Authorised Discount</span>
+                  <Percent size={14} className="text-[var(--deep-green)]" />
+                </div>
+                <div className="grid grid-cols-[105px_1fr] gap-2">
+                  <select
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value as "percent" | "fixed")}
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-2 text-[10px] font-semibold outline-none"
+                  >
+                    <option value="percent">Percent %</option>
+                    <option value="fixed">Fixed KES</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder="Discount value"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                  />
+                </div>
+                <input
+                  value={discountReason}
+                  onChange={(e) => setDiscountReason(e.target.value)}
+                  placeholder="Reason required when discount is applied"
+                  className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                />
+                {discountAmount > 0 && (
+                  <p className="text-[10px] text-[var(--muted)]">
+                    Discount <strong className="text-[var(--ink)]">-{formatMoney(discountAmount)}</strong> · New total {formatMoney(total)}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment Method</span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("cash")}
@@ -586,39 +797,74 @@ export default function PointOfSalePage() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("mpesa")}
-                  className={`flex h-10 items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
+                  className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border px-1 text-[10px] font-semibold transition-all ${
                     paymentMethod === "mpesa"
                       ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
-                  <Smartphone size={15} /> M-PESA STK
+                  <Smartphone size={14} /> M-PESA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("paystack")}
+                  className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border px-1 text-[10px] font-semibold transition-all ${
+                    paymentMethod === "paystack"
+                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
+                      : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
+                  }`}
+                >
+                  <CreditCard size={14} /> Paystack
                 </button>
               </div>
 
               {/* Dynamic Payment Specific Warnings */}
               {paymentMethod === "cash" ? (
-                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-tight">
+                <div className="grid gap-2">
                   <input
-                    type="checkbox"
-                    checked={cashConfirmed}
-                    onChange={(e) => setCashConfirmed(e.target.checked)}
-                    className="mt-0.5 size-3.5 accent-[var(--deep-green)]"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={cashAmountReceived}
+                    onChange={(e) => setCashAmountReceived(e.target.value)}
+                    placeholder={`Cash received — ${formatMoney(total)}`}
+                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
                   />
-                  <span>
-                    <strong>Confirm cash received:</strong> Check only after exact amount is physically collected.
-                  </span>
-                </label>
+                  {cashAmountReceived && Number(cashAmountReceived) < total && (
+                    <p className="text-[10px] font-medium text-amber-700">
+                      Partial payment: {formatMoney(total - Number(cashAmountReceived || 0))} will remain receivable.
+                    </p>
+                  )}
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-tight">
+                    <input
+                      type="checkbox"
+                      checked={cashConfirmed}
+                      onChange={(e) => setCashConfirmed(e.target.checked)}
+                      className="mt-0.5 size-3.5 accent-[var(--deep-green)]"
+                    />
+                    <span>
+                      <strong>Confirm cash received:</strong> Check only after the amount has physically been collected.
+                    </span>
+                  </label>
+                </div>
               ) : (
                 <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
-                  Sends an instant prompt to the customer&apos;s handset via Paystack integration.
+                  {paymentMethod === "mpesa"
+                    ? <>Send an M-PESA payment prompt to the customer&apos;s phone through Paystack.</>
+                    : <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>}
                 </p>
               )}
             </div>
 
             {/* Total Summary & Checkout Button */}
             <div className="space-y-3 pt-2">
-              <div className="flex items-baseline justify-between border-t hairline pt-3">
+              {discountAmount > 0 && (
+                <div className="grid gap-1 border-t hairline pt-3 text-[10px] text-[var(--muted)]">
+                  <div className="flex justify-between"><span>Subtotal</span><span>{formatMoney(subtotal)}</span></div>
+                  <div className="flex justify-between"><span>Discount</span><span>-{formatMoney(discountAmount)}</span></div>
+                </div>
+              )}
+              <div className={`flex items-baseline justify-between ${discountAmount > 0 ? "" : "border-t hairline pt-3"}`}>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Total Amount</span>
                 <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--deep-green)]">
                   {formatMoney(total)}
@@ -639,9 +885,13 @@ export default function PointOfSalePage() {
                   <span className="inline-flex items-center gap-2">
                     <Check size={16} /> Complete Cash Sale
                   </span>
-                ) : (
+                ) : paymentMethod === "mpesa" ? (
                   <span className="inline-flex items-center gap-2">
                     <Smartphone size={16} /> Send M-PESA Prompt
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <CreditCard size={16} /> Open Paystack Payment
                   </span>
                 )}
               </button>

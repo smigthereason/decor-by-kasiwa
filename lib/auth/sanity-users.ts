@@ -5,7 +5,7 @@ import { createClient } from "@sanity/client";
 
 export type CustomerRole = "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
 export type CustomerStatus = "ACTIVE" | "SUSPENDED";
-export type CustomerSource = "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
+export type CustomerSource = "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
 
 export type SanityCustomer = {
   _id: string;
@@ -27,6 +27,18 @@ export type SanityCustomer = {
   createdAt: string;
   lastLoginAt: string;
   updatedAt: string;
+};
+
+
+export type PosPurchaseCustomer = {
+  _id: string;
+  name: string;
+  email?: string;
+  phone: string;
+  role: "CUSTOMER";
+  status: CustomerStatus;
+  source: CustomerSource;
+  outstandingBalance?: number;
 };
 
 export type PurchaseCustomer = {
@@ -91,6 +103,19 @@ function guestDocumentId(email: string) {
     .slice(0, 32);
 
   return `customerUser.guest.${hash}`;
+}
+
+function normalizeCustomerPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (/^254[17]\d{8}$/.test(digits)) return `+${digits}`;
+  if (/^0[17]\d{8}$/.test(digits)) return `+254${digits.slice(1)}`;
+  if (/^[17]\d{8}$/.test(digits)) return `+254${digits}`;
+  return value.trim();
+}
+
+function posCustomerDocumentId(phone: string) {
+  const hash = createHash("sha256").update(normalizeCustomerPhone(phone)).digest("hex").slice(0, 32);
+  return `customerUser.pos.${hash}`;
 }
 
 export function customerDocumentId(googleId: string) {
@@ -264,6 +289,99 @@ export async function upsertCustomerFromPurchase({
     { documentId },
   );
   if (!customer) throw new Error("Purchase customer could not be persisted.");
+  return customer;
+}
+
+export async function findPosCustomers(query: string): Promise<PosPurchaseCustomer[]> {
+  const client = getServerClient();
+  const term = query.trim().toLowerCase();
+  if (term.length < 2) return [];
+  const phoneDigits = term.replace(/\D/g, "");
+  return client.fetch<PosPurchaseCustomer[]>(
+    `*[_type == "customerUser" && role == "CUSTOMER" && (
+      lower(name) match $wildcard || lower(coalesce(email, "")) match $wildcard ||
+      coalesce(phone, "") match $phoneWildcard
+    )] | order(coalesce(lastPurchaseAt, createdAt) desc)[0...10]{
+      _id,name,email,phone,role,status,source,outstandingBalance
+    }`,
+    { wildcard: `*${term}*`, phoneWildcard: `*${phoneDigits || term}*` },
+  );
+}
+
+export async function upsertPosCustomerFromPurchase({
+  customerId,
+  name,
+  email,
+  phone,
+  purchasedAt = new Date().toISOString(),
+  balanceDelta = 0,
+}: {
+  customerId?: string | null;
+  name: string;
+  email?: string | null;
+  phone: string;
+  purchasedAt?: string;
+  balanceDelta?: number;
+}): Promise<PosPurchaseCustomer> {
+  const client = getServerClient();
+  const normalizedPhone = normalizeCustomerPhone(phone);
+  const normalizedEmail = email ? normalizeEmail(email) : "";
+  const now = new Date().toISOString();
+
+  const existing = customerId
+    ? { _id: baseDocumentId(customerId) }
+    : await client.fetch<{ _id: string } | null>(
+        `*[_type == "customerUser" && role == "CUSTOMER" && (
+          phone == $phone || ($email != "" && email == $email)
+        )] | order(_updatedAt desc)[0]{_id}`,
+        { phone: normalizedPhone, email: normalizedEmail },
+      );
+
+  const documentId = existing ? baseDocumentId(existing._id) : posCustomerDocumentId(normalizedPhone);
+  const existingBalance = await client.fetch<number | null>(
+    `coalesce(*[_id == $documentId][0].outstandingBalance, 0)`,
+    { documentId },
+  );
+  const nextBalance = Math.max(0, Number(existingBalance || 0) + Number(balanceDelta || 0));
+
+  await client.createIfNotExists({
+    _id: documentId,
+    _type: "customerUser",
+    name: name.trim() || "POS Customer",
+    ...(normalizedEmail ? { email: normalizedEmail } : {}),
+    phone: normalizedPhone,
+    role: "CUSTOMER",
+    status: "ACTIVE",
+    source: "POS",
+    firstPurchaseAt: purchasedAt,
+    lastPurchaseAt: purchasedAt,
+    lastPosPurchaseAt: purchasedAt,
+    outstandingBalance: nextBalance,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await client.patch(documentId).set({
+    name: name.trim() || "POS Customer",
+    ...(normalizedEmail ? { email: normalizedEmail } : {}),
+    phone: normalizedPhone,
+    lastPurchaseAt: purchasedAt,
+    lastPosPurchaseAt: purchasedAt,
+    outstandingBalance: nextBalance,
+    updatedAt: now,
+  }).setIfMissing({
+    role: "CUSTOMER",
+    status: "ACTIVE",
+    source: "POS",
+    firstPurchaseAt: purchasedAt,
+    createdAt: now,
+  }).commit();
+
+  const customer = await client.fetch<PosPurchaseCustomer | null>(
+    `*[_id == $documentId][0]{_id,name,email,phone,role,status,source,outstandingBalance}`,
+    { documentId },
+  );
+  if (!customer) throw new Error("POS customer could not be persisted.");
   return customer;
 }
 

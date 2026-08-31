@@ -132,6 +132,7 @@ export const commerceOrder = defineType({
         list: [
           { title: "Pending", value: "pending" },
           { title: "Paid", value: "paid" },
+          { title: "Partially Paid", value: "partially_paid" },
           { title: "Refunded", value: "refunded" },
           { title: "Failed", value: "failed" },
         ],
@@ -151,12 +152,24 @@ export const commerceOrder = defineType({
       initialValue: 0,
       validation: (Rule) => Rule.min(0),
     }),
+    defineField({ name: "discountType", title: "Discount Type", type: "string", options: { list: [
+      { title: "Percentage", value: "percent" }, { title: "Fixed amount", value: "fixed" },
+    ] } }),
+    defineField({ name: "discountValue", title: "Discount Value", type: "number", validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "discountAmount", title: "Discount Amount", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "discountReason", title: "Discount Reason", type: "string" }),
+    defineField({ name: "discountAuthorizedBy", title: "Discount Authorized By", type: "reference", to: [{ type: "customerUser" }] }),
+    defineField({ name: "discountAuthorizedByName", title: "Discount Authorized By Name", type: "string" }),
     defineField({
       name: "total",
       title: "Total",
       type: "number",
       validation: (Rule) => Rule.required().min(0),
     }),
+    defineField({ name: "amountPaid", title: "Amount Paid", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "balanceDue", title: "Balance Due", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "refundedAmount", title: "Refunded Amount", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "receiptNumber", title: "Receipt Number", type: "string" }),
     defineField({
       name: "currency",
       title: "Currency",
@@ -271,6 +284,11 @@ export const commerceOrder = defineType({
       title: "Paystack Transaction ID",
       type: "string",
     }),
+    defineField({ name: "providerReceiptNumber", title: "Provider / M-PESA Receipt Reference", type: "string" }),
+    defineField({ name: "lastRefundAt", title: "Last Refund At", type: "datetime" }),
+    defineField({ name: "returnStatus", title: "Return Status", type: "string", options: { list: [
+      { title: "None", value: "none" }, { title: "Partially Returned", value: "partial" }, { title: "Returned", value: "returned" },
+    ] } }),
     defineField({
       name: "failureReason",
       title: "Payment / Processing Note",
