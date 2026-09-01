@@ -912,7 +912,10 @@ export default function ShopLanding({
 
       {/* 4. Shop the Look - FULL WIDTH LAYOUT (NOT A CAROUSEL) */}
       {featuredLook && (
-        <section className="relative border-t hairline w-full border-b hairline bg-[var(--paper-2)]">
+        <section className="relative border-t hairline w-full border-b hairline ">
+          <div className="px-4 pt-5 sm:px-6 sm:pt-9 lg:px-10 lg:pt-12">
+            <SectionHeading eyebrow="Capture the look" title="Shop by Look" href="/shop-by-look" />
+          </div>
           <div className="grid w-full overflow-hidden bg-[var(--paper)] lg:grid-cols-[1fr_0.95fr]">
             {/* Image Section */}
             <Link
@@ -932,17 +935,6 @@ export default function ShopLanding({
 
               <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-black/10 to-transparent" />
 
-              {/* Badge - Bottom on mobile, top-left on tablet+ */}
-              <div className="absolute left-3 right-3 bottom-3 sm:left-4 sm:right-4 sm:bottom-4 md:left-5 md:top-5 md:bottom-auto md:right-auto md:max-w-[260px] lg:left-7 lg:top-7 lg:max-w-[320px]">
-                <div className=" backdrop-blur-sm opacity-80 p-4 sm:p-5 md:p-6 lg:p-7 ">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-white/80 sm:text-[11px] md:text-[16px]">
-                    Shop the look
-                  </p>
-                  <p className="mt-1.5 text-[13px] font-bold leading-tight text-white sm:text-[15px] md:text-[18px] lg:text-[16px]">
-                    Everything in this room is from Decor by Kasiwa.
-                  </p>
-                </div>
-              </div>
             </Link>
 
             {/* Content Section */}
@@ -1019,7 +1011,7 @@ export default function ShopLanding({
 
 
       <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
-        <SectionHeading title="Shop by price" href="/shop" />
+        <SectionHeading eyebrow="Budget your spend" title="Shop by price" href="/shop" />
         <PriceRangeCarousel />
       </section>
 

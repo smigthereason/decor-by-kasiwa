@@ -58,7 +58,7 @@ export default async function ProductPage({
   if (!product) notFound();
 
   const [relatedProducts] = await Promise.all([
-    getRelatedStoreProducts(product, 3),
+    getRelatedStoreProducts(product, 4),
   ]);
   const siteUrl = getSiteUrl();
 

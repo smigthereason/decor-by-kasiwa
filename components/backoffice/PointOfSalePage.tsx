@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
-  Banknote,
-  Check,
   ChevronDown,
   ImageOff,
   Minus,
@@ -44,7 +42,7 @@ type PosLine = {
   unitPrice: number;
 };
 
-type PaymentMethod = "cash" | "mpesa" | "paystack";
+type PaymentMethod = "mpesa" | "paystack";
 
 type SaleResponse = {
   message?: string;
@@ -55,8 +53,8 @@ type SaleResponse = {
   paymentStatus?: string;
   amountPaid?: number;
   balanceDue?: number;
-  cashTendered?: number;
-  cashChangeDue?: number;
+  deliveryFee?: number;
+  deliveryLocation?: string;
   displayText?: string;
   authorizationUrl?: string;
   testMode?: boolean;
@@ -90,7 +88,7 @@ export default function PointOfSalePage() {
   const [search, setSearch] = useState("");
   const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<PosLine[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mpesa");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerMatches, setCustomerMatches] = useState<CustomerMatch[]>([]);
@@ -100,8 +98,9 @@ export default function PointOfSalePage() {
   const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
-  const [cashAmountReceived, setCashAmountReceived] = useState("");
-  const [cashConfirmed, setCashConfirmed] = useState(false);
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [deliveryFee, setDeliveryFee] = useState("");
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
@@ -196,7 +195,9 @@ export default function PointOfSalePage() {
           setCustomerPhone("+254");
           setDiscountValue("");
           setDiscountReason("");
-          setCashAmountReceived("");
+          setDeliveryEnabled(false);
+          setDeliveryLocation("");
+          setDeliveryFee("");
           return;
         }
 
@@ -256,11 +257,10 @@ export default function PointOfSalePage() {
           : discountNumeric,
       )
     : 0;
-  const total = Math.max(0, subtotal - discountAmount);
+  const productRevenue = Math.max(0, subtotal - discountAmount);
+  const deliveryPayable = deliveryEnabled ? Math.max(0, Number(deliveryFee || 0)) : 0;
+  const total = productRevenue + deliveryPayable;
   const units = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const cashTendered = Math.max(0, Number(cashAmountReceived || 0));
-  const cashChangeDue = paymentMethod === "cash" && cashTendered > total ? cashTendered - total : 0;
-  const cashShortfall = paymentMethod === "cash" && cashTendered > 0 && cashTendered < total ? total - cashTendered : 0;
 
   function selectedVariant(product: StoreProduct) {
     const selectedId = variantSelections[product.id];
@@ -316,18 +316,17 @@ export default function PointOfSalePage() {
       setMessage("Enter a valid Kenyan customer phone number (+254...).");
       return;
     }
-    if (paymentMethod === "cash" && !cashConfirmed) {
-      setMessage("Please confirm cash receipt before proceeding.");
-      return;
-    }
     if (manager && discountNumeric > 0 && !discountReason.trim()) {
       setMessage("Enter a reason for the authorised discount.");
       return;
     }
-    if (paymentMethod === "cash") {
-      const cashAmount = Number(cashAmountReceived || total);
-      if (!Number.isFinite(cashAmount) || cashAmount <= 0) {
-        setMessage("Enter the cash amount received.");
+    if (deliveryEnabled) {
+      if (!deliveryLocation.trim()) {
+        setMessage("Enter or select the delivery destination.");
+        return;
+      }
+      if (!Number.isFinite(deliveryPayable) || deliveryPayable <= 0) {
+        setMessage("Enter a valid delivery payable amount.");
         return;
       }
     }
@@ -343,8 +342,8 @@ export default function PointOfSalePage() {
         body: JSON.stringify({
           requestId,
           paymentMethod,
-          cashConfirmed,
-          cashAmountReceived: paymentMethod === "cash" ? Number(cashAmountReceived || total) : undefined,
+          deliveryLocation: deliveryEnabled ? deliveryLocation.trim() : undefined,
+          deliveryFee: deliveryEnabled ? deliveryPayable : 0,
           customerId: selectedCustomerId || undefined,
           customerName,
           customerEmail,
@@ -364,39 +363,13 @@ export default function PointOfSalePage() {
       const payload = (await response.json()) as SaleResponse;
       if (!response.ok) throw new Error(payload.message || "POS sale failed.");
 
-      if (paymentMethod === "cash") {
-        const balance = Number(payload.balanceDue || 0);
-        const change = Number(payload.cashChangeDue ?? Math.max(0, Number(cashAmountReceived || 0) - total));
-        setMessage(
-          balance > 0
-            ? `Cash sale ${payload.orderNumber || ""} recorded. Outstanding balance: ${formatMoney(balance)}.`
-            : change > 0
-              ? `Cash sale ${payload.orderNumber || ""} recorded. Change due to customer: ${formatMoney(change)}.`
-              : `Cash sale ${payload.orderNumber || ""} recorded successfully.`,
-        );
-        if (payload.orderId) {
-          setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
-        }
-        setCart([]);
-        setCashConfirmed(false);
-        setCashAmountReceived("");
-        setSelectedCustomerId("");
-        setCustomerSearch("");
-        setCustomerName("");
-        setCustomerEmail("");
-        setCustomerPhone("+254");
-        setDiscountValue("");
-        setDiscountReason("");
-        setProcessing(false);
-      } else {
-        if (!payload.reference) throw new Error("Payment started without a payment reference.");
-        if (payload.authorizationUrl) {
-          window.open(payload.authorizationUrl, "dbk-paystack-pos", "popup=yes,width=520,height=760");
-        }
-        const prefix = payload.testMode ? "Paystack test mode: " : "";
-        setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the payment."}`);
-        setPaymentReference(payload.reference);
+      if (!payload.reference) throw new Error("Payment started without a payment reference.");
+      if (payload.authorizationUrl) {
+        window.open(payload.authorizationUrl, "dbk-paystack-pos", "popup=yes,width=520,height=760");
       }
+      const prefix = payload.testMode ? "Paystack test mode: " : "";
+      setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the payment."}`);
+      setPaymentReference(payload.reference);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "POS sale failed.");
       setProcessing(false);
@@ -818,21 +791,53 @@ export default function PointOfSalePage() {
               </div>
             )}
 
+            <div className="space-y-2 rounded-xl border hairline bg-[var(--paper)] p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Delivery Payable</span>
+                  <p className="mt-1 text-[10px] leading-4 text-[var(--muted)]">Pass-through delivery money: collected from the customer but excluded from business revenue.</p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.05em]">
+                  <input type="checkbox" checked={deliveryEnabled} onChange={(event) => setDeliveryEnabled(event.target.checked)} className="size-4 accent-[var(--deep-green)]" />
+                  Add delivery
+                </label>
+              </div>
+              {deliveryEnabled && (
+                <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+                  <div>
+                    <input
+                      list="pos-delivery-destinations"
+                      value={deliveryLocation}
+                      onChange={(event) => setDeliveryLocation(event.target.value)}
+                      placeholder="Delivery destination e.g. Kisumu"
+                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                    />
+                    <datalist id="pos-delivery-destinations">
+                      <option value="Nairobi" />
+                      <option value="Kiambu" />
+                      <option value="Kisumu" />
+                      <option value="Mombasa" />
+                      <option value="Nakuru" />
+                      <option value="Eldoret" />
+                    </datalist>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={deliveryFee}
+                    onChange={(event) => setDeliveryFee(event.target.value)}
+                    placeholder="Amount KES"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment Method</span>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("cash")}
-                  className={`flex h-10 items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-all ${
-                    paymentMethod === "cash"
-                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
-                      : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
-                  }`}
-                >
-                  <Banknote size={15} /> Cash
-                </button>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("mpesa")}
@@ -857,52 +862,11 @@ export default function PointOfSalePage() {
                 </button>
               </div>
 
-              {/* Dynamic Payment Specific Warnings */}
-              {paymentMethod === "cash" ? (
-                <div className="grid gap-2">
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={cashAmountReceived}
-                    onChange={(e) => setCashAmountReceived(e.target.value)}
-                    placeholder={`Cash received — ${formatMoney(total)}`}
-                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
-                  />
-                  {cashChangeDue > 0 && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-700">Change to return</p>
-                      <p className="mt-1 text-xl font-extrabold tabular-nums text-emerald-800">{formatMoney(cashChangeDue)}</p>
-                      <p className="mt-1 text-[10px] text-emerald-700">Cash received {formatMoney(cashTendered)} · Sale total {formatMoney(total)}</p>
-                    </div>
-                  )}
-                  {cashTendered > 0 && cashTendered === total && (
-                    <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-medium text-emerald-700">Exact cash received — no change is due.</p>
-                  )}
-                  {cashShortfall > 0 && (
-                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-medium text-amber-700">
-                      Partial payment: {formatMoney(cashShortfall)} will remain receivable.
-                    </p>
-                  )}
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-tight">
-                    <input
-                      type="checkbox"
-                      checked={cashConfirmed}
-                      onChange={(e) => setCashConfirmed(e.target.checked)}
-                      className="mt-0.5 size-3.5 accent-[var(--deep-green)]"
-                    />
-                    <span>
-                      <strong>Confirm cash received:</strong> Check only after the amount has physically been collected.
-                    </span>
-                  </label>
-                </div>
-              ) : (
-                <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
-                  {paymentMethod === "mpesa"
-                    ? <>Send an M-PESA payment prompt to the customer&apos;s phone through Paystack.</>
-                    : <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>}
-                </p>
-              )}
+              <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
+                {paymentMethod === "mpesa"
+                  ? <>Send an M-PESA STK payment prompt to the customer&apos;s phone through Paystack.</>
+                  : <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>}
+              </p>
             </div>
 
             {/* Total Summary & Checkout Button */}
@@ -913,14 +877,14 @@ export default function PointOfSalePage() {
                   <div className="flex justify-between"><span>Discount</span><span>-{formatMoney(discountAmount)}</span></div>
                 </div>
               )}
-              {paymentMethod === "cash" && cashTendered > 0 && (
+              {deliveryPayable > 0 && (
                 <div className="grid gap-1 border-t hairline pt-3 text-[10px] text-[var(--muted)]">
-                  <div className="flex justify-between"><span>Cash tendered</span><span>{formatMoney(cashTendered)}</span></div>
-                  <div className="flex justify-between font-semibold text-[var(--ink)]"><span>Change due</span><span>{formatMoney(cashChangeDue)}</span></div>
+                  <div className="flex justify-between"><span>Business revenue</span><span>{formatMoney(productRevenue)}</span></div>
+                  <div className="flex justify-between"><span>Delivery payable · {deliveryLocation || "Destination"}</span><span>{formatMoney(deliveryPayable)}</span></div>
                 </div>
               )}
-              <div className={`flex items-baseline justify-between ${discountAmount > 0 || (paymentMethod === "cash" && cashTendered > 0) ? "" : "border-t hairline pt-3"}`}>
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Total Amount</span>
+              <div className={`flex items-baseline justify-between ${discountAmount > 0 || deliveryPayable > 0 ? "" : "border-t hairline pt-3"}`}>
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Money In</span>
                 <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--deep-green)]">
                   {formatMoney(total)}
                 </span>
@@ -935,10 +899,6 @@ export default function PointOfSalePage() {
                 {processing ? (
                   <span className="inline-flex items-center gap-2">
                     <RefreshCw size={14} className="animate-spin" /> Processing Order...
-                  </span>
-                ) : paymentMethod === "cash" ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Check size={16} /> Complete Cash Sale
                   </span>
                 ) : paymentMethod === "mpesa" ? (
                   <span className="inline-flex items-center gap-2">

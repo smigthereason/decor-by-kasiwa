@@ -12,7 +12,6 @@ import {
   Minus,
   Plus,
   LockKeyhole,
-  Star,
   Zap,
 } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
@@ -21,6 +20,7 @@ import { getMaximumPurchasableQuantity, isProductSoldOut } from "@/lib/catalogue
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import ProductCard from "@/components/root/shop/ProductCard";
 import { getProductRating } from "@/lib/product-rating";
+import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
 
 export default function ProductDetailClient({
   product,
@@ -253,9 +253,9 @@ export default function ProductDetailClient({
                 {product.name}
               </h1>
 
-              <div className="mt-4 flex items-center gap-2" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
-                <Star size={15} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
-                <span className="text-sm font-semibold">{rating.toFixed(1)} / 5</span>
+              <div className="mt-4 flex flex-wrap items-center gap-2" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+                <ProductRatingStars rating={rating} size={17} />
+                <span className="text-sm font-semibold">{rating.toFixed(1)}</span>
                 {typeof reviewCount === "number" && (
                   <span className="text-xs text-[var(--muted)]">({reviewCount} reviews)</span>
                 )}
@@ -345,30 +345,50 @@ export default function ProductDetailClient({
                 </div>
               )}
 
-              {/* QUANTITY SELECTOR */}
+              {/* QUANTITY + ADD TO CART */}
               <div className="mt-7">
-                <div className="mb-3 text-[10px] uppercase tracking-[0.08em]">
-                  Quantity
-                </div>
-                <div className="flex items-center justify-between rounded-full border hairline px-3 max-w-[116px]">
+                <div className="mb-3 text-[10px] uppercase tracking-[0.08em]">Quantity</div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex min-h-12 w-full max-w-[126px] items-center justify-between rounded-full border hairline px-3">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((value) => Math.max(1, value - 1))}
+                      disabled={soldOut || quantity <= 1}
+                      className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
+                      aria-label="Decrease quantity"
+                    >
+                      <Minus size={13} />
+                    </button>
+                    <span className="text-xs">{quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((value) => maximumQuantity === null ? value + 1 : Math.min(maximumQuantity, value + 1))}
+                      disabled={soldOut || (maximumQuantity !== null && quantity >= maximumQuantity)}
+                      className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setQuantity((value) => Math.max(1, value - 1))}
-                    disabled={soldOut || quantity <= 1}
-                    className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
-                    aria-label="Decrease quantity"
+                    onClick={handleAdd}
+                    disabled={soldOut || purchasingUnavailable}
+                    className="focus-ring inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    <Minus size={13} />
-                  </button>
-                  <span className="text-xs">{quantity}</span>
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((value) => maximumQuantity === null ? value + 1 : Math.min(maximumQuantity, value + 1))}
-                    disabled={soldOut || (maximumQuantity !== null && quantity >= maximumQuantity)}
-                    className="focus-ring grid size-8 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
-                    aria-label="Increase quantity"
-                  >
-                    <Plus size={13} />
+                    {catalogueError ? (
+                      <>Catalogue unavailable</>
+                    ) : !catalogueReady ? (
+                      <>Preparing cart…</>
+                    ) : soldOut ? (
+                      <>Out of stock</>
+                    ) : added ? (
+                      <>
+                        <Check size={14} /> Added to cart
+                      </>
+                    ) : (
+                      <>Add to cart <ArrowRight size={14} className="text-soft-cream" /></>
+                    )}
                   </button>
                 </div>
                 {maximumQuantity !== null && maximumQuantity <= 5 && !soldOut && (
@@ -378,27 +398,6 @@ export default function ProductDetailClient({
 
               {/* ACTION BUTTONS */}
               <div className="mt-4 grid gap-2">
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  disabled={soldOut || purchasingUnavailable}
-                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {catalogueError ? (
-                    <>Catalogue unavailable</>
-                  ) : !catalogueReady ? (
-                    <>Preparing cart…</>
-                  ) : soldOut ? (
-                    <>Out of stock</>
-                  ) : added ? (
-                    <>
-                      <Check size={14} /> Added to cart
-                    </>
-                  ) : (
-                    <>Add to cart <ArrowRight size={14} className="text-soft-cream" /></>
-                  )}
-                </button>
-
                 <button
                   type="button"
                   onClick={handleBuyNow}
@@ -486,7 +485,7 @@ export default function ProductDetailClient({
 
           {/* RELATED PRODUCTS GRID */}
           <div className="px-4 py-8 sm:px-6 md:px-8 md:py-12 lg:px-10 xl:px-12">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 lg:grid-cols-4">
               {related.map((item) => (
                 <ProductCard key={item.id} product={item} />
               ))}

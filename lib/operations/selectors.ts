@@ -48,7 +48,7 @@ export function adminMetrics({
 }): AdminMetrics {
   const revenue = orders
     .filter((order) => order.paymentStatus === "paid")
-    .reduce((sum, order) => sum + order.total, 0);
+    .reduce((sum, order) => sum + Math.max(0, order.subtotal - Number(order.discountAmount || 0)), 0);
 
   const openOrders = orders.filter(
     (order) => !["delivered", "cancelled"].includes(order.status),

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import SiteHeader from "@/components/root/navigation/SiteHeader";
 import SiteFooter from "@/components/root/navigation/SiteFooter";
 import MobileBottomNav from "@/components/root/navigation/MobileBottomNav";
+import WhatsAppFloatingButton from "@/components/root/navigation/WhatsAppFloatingButton";
 import { getShopNavigation } from "@/sanity/lib/catalog";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function ShopLayout({
 
       <SiteFooter />
 
+      <WhatsAppFloatingButton />
       <MobileBottomNav />
     </div>
   );

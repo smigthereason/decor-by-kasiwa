@@ -41,7 +41,9 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
         <div className="border-t hairline pt-5 text-xs">
           <div className="flex justify-between py-1.5"><span>Subtotal</span><span>{formatMoney(Number(receipt.subtotal || 0))}</span></div>
           {Number(receipt.discountAmount || 0) > 0 && <div className="flex justify-between py-1.5"><span>Discount</span><span>-{formatMoney(Number(receipt.discountAmount || 0))}</span></div>}
-          <div className="flex justify-between py-2 text-base font-semibold"><span>Total</span><span>{formatMoney(Number(receipt.total || 0))}</span></div>
+          <div className="flex justify-between py-1.5 font-semibold"><span>Business revenue</span><span>{formatMoney(Math.max(0, Number(receipt.subtotal || 0) - Number(receipt.discountAmount || 0)))}</span></div>
+          {Number(receipt.deliveryFee || 0) > 0 && <div className="flex justify-between gap-4 py-1.5"><span>Delivery payable · {receipt.deliveryLocation || "Delivery"}</span><span>{formatMoney(Number(receipt.deliveryFee || 0))}</span></div>}
+          <div className="flex justify-between py-2 text-base font-semibold"><span>Money In</span><span>{formatMoney(Number(receipt.total || 0))}</span></div>
           <div className="flex justify-between py-1.5"><span>Paid</span><span>{formatMoney(Number(receipt.amountPaid || 0))}</span></div>
           {Number(receipt.cashTendered || 0) > 0 && <div className="flex justify-between py-1.5"><span>Cash tendered</span><span>{formatMoney(Number(receipt.cashTendered || 0))}</span></div>}
           {Number(receipt.cashChangeDue || 0) > 0 && <div className="flex justify-between py-1.5 font-semibold text-emerald-700"><span>Change returned</span><span>{formatMoney(Number(receipt.cashChangeDue || 0))}</span></div>}

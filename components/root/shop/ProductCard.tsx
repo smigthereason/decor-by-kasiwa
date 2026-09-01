@@ -3,11 +3,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
 import { formatMoney } from "@/lib/money";
 import { isProductSoldOut } from "@/lib/catalogue";
 import { getProductRating } from "@/lib/product-rating";
+import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
 
 function getColorHex(colourName: string): string {
   const colorMap: Record<string, string> = {
@@ -96,16 +97,29 @@ export default function ProductCard({
 
         {!homeCompact && (
           <>
-            {/* CATEGORY BADGE */}
-            <span className="absolute left-3 top-3 rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
-              {product.category === "Decor" ? "Décor" : product.category}
-            </span>
+            {/* CATEGORY + MERCHANDISING BADGES */}
+            <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
+              <span className="rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
+                {product.category === "Decor" ? "Décor" : product.category}
+              </span>
+              {product.bestSeller && (
+                <span className="rounded-full bg-[var(--deep-green)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream shadow-sm">
+                  Best seller
+                </span>
+              )}
+            </div>
 
             {/* QUICK VIEW INDICATOR */}
             <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-[var(--paper)]/90 opacity-0 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100">
               <ArrowRight size={14} className="text-[var(--ink)]" />
             </span>
           </>
+        )}
+
+        {homeCompact && product.bestSeller && (
+          <span className="absolute left-2 top-2 rounded-full bg-[var(--deep-green)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.06em] !text-soft-cream shadow-sm sm:left-3 sm:top-3 sm:px-2.5">
+            Best seller
+          </span>
         )}
 
         {soldOut && (
@@ -126,10 +140,9 @@ export default function ProductCard({
           {product.name}
         </h3>
 
-        <div className={homeCompact ? "mt-1.5 flex items-center gap-1" : "mt-2 flex items-center gap-1.5"} aria-label={`${rating.toFixed(1)} out of 5 stars`}>
-          <Star size={homeCompact ? 11 : 13} className="fill-[var(--brand-gold)] text-[var(--brand-gold)]" aria-hidden="true" />
+        <div className={homeCompact ? "mt-1.5 flex items-center gap-1.5" : "mt-2 flex items-center gap-2"} aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+          <ProductRatingStars rating={rating} size={homeCompact ? 11 : 13} />
           <span className="text-[11px] font-semibold text-[var(--ink)]">{rating.toFixed(1)}</span>
-          <span className="text-[10px] text-[var(--muted)]">/ 5</span>
           {!homeCompact && typeof reviewCount === "number" && (
             <span className="text-[10px] text-[var(--muted)]">({reviewCount})</span>
           )}

@@ -17,6 +17,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
   const { data, loading, error, refresh } = useLiveOperations();
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
+  const [merchandisingFilter, setMerchandisingFilter] = useState("All");
 
   const products = data?.products || [];
   const categories = useMemo(
@@ -26,6 +27,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
 
   const filteredProducts = products.filter((item) => {
     if (categoryFilter !== "All" && item.category !== categoryFilter) return false;
+    if (merchandisingFilter === "Best sellers" && item.bestSeller !== true) return false;
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return [item.name, item.sku, item.category].some((value) => value.toLowerCase().includes(term));
@@ -70,6 +72,17 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
+          <div className="relative w-full sm:w-auto sm:min-w-44">
+            <select
+              value={merchandisingFilter}
+              onChange={(event) => setMerchandisingFilter(event.target.value)}
+              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+            >
+              <option>All</option>
+              <option>Best sellers</option>
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:ml-auto">{filteredProducts.length} products</span>
           <ExportButtons title="Product Catalogue" columns={[{key:"name",label:"Product"},{key:"sku",label:"SKU"},{key:"category",label:"Category"},{key:"location",label:"Location"},{key:"onHand",label:"On Hand"},{key:"reserved",label:"Reserved"},{key:"incoming",label:"Incoming"},{key:"retailPrice",label:"Retail Price (KES)"},{key:"unitCost",label:"Unit Cost (KES)"},{key:"available",label:"Shop Visible"}]} rows={filteredProducts.map((product)=>({name:product.name,sku:product.sku,category:product.category,location:product.location,onHand:product.onHand,reserved:product.reserved,incoming:product.incoming,retailPrice:product.retailPrice,unitCost:product.unitCost,available:product.available===false?"No":"Yes"}))}/>
         </div>
@@ -96,7 +109,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{product.name}</p>
+                          <p className="truncate text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--deep-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
                           <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{product.sku} · {product.category}</p>
                         </div>
                         <Link
@@ -147,7 +160,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                             style={product.image ? { backgroundImage: `url("${product.image}")` } : undefined}
                           />
                           <div>
-                            <p className="text-sm font-semibold">{product.name}</p>
+                            <p className="text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--deep-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
                             <p className="mt-1 text-[10px] text-[var(--muted)]">{product.location}</p>
                           </div>
                         </div>

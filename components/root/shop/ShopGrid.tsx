@@ -72,7 +72,8 @@ export default function ShopGrid({ products, navigation }: { products: StoreProd
     <section className="w-full">
       <div className="mb-5 overflow-x-auto overscroll-x-contain border-b hairline pb-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex min-w-max items-center gap-2">
-          <Link href="/shop" scroll={false} className={`min-h-10 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors sm:text-xs ${!category ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream" : "hairline hover:border-[var(--ink)]"}`}>All</Link>
+          <Link href="/shop" scroll={false} className={`min-h-10 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors sm:text-xs ${!category && !collection ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream" : "hairline hover:border-[var(--ink)]"}`}>All</Link>
+          <Link href="/shop?collection=best-sellers" scroll={false} className={`min-h-10 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors sm:text-xs ${collection === "best-sellers" ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream" : "hairline hover:border-[var(--ink)]"}`}>Best sellers</Link>
           {navigation.categories.map((item) => (
             <Link key={item.slug} href={`/shop?category=${item.slug}`} scroll={false} className={`min-h-10 rounded-full border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors sm:text-xs ${category === item.slug ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream" : "hairline hover:border-[var(--ink)]"}`}>{item.title}</Link>
           ))}
@@ -90,7 +91,7 @@ export default function ShopGrid({ products, navigation }: { products: StoreProd
           <select value={price || ""} onChange={(event) => setFilter("price", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15">{priceOptions.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}</select>
         </label>
         <label className="grid gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:text-xs">Collection
-          <select value={collection || ""} onChange={(event) => setFilter("collection", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"><option value="">All collections</option>{navigation.collections.map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}</select>
+          <select value={collection || ""} onChange={(event) => setFilter("collection", event.target.value)} className="min-h-12 w-full rounded-full border hairline bg-[var(--paper)] px-5 py-3 pr-10 text-sm font-medium leading-5 normal-case tracking-normal text-[var(--ink)] outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15"><option value="">All collections</option><option value="best-sellers">Best sellers</option>{navigation.collections.filter((item) => item.slug !== "best-sellers").map((item) => <option key={item.slug} value={item.slug}>{item.title}</option>)}</select>
         </label>
       </div>
 

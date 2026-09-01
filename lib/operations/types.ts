@@ -116,7 +116,10 @@ export type InventoryItem = {
   unitCost: number;
   retailPrice: number;
   image?: string;
+  shortDescription?: string;
+  description?: string;
   available?: boolean;
+  bestSeller?: boolean;
 };
 
 export type Shipment = {

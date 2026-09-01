@@ -58,6 +58,8 @@ export type PosHistoryOrder = {
   balanceDue: number;
   cashTendered: number;
   cashChangeDue: number;
+  deliveryFee: number;
+  deliveryLocation: string;
   refundedAmount: number;
   paymentReference: string;
   paymentProvider: string;
@@ -85,6 +87,8 @@ const historyProjection = `{
   "balanceDue": coalesce(balanceDue, select(paymentStatus == "paid" => 0, total)),
   "cashTendered": coalesce(cashTendered,0),
   "cashChangeDue": coalesce(cashChangeDue,0),
+  "deliveryFee": coalesce(deliveryFee,0),
+  "deliveryLocation": coalesce(deliveryLocation,""),
   "refundedAmount": coalesce(refundedAmount,0),
   "paymentReference": coalesce(paymentReference,""),
   "paymentProvider": coalesce(paymentProvider,""),
@@ -92,13 +96,46 @@ const historyProjection = `{
   "lineItems": lineItems[]{"productId":coalesce(product._ref,productId),name,variantId,quantity,unitPrice}
 }`;
 
-export async function listSalesHistory({ limit = 100, channel }: { limit?: number; channel?: "ONLINE" | "POS" } = {}) {
+export type SalesHistoryFilters = {
+  limit?: number;
+  channel?: "ONLINE" | "POS";
+  cashier?: string;
+  from?: string;
+  to?: string;
+};
+
+export async function listSalesHistory({ limit = 100, channel, cashier, from, to }: SalesHistoryFilters = {}) {
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+  let start: string | null = null;
+  let end: string | null = null;
+  if (from || to) {
+    if (!from || !to) throw new Error("Select both From and To dates for sales history.");
+    const startDate = kenyaDateBoundary(from);
+    const endDate = kenyaDateBoundary(to, true);
+    if (startDate > endDate) throw new Error("The sales history From date cannot be after the To date.");
+    start = startDate.toISOString();
+    end = endDate.toISOString();
+  }
+  const cashierName = cleanText(cashier) || null;
   return serverClient.fetch<PosHistoryOrder[]>(
-    `*[_type == "commerceOrder" && (!defined($channel) || salesChannel == $channel)] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
-    { limit: safeLimit, channel: channel || null },
+    `*[_type == "commerceOrder"
+      && (!defined($channel) || salesChannel == $channel)
+      && (!defined($cashier) || soldByName == $cashier)
+      && (!defined($start) || coalesce(soldAt,paidAt,createdAt) >= $start)
+      && (!defined($end) || coalesce(soldAt,paidAt,createdAt) <= $end)
+    ] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
+    { limit: safeLimit, channel: channel || null, cashier: cashierName, start, end },
     { cache: "no-store" },
   );
+}
+
+export async function listSalesCashiers() {
+  const names = await serverClient.fetch<string[]>(
+    `array::unique(*[_type == "commerceOrder" && salesChannel == "POS" && defined(soldByName)].soldByName)`,
+    {},
+    { cache: "no-store" },
+  );
+  return (names || []).filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
 export async function listReceivables() {
@@ -109,11 +146,15 @@ export async function listReceivables() {
   );
 }
 
+export type SalesReportPeriod = "day" | "week" | "month" | "custom";
+
 export type SalesReport = {
-  period: "day" | "week" | "month";
+  period: SalesReportPeriod;
   start: string;
   end: string;
   totalSales: number;
+  moneyIn: number;
+  deliveryPayables: number;
   onlineSales: number;
   posSales: number;
   cashPayments: number;
@@ -124,12 +165,32 @@ export type SalesReport = {
   failedPayments: number;
   pendingPayments: number;
   orders: number;
-  byDate: Array<{ date: string; orders: number; revenue: number }>;
+  byDate: Array<{ date: string; orders: number; revenue: number; deliveryPayables: number; moneyIn: number }>;
   byProduct: Array<{ name: string; quantity: number; revenue: number }>;
   byCashier: Array<{ name: string; orders: number; revenue: number }>;
 };
 
-function reportWindow(period: "day" | "week" | "month", now = new Date()) {
+type SalesReportRange = { from?: string; to?: string };
+
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function kenyaDateBoundary(value: string, endOfDay = false) {
+  if (!dateOnlyPattern.test(value)) throw new Error("Report dates must use YYYY-MM-DD format.");
+  const timestamp = `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}+03:00`;
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) throw new Error("Select a valid report date.");
+  return parsed;
+}
+
+function reportWindow(period: "day" | "week" | "month", range: SalesReportRange = {}, now = new Date()) {
+  if (range.from || range.to) {
+    if (!range.from || !range.to) throw new Error("Select both From and To dates for a custom report.");
+    const start = kenyaDateBoundary(range.from);
+    const end = kenyaDateBoundary(range.to, true);
+    if (start > end) throw new Error("The report From date cannot be after the To date.");
+    return { period: "custom" as const, start: start.toISOString(), end: end.toISOString() };
+  }
+
   const end = new Date(now);
   const start = new Date(now);
   if (period === "day") start.setHours(0, 0, 0, 0);
@@ -141,11 +202,11 @@ function reportWindow(period: "day" | "week" | "month", now = new Date()) {
     start.setHours(0, 0, 0, 0);
     start.setDate(1);
   }
-  return { start: start.toISOString(), end: end.toISOString() };
+  return { period, start: start.toISOString(), end: end.toISOString() };
 }
 
-export async function getSalesReport(period: "day" | "week" | "month"): Promise<SalesReport> {
-  const { start, end } = reportWindow(period);
+export async function getSalesReport(period: "day" | "week" | "month", range: SalesReportRange = {}): Promise<SalesReport> {
+  const { period: reportPeriod, start, end } = reportWindow(period, range);
   const [orders, refunds, failedPending, globalReceivables] = await Promise.all([
     serverClient.fetch<PosHistoryOrder[]>(
       `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"]]${historyProjection}`,
@@ -162,15 +223,19 @@ export async function getSalesReport(period: "day" | "week" | "month"): Promise<
     serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0].balanceDue),0)`, {}, { cache: "no-store" }),
   ]);
 
-  const paidValue = (order: PosHistoryOrder) => Math.max(0, order.amountPaid - order.refundedAmount);
-  const dateMap = new Map<string, { date: string; orders: number; revenue: number }>();
+  const moneyInValue = (order: PosHistoryOrder) => Math.max(0, order.amountPaid - order.refundedAmount);
+  const deliveryValue = (order: PosHistoryOrder) => Math.min(Math.max(0, order.deliveryFee), moneyInValue(order));
+  const revenueValue = (order: PosHistoryOrder) => Math.max(0, moneyInValue(order) - deliveryValue(order));
+  const dateMap = new Map<string, { date: string; orders: number; revenue: number; deliveryPayables: number; moneyIn: number }>();
   const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
   const cashierMap = new Map<string, { name: string; orders: number; revenue: number }>();
   for (const order of orders) {
     const date = (order.soldAt || "").slice(0, 10) || "Unknown";
-    const dateRow = dateMap.get(date) || { date, orders: 0, revenue: 0 };
+    const dateRow = dateMap.get(date) || { date, orders: 0, revenue: 0, deliveryPayables: 0, moneyIn: 0 };
     dateRow.orders += 1;
-    dateRow.revenue += paidValue(order);
+    dateRow.revenue += revenueValue(order);
+    dateRow.deliveryPayables += deliveryValue(order);
+    dateRow.moneyIn += moneyInValue(order);
     dateMap.set(date, dateRow);
     for (const line of order.lineItems || []) {
       const current = productMap.get(line.productId || line.name) || { name: line.name || "Product", quantity: 0, revenue: 0 };
@@ -181,21 +246,24 @@ export async function getSalesReport(period: "day" | "week" | "month"): Promise<
     const cashier = order.salesChannel === "POS" ? order.soldByName || "POS Staff" : "Online Shop";
     const current = cashierMap.get(cashier) || { name: cashier, orders: 0, revenue: 0 };
     current.orders += 1;
-    current.revenue += paidValue(order);
+    current.revenue += revenueValue(order);
     cashierMap.set(cashier, current);
   }
 
-  const channelAmount = (predicate: (order: PosHistoryOrder) => boolean) => orders.filter(predicate).reduce((sum, order) => sum + paidValue(order), 0);
+  const channelRevenue = (predicate: (order: PosHistoryOrder) => boolean) => orders.filter(predicate).reduce((sum, order) => sum + revenueValue(order), 0);
+  const channelMoneyIn = (predicate: (order: PosHistoryOrder) => boolean) => orders.filter(predicate).reduce((sum, order) => sum + moneyInValue(order), 0);
   return {
-    period,
+    period: reportPeriod,
     start,
     end,
-    totalSales: orders.reduce((sum, order) => sum + paidValue(order), 0),
-    onlineSales: channelAmount((order) => order.salesChannel === "ONLINE"),
-    posSales: channelAmount((order) => order.salesChannel === "POS"),
-    cashPayments: channelAmount((order) => order.paymentChannel === "cash"),
-    mpesaPayments: channelAmount((order) => order.paymentChannel === "mobile_money"),
-    paystackPayments: channelAmount((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
+    totalSales: orders.reduce((sum, order) => sum + revenueValue(order), 0),
+    moneyIn: orders.reduce((sum, order) => sum + moneyInValue(order), 0),
+    deliveryPayables: orders.reduce((sum, order) => sum + deliveryValue(order), 0),
+    onlineSales: channelRevenue((order) => order.salesChannel === "ONLINE"),
+    posSales: channelRevenue((order) => order.salesChannel === "POS"),
+    cashPayments: channelMoneyIn((order) => order.paymentChannel === "cash"),
+    mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
+    paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
     outstandingReceivables: Number(globalReceivables || 0),
     refunds: refunds.reduce((sum, row) => sum + Number(row.amount || 0), 0),
     failedPayments: failedPending.filter((row) => row.status === "failed" || row.status === "timed_out").length,

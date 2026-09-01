@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Check, Layers3, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ImagePlus, Layers3, Plus, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
@@ -99,6 +99,9 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [slugTouched, setSlugTouched] = useState(Boolean(lookId));
+  const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
+  const [existingHeroImageUrl, setExistingHeroImageUrl] = useState("");
+  const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,6 +114,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
       if (lookId) {
         const existing = payload.looks.find((look) => look._id === lookId);
         if (!existing) throw new Error("This look no longer exists.");
+        setExistingHeroImageUrl(existing.heroImageUrl || "");
         setForm({
           title: existing.title || "",
           slug: existing.slug || "",
@@ -169,8 +173,21 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
     return sum + Number(product?.price || 0) * line.quantity;
   }, 0);
 
+  useEffect(() => {
+    if (!heroImageFile) {
+      setHeroImagePreviewUrl("");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(heroImageFile);
+    setHeroImagePreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [heroImageFile]);
+
   const previewImage =
-    form.products.map((line) => productMap.get(line.productId)?.image).find(Boolean) || undefined;
+    heroImagePreviewUrl ||
+    existingHeroImageUrl ||
+    form.products.map((line) => productMap.get(line.productId)?.image).find(Boolean) ||
+    undefined;
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -221,15 +238,19 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
       const url = lookId
         ? `/api/backoffice/shop-looks/${encodeURIComponent(lookId)}`
         : "/api/backoffice/shop-looks";
+      const payloadForm = new FormData();
+      payloadForm.set("payload", JSON.stringify({ ...form, slug: form.slug || toSlug(form.title) }));
+      if (heroImageFile) payloadForm.set("heroImage", heroImageFile);
+
       const response = await fetch(url, {
         method: lookId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, slug: form.slug || toSlug(form.title) }),
+        body: payloadForm,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.message || "Save failed.");
 
       setMessage(lookId ? "Look updated and saved to Sanity." : "Look created in Sanity.");
+      setHeroImageFile(null);
       if (!lookId && payload?.id) {
         router.replace(`${basePath}/${encodeURIComponent(payload.id)}`);
         router.refresh();
@@ -330,6 +351,23 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                   placeholder="Describe how the pieces work together and the feeling of the room."
                 />
               </label>
+              <div className="sm:col-span-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Look image</span>
+                <span className="mt-1 block text-[10px] leading-4 text-[var(--muted)]">Upload the main lifestyle image customers should see for this Shop by Look. JPG, PNG, WebP and other image formats are supported up to 12 MB.</span>
+                <label className="mt-3 flex min-h-28 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed hairline bg-[var(--paper-2)] px-4 text-center transition hover:border-[var(--deep-green)]">
+                  <ImagePlus size={20} className="text-[var(--deep-green)]" />
+                  <span className="text-xs">{heroImageFile ? heroImageFile.name : existingHeroImageUrl ? "Choose a replacement look image" : "Choose look image"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(event) => setHeroImageFile(event.target.files?.[0] || null)}
+                  />
+                </label>
+                {heroImageFile && (
+                  <button type="button" onClick={() => setHeroImageFile(null)} className="mt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] underline underline-offset-4">Use existing image instead</button>
+                )}
+              </div>
               <label>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Room / space</span>
                 <select value={form.spaceId} onChange={(event) => setField("spaceId", event.target.value)} className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none">
@@ -447,7 +485,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                 </div>
               </div>
               <p className="mt-4 rounded-lg bg-[var(--paper-2)] p-3 text-[10px] leading-5 text-[var(--muted)]">
-                The first selected product image is used automatically. A custom hero image can also be uploaded from the Shop by Look document in Sanity Studio.
+                The uploaded Look Image is used first. If no Look Image is supplied, the first selected product image is used automatically.
               </p>
             </div>
           </section>

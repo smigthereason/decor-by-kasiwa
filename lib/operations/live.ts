@@ -21,6 +21,9 @@ type RawProduct = {
   price?: number;
   initialStock?: number;
   available?: boolean;
+  bestSeller?: boolean;
+  shortDescription?: string;
+  description?: string;
   category?: string;
   colours?: string[];
   image?: string;
@@ -67,6 +70,9 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
       price,
       initialStock,
       available,
+      bestSeller,
+      shortDescription,
+      description,
       "slug": slug.current,
       "category": primaryCategory->title,
       colours,
@@ -99,7 +105,10 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
     unitCost: row.inventory?.unitCost || 0,
     retailPrice: typeof row.price === "number" ? row.price : 0,
     image: row.image || undefined,
+    shortDescription: row.shortDescription || undefined,
+    description: row.description || undefined,
     available: row.available !== false,
+    bestSeller: row.bestSeller === true,
   }));
 }
 

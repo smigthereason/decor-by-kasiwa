@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { serverClient } from "@/sanity/lib/serverClient";
 
+export const dynamic = "force-dynamic";
+
 type LookInput = {
   title?: string;
   slug?: string;
@@ -29,6 +31,43 @@ function slugify(value: string) {
 
 function keyFor(productId: string, index: number) {
   return `${productId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${index}`.slice(0, 96);
+}
+
+async function readLookRequest(request: Request) {
+  const contentType = request.headers.get("content-type") || "";
+  if (!contentType.includes("multipart/form-data")) {
+    return { body: (await request.json()) as LookInput, heroImage: null as File | null };
+  }
+
+  const form = await request.formData();
+  const rawPayload = form.get("payload");
+  if (typeof rawPayload !== "string") throw new Error("Shop by Look payload is missing.");
+
+  let body: LookInput;
+  try {
+    body = JSON.parse(rawPayload) as LookInput;
+  } catch {
+    throw new Error("Shop by Look payload is invalid.");
+  }
+
+  const image = form.get("heroImage");
+  return {
+    body,
+    heroImage: image instanceof File && image.size > 0 ? image : null,
+  };
+}
+
+async function uploadLookImage(file: File | null) {
+  if (!file) return undefined;
+  if (!file.type.startsWith("image/")) throw new Error("Look image must be an image file.");
+  if (file.size > 12 * 1024 * 1024) throw new Error("Look image must be 12 MB or smaller.");
+
+  const asset = await serverClient.assets.upload("image", Buffer.from(await file.arrayBuffer()), {
+    filename: file.name || `shop-look-${Date.now()}`,
+    contentType: file.type || undefined,
+  });
+
+  return { _type: "image", asset: { _type: "reference", _ref: asset._id } };
 }
 
 async function options() {
@@ -113,20 +152,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });
   }
 
-  const body = (await request.json()) as LookInput;
-  const title = body.title?.trim() || "";
-  const description = body.description?.trim() || "";
-  const slug = slugify(body.slug?.trim() || title);
-  const productLines = (body.products || []).filter((line) => Boolean(line.productId));
-
-  if (title.length < 3 || description.length < 20 || !slug || productLines.length < 1) {
-    return NextResponse.json(
-      { message: "Title, description and at least one product are required." },
-      { status: 400 },
-    );
-  }
-
   try {
+    const { body, heroImage: heroImageFile } = await readLookRequest(request);
+    const title = body.title?.trim() || "";
+    const description = body.description?.trim() || "";
+    const slug = slugify(body.slug?.trim() || title);
+    const productLines = (body.products || []).filter((line) => Boolean(line.productId));
+
+    if (title.length < 3 || description.length < 20 || !slug || productLines.length < 1) {
+      return NextResponse.json(
+        { message: "Title, description and at least one product are required." },
+        { status: 400 },
+      );
+    }
+
     const duplicate = await serverClient.fetch<{ _id: string } | null>(
       `*[_type == "shopLook" && slug.current == $slug][0]{_id}`,
       { slug },
@@ -148,12 +187,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "One or more selected products no longer exist." }, { status: 400 });
     }
 
+    const heroImage = await uploadLookImage(heroImageFile);
     const document = await serverClient.create({
       _type: "shopLook",
       title,
       slug: { _type: "slug", current: slug },
       eyebrow: body.eyebrow?.trim() || "",
       description,
+      ...(heroImage ? { heroImage } : {}),
       ...(body.spaceId ? { space: { _type: "reference", _ref: body.spaceId } } : {}),
       ...(body.styleId ? { style: { _type: "reference", _ref: body.styleId } } : {}),
       products: productLines.map((line, index) => ({
@@ -188,6 +229,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, id: document._id, slug }, { status: 201 });
   } catch (error) {
     console.error("Shop by Look creation failed:", error);
-    return NextResponse.json({ message: "Shop by Look could not be created." }, { status: 500 });
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "Shop by Look could not be created." },
+      { status: 500 },
+    );
   }
 }

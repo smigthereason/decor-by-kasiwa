@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import {
-  createPosCashSale,
   createPosMpesaSale,
   createPosPaystackSale,
   type PosSaleInput,
@@ -16,8 +15,8 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as PosSaleInput;
-    if (!["cash", "mpesa", "paystack"].includes(body.paymentMethod)) {
-      return NextResponse.json({ message: "Select Cash, M-PESA or Paystack." }, { status: 400 });
+    if (!["mpesa", "paystack"].includes(body.paymentMethod)) {
+      return NextResponse.json({ message: "This shop is cashless. Select M-PESA or Paystack." }, { status: 400 });
     }
 
     const seller = {
@@ -28,14 +27,13 @@ export async function POST(request: Request) {
     };
 
     const origin = new URL(request.url).origin;
-    const result = body.paymentMethod === "cash"
-      ? await createPosCashSale(body, seller)
-      : body.paymentMethod === "mpesa"
-        ? await createPosMpesaSale(body, seller)
-        : await createPosPaystackSale(body, seller, origin);
+    const result = body.paymentMethod === "mpesa"
+      ? await createPosMpesaSale(body, seller)
+      : await createPosPaystackSale(body, seller, origin);
 
     return NextResponse.json(result);
   } catch (cause) {
+    console.error("[POS sale] failed", cause);
     return NextResponse.json(
       { message: cause instanceof Error ? cause.message : "Unable to complete POS sale." },
       { status: 400 },

@@ -38,9 +38,11 @@ export type PosSaleInput = {
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
-  paymentMethod: "cash" | "mpesa" | "paystack";
+  paymentMethod: "mpesa" | "paystack";
   cashConfirmed?: boolean;
   cashAmountReceived?: number;
+  deliveryLocation?: string;
+  deliveryFee?: number;
   discount?: PosDiscountInput | null;
 };
 
@@ -91,6 +93,9 @@ type PosOrder = {
   balanceDue?: number;
   cashTendered?: number;
   cashChangeDue?: number;
+  deliveryFee?: number;
+  deliveryLocation?: string;
+  fulfilmentType?: "DELIVERY" | "IN_STORE";
   receiptNumber?: string;
   paymentReference?: string;
   paymentProvider?: string;
@@ -233,8 +238,9 @@ async function paystackRequest<T>(path: string, init: RequestInit): Promise<T> {
       cleanText(payload.data?.gateway_response) ||
       cleanText(payload.message) ||
       `Paystack request failed with HTTP ${response.status}.`;
-
-    throw new Error(`Paystack: ${detail}`);
+    const code = cleanText(payload.code);
+    console.error("[POS Paystack] request failed", { path, status: response.status, code: code || undefined, detail });
+    throw new Error(`Paystack: ${detail}${code ? ` (${code})` : ""}`);
   }
 
   return payload;
@@ -421,6 +427,18 @@ function calculateDiscount(
   };
 }
 
+function deliveryPayable(input: PosSaleInput) {
+  const amount = Number(input.deliveryFee || 0);
+  const location = cleanText(input.deliveryLocation);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid delivery payable amount.");
+  if (amount > 0 && !location) throw new Error("Enter the delivery destination for the payable.");
+  return {
+    deliveryFee: Math.round(amount * 100) / 100,
+    deliveryLocation: amount > 0 ? location : "In-store purchase",
+    fulfilmentType: amount > 0 ? "DELIVERY" as const : "IN_STORE" as const,
+  };
+}
+
 function decrementVariantStock(product: RawProduct, lines: PosLine[]) {
   if (!product.variants?.length) return undefined;
 
@@ -453,6 +471,9 @@ async function fetchPosOrder(reference: string) {
       balanceDue,
       cashTendered,
       cashChangeDue,
+      deliveryFee,
+      deliveryLocation,
+      fulfilmentType,
       receiptNumber,
       paymentReference,
       paymentProvider,
@@ -496,6 +517,8 @@ function summary(order: PosOrder) {
     balanceDue: Number(order.balanceDue || 0),
     cashTendered: Number(order.cashTendered || 0),
     cashChangeDue: Number(order.cashChangeDue || 0),
+    deliveryFee: Number(order.deliveryFee || 0),
+    deliveryLocation: order.deliveryLocation || "",
     soldByName: order.soldByName || "Staff",
     soldAt: order.soldAt || "",
   };
@@ -764,7 +787,9 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
   const { lines } = await buildLines(input.cart);
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
-  const total = Math.max(0, subtotal - discount.discountAmount);
+  const delivery = deliveryPayable(input);
+  const productRevenue = Math.max(0, subtotal - discount.discountAmount);
+  const total = productRevenue + delivery.deliveryFee;
   if (total <= 0) throw new Error("Paystack payment total must be greater than zero.");
   const now = new Date().toISOString();
   const orderId = orderIdFor(reference);
@@ -777,14 +802,14 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     customerName: customer.name,
     customerEmail: customer.email || undefined,
     customerPhone: customer.phone,
-    deliveryLocation: "In-store purchase",
+    deliveryLocation: delivery.deliveryLocation,
     createdAt: now,
     updatedAt: now,
     soldAt: now,
     status: "pending",
     paymentStatus: "pending",
     subtotal,
-    deliveryFee: 0,
+    deliveryFee: delivery.deliveryFee,
     ...discount,
     total,
     amountPaid: 0,
@@ -793,7 +818,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     receiptNumber: receiptNumberFor(reference),
     currency: CURRENCY,
     salesChannel: "POS",
-    fulfilmentType: "IN_STORE",
+    fulfilmentType: delivery.fulfilmentType,
     paymentReference: reference,
     paymentProvider: "paystack",
     paymentChannel: channel,
@@ -828,7 +853,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     entityId: orderId,
     entityLabel: reference,
     seller,
-    detail: `Paystack ${channel === "mobile_money" ? "M-PESA" : "card"} payment initiated for KES ${total.toLocaleString("en-KE")}.`,
+    detail: `Paystack ${channel === "mobile_money" ? "M-PESA" : "card"} payment initiated for KES ${total.toLocaleString("en-KE")} · product revenue KES ${productRevenue.toLocaleString("en-KE")} · delivery payable KES ${delivery.deliveryFee.toLocaleString("en-KE")}.`,
     now,
   });
   await transaction.commit();
@@ -841,9 +866,10 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
   if (order.paymentStatus === "paid") return { ...summary(order), displayText: "Payment already completed." };
 
   const testMode = isPaystackTestMode();
-  if (testMode && customer.phone !== "+254710000000") {
-    throw new Error("Paystack test mode only simulates Kenyan M-PESA with +254 710 000 000. Real customer STK pushes require live Paystack keys.");
-  }
+  // Paystack test mode only simulates Kenyan M-PESA with its documented test number.
+  // Keep the real customer phone on the order/metadata, but use the simulator number
+  // for the charge so staff can test the complete POS flow without receiving a 400.
+  const chargePhone = testMode ? "+254710000000" : customer.phone;
   const paystackEmail = customer.email || seller.email;
   if (!isEmail(paystackEmail)) throw new Error("A valid staff or customer email is required to initiate the M-PESA charge.");
 
@@ -855,8 +881,15 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
         amount: String(Math.round(Number(order.total || 0) * 100)),
         currency: CURRENCY,
         reference: order.paymentReference,
-        mobile_money: { phone: customer.phone, provider: "mpesa" },
-        metadata: { channel: "POS", sold_by: seller.name, seller_role: seller.role, order_number: order.orderNumber },
+        mobile_money: { phone: chargePhone, provider: "mpesa" },
+        metadata: {
+          channel: "POS",
+          sold_by: seller.name,
+          seller_role: seller.role,
+          order_number: order.orderNumber,
+          customer_phone: customer.phone,
+          paystack_test_mode: testMode,
+        },
       }),
     });
 
@@ -864,7 +897,9 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
     return {
       ...summary(order),
       status: payload.data.status || "pending",
-      displayText: payload.data.display_text || "Ask the customer to complete the M-PESA prompt on their phone.",
+      displayText: testMode
+        ? "Paystack test mode is active. The M-PESA simulator was started with Paystack's test number; no real STK prompt will reach the customer. Use live Paystack keys to send the STK prompt to their phone."
+        : payload.data.display_text || "Ask the customer to complete the M-PESA prompt on their phone.",
       testMode,
     };
   } catch (cause) {
@@ -950,7 +985,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   transaction.patch(order._id, (patch) =>
     patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
-      status: "delivered",
+      status: Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
       paymentChannel: payment.channel || order.paymentChannel || "paystack",
       paystackTransactionId: String(payment.id),
       providerReceiptNumber: String(payment.id),
@@ -994,7 +1029,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   const customer = customerDetails({
     requestId: reference.replace(/^DBK-POS-/, ""),
     cart: [],
-    paymentMethod: "cash",
+    paymentMethod: "mpesa",
     customerId: finalized.customerId,
     customerName: finalized.customerName,
     customerEmail: finalized.customerEmail,
@@ -1084,6 +1119,8 @@ export async function getPosReceipt(orderId: string) {
     customerEmail?: string;
     subtotal?: number;
     discountAmount?: number;
+    deliveryFee?: number;
+    deliveryLocation?: string;
     total?: number;
     amountPaid?: number;
     balanceDue?: number;
@@ -1099,7 +1136,7 @@ export async function getPosReceipt(orderId: string) {
     lineItems?: PosLine[];
   } | null>(
     `*[_type == "commerceOrder" && _id == $orderId][0]{
-      _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountAmount,total,
+      _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountAmount,deliveryFee,deliveryLocation,total,
       amountPaid,balanceDue,cashTendered,cashChangeDue,refundedAmount,paymentStatus,paymentChannel,paymentReference,providerReceiptNumber,
       soldByName,soldAt,"lineItems": lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
     }`,
