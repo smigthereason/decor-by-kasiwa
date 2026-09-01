@@ -7,6 +7,7 @@ import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import { formatMoney } from "@/lib/money";
 import { getMaximumPurchasableQuantity } from "@/lib/catalogue";
 import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
+import { getQuantityLineTotal, getQuantityUnitPrice } from "@/lib/product-pricing";
 
 export default function CartPage() {
   const {
@@ -150,7 +151,7 @@ export default function CartPage() {
                           )}
                         </div>
                         <p className="whitespace-nowrap text-base sm:text-lg font-semibold">
-                          {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
+                          {formatMoney(getQuantityLineTotal(product, line.quantity, product.variants?.find((variant) => variant.id === line.variantId)?.price))}
                         </p>
                       </div>
 
@@ -197,7 +198,7 @@ export default function CartPage() {
 
                         {/* UNIT PRICE */}
                         <div className="hidden sm:block text-xs text-[var(--muted)]">
-                          {formatMoney(product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price)} each
+                          {formatMoney(getQuantityUnitPrice(product, line.quantity, product.variants?.find((variant) => variant.id === line.variantId)?.price))} each
                         </div>
 
                         {/* REMOVE BUTTON */}
@@ -261,7 +262,7 @@ export default function CartPage() {
                       </div>
                     </div>
                     <span className="text-sm font-medium whitespace-nowrap">
-                      {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
+                      {formatMoney(getQuantityLineTotal(product, line.quantity, product.variants?.find((variant) => variant.id === line.variantId)?.price))}
                     </span>
                   </article>
                 );

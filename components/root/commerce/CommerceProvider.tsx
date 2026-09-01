@@ -23,6 +23,7 @@ import {
   clampProductQuantity,
   isProductSoldOut,
 } from "@/lib/catalogue";
+import { getQuantityLineTotal } from "@/lib/product-pricing";
 
 type CommerceContextType = {
   hydrated: boolean;
@@ -481,7 +482,7 @@ export function CommerceProvider({
           return (
             total +
             (product
-              ? (variantPrice ?? product.price) * line.quantity
+              ? getQuantityLineTotal(product, line.quantity, variantPrice)
               : 0)
           );
         },
@@ -766,7 +767,7 @@ export function CommerceProvider({
           return (
             total +
             (product
-              ? (variantPrice ?? product.price) * line.quantity
+              ? getQuantityLineTotal(product, line.quantity, variantPrice)
               : 0)
           );
         },

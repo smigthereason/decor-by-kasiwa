@@ -6,6 +6,7 @@ import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { getQuantityUnitPrice } from "@/lib/product-pricing";
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -50,6 +51,7 @@ type RawProduct = {
   _id: string;
   _rev: string;
   name?: string;
+  slug?: string;
   price?: number;
   initialStock?: number;
   available?: boolean;
@@ -282,6 +284,7 @@ async function fetchProducts(productIds: string[]) {
       _id,
       _rev,
       name,
+      "slug": slug.current,
       price,
       initialStock,
       available,
@@ -359,7 +362,7 @@ async function buildLines(cart: PosCartLine[]) {
       size: line.size || variant?.size,
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
-      unitPrice: typeof variant?.price === "number" ? variant.price : product.price,
+      unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
     };
   });
 

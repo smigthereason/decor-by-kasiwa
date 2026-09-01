@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/money";
 import { isProductSoldOut } from "@/lib/catalogue";
 import { getProductRating } from "@/lib/product-rating";
 import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
+import { getQuantityUnitPrice } from "@/lib/product-pricing";
 
 function getColorHex(colourName: string): string {
   const colorMap: Record<string, string> = {
@@ -156,7 +157,7 @@ export default function ProductCard({
 
         <div className={homeCompact ? "mt-auto flex items-center justify-between pt-2" : "mt-auto flex items-center justify-between pt-4"}>
           <span className={homeCompact ? "text-xs font-semibold text-[var(--ink)]" : "text-sm font-semibold text-[var(--ink)]"}>
-            {formatMoney(product.price)}
+            {formatMoney(getQuantityUnitPrice(product, 1))}
           </span>
 
           {!homeCompact && displayColours.length > 0 && (

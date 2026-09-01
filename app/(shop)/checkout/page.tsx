@@ -25,6 +25,7 @@ import {
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
 import { formatMoney } from "@/lib/money";
+import { getQuantityLineTotal } from "@/lib/product-pricing";
 import type { DemoAddress } from "@/types/commerce";
 
 const emptyAddress: DemoAddress = {
@@ -544,7 +545,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                     <span className="whitespace-nowrap text-xs sm:text-sm font-semibold">
-                      {formatMoney((product.variants?.find((variant) => variant.id === line.variantId)?.price ?? product.price) * line.quantity)}
+                      {formatMoney(getQuantityLineTotal(product, line.quantity, product.variants?.find((variant) => variant.id === line.variantId)?.price))}
                     </span>
                   </article>
                 ) : null

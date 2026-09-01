@@ -1492,6 +1492,10 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
 
                     slug:
                       child.slug!,
+
+                    imageUrl:
+                      child.imageUrl ||
+                      null,
                   }),
                 );
 

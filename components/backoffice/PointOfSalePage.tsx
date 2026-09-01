@@ -30,6 +30,7 @@ import {
 
 import { formatMoney } from "@/lib/money";
 import type { ProductVariant, StoreProduct } from "@/types/commerce";
+import { getQuantityUnitPrice } from "@/lib/product-pricing";
 
 type PosLine = {
   key: string;
@@ -270,7 +271,7 @@ export default function PointOfSalePage() {
   function addProduct(product: StoreProduct) {
     const variant = selectedVariant(product);
     const key = `${product.id}|${variant?.id || "default"}`;
-    const unitPrice = variant?.price ?? product.price;
+    const unitPrice = getQuantityUnitPrice(product, 1, variant?.price);
     setCart((current) => {
       const index = current.findIndex((line) => line.key === key);
       if (index < 0) {
@@ -288,13 +289,31 @@ export default function PointOfSalePage() {
           },
         ];
       }
-      return current.map((line, currentIndex) => currentIndex === index ? { ...line, quantity: line.quantity + 1 } : line);
+      return current.map((line, currentIndex) => {
+        if (currentIndex !== index) return line;
+        const nextQuantity = line.quantity + 1;
+        return {
+          ...line,
+          quantity: nextQuantity,
+          unitPrice: getQuantityUnitPrice(product, nextQuantity, variant?.price),
+        };
+      });
     });
   }
 
   function changeQuantity(key: string, delta: number) {
     setCart((current) => current
-      .map((line) => line.key === key ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line)
+      .map((line) => {
+        if (line.key !== key) return line;
+        const nextQuantity = Math.max(0, line.quantity + delta);
+        const product = products.find((item) => item.id === line.productId);
+        const variantPrice = product?.variants?.find((variant) => variant.id === line.variantId)?.price;
+        return {
+          ...line,
+          quantity: nextQuantity,
+          unitPrice: product ? getQuantityUnitPrice(product, nextQuantity, variantPrice) : line.unitPrice,
+        };
+      })
       .filter((line) => line.quantity > 0));
   }
 

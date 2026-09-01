@@ -31,7 +31,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
           <Link
             href="/shop"
             onClick={onNavigate}
-            className="text-[11px] font-medium text-[var(--muted)] underline underline-offset-4 transition-colors hover:text-[var(--ink)]"
+            className="text-[11px] font-medium !text-[var(--paper)] underline underline-offset-4 transition-colors hover:text-[var(--ink)]"
           >
             View all pieces
           </Link>

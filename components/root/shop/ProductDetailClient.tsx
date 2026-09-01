@@ -21,6 +21,7 @@ import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import ProductCard from "@/components/root/shop/ProductCard";
 import { getProductRating } from "@/lib/product-rating";
 import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
+import { getQuantityPricingMessage, getQuantityUnitPrice } from "@/lib/product-pricing";
 
 export default function ProductDetailClient({
   product,
@@ -51,7 +52,8 @@ export default function ProductDetailClient({
       : productMaximumQuantity;
   const purchasingUnavailable = !catalogueReady || Boolean(catalogueError);
   const { rating, reviewCount } = getProductRating(product);
-  const displayPrice = selectedVariant?.price ?? product.price;
+  const displayPrice = getQuantityUnitPrice(product, quantity, selectedVariant?.price);
+  const quantityPricingMessage = getQuantityPricingMessage(product);
   const colourOptions = useMemo(
     () => Array.from(new Set([...(product.colours || []), ...variants.map((variant) => variant.colour).filter((value): value is string => Boolean(value))])),
     [product.colours, variants],
@@ -264,6 +266,11 @@ export default function ProductDetailClient({
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-b hairline pb-5">
                 <div>
                   <p className="text-xl font-medium">{formatMoney(displayPrice)}</p>
+                  {quantityPricingMessage && (
+                    <p className="mt-1 text-[10px] font-medium text-[var(--deep-green)]">
+                      {quantityPricingMessage}
+                    </p>
+                  )}
                   {product.demoPrice && (
                     <p className="mt-1 text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">
                       Prototype price — replace from Sanity before launch

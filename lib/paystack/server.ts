@@ -5,6 +5,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { getQuantityUnitPrice } from "@/lib/product-pricing";
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -31,6 +32,7 @@ type RawCheckoutProduct = {
   _id: string;
   _rev: string;
   name?: string;
+  slug?: string;
   price?: number;
   initialStock?: number;
   available?: boolean;
@@ -267,6 +269,7 @@ async function fetchCheckoutProducts(productIds: string[]) {
       _id,
       _rev,
       name,
+      "slug": slug.current,
       price,
       initialStock,
       available,
@@ -374,7 +377,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       size: line.size || variant?.size,
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
-      unitPrice: typeof variant?.price === "number" ? variant.price : product.price,
+      unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
     };
   });
 

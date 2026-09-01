@@ -1,6 +1,7 @@
 export type CatalogTag = {
   title: string;
   slug: string;
+  imageUrl?: string | null;
 };
 
 export type ProductVariant = {

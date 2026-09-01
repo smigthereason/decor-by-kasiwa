@@ -27,7 +27,7 @@ const defaultIntro = {
   body: "Explore décor, greenery, lighting, home accessories and finishing pieces brought together for expressive everyday spaces.",
   meta: "Complete Collection",
   index: "00",
-  image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2200&q=95",
+  image: "https://images.unsplash.com/photo-1556909211-36987daf7b4d?q=80&w=2370&auto=format&fit=crop",
   featureImage: "https://images.unsplash.com/photo-1600210491369-e753d80a41f3?auto=format&fit=crop&w=1000&q=90",
   featureLabel: "The Kasiwa Edit",
   featureTitle: "Pieces selected to bring character, warmth and detail into the home.",
@@ -36,9 +36,17 @@ const defaultIntro = {
 function findLabel(params: ShopParams, navigation: ShopNavigation) {
   if (params.category) {
     for (const category of navigation.categories) {
-      if (category.slug === params.category) return { label: category.title, kind: "Category" };
+      if (category.slug === params.category) {
+        return { label: category.title, kind: "Category", imageUrl: category.imageUrl || undefined };
+      }
       const child = category.children.find((item) => item.slug === params.category);
-      if (child) return { label: child.title, kind: category.title };
+      if (child) {
+        return {
+          label: child.title,
+          kind: category.title,
+          imageUrl: child.imageUrl || category.imageUrl || undefined,
+        };
+      }
     }
   }
   if (params.collection) {
@@ -59,7 +67,18 @@ function findLabel(params: ShopParams, navigation: ShopNavigation) {
 export default async function ShopPage({ searchParams }: ShopPageProps) {
   const [params, products, navigation] = await Promise.all([searchParams, getStoreProducts(), getShopNavigation()]);
   const selected = findLabel(params, navigation);
-  const intro = selected ? { ...defaultIntro, eyebrow: selected.kind, title: selected.label, body: `Explore the Decor by Kasiwa ${selected.label} edit, curated within the client-approved shop structure.`, meta: selected.label, featureLabel: selected.kind, featureTitle: `Discover ${selected.label.toLowerCase()} from the live Decor by Kasiwa catalogue.` } : defaultIntro;
+  const intro = selected
+    ? {
+        ...defaultIntro,
+        eyebrow: selected.kind,
+        title: selected.label,
+        body: `Explore the Decor by Kasiwa ${selected.label} edit, curated within the client-approved shop structure.`,
+        meta: selected.label,
+        image: selected.imageUrl || defaultIntro.image,
+        featureLabel: selected.kind,
+        featureTitle: `Discover ${selected.label.toLowerCase()} from the live Decor by Kasiwa catalogue.`,
+      }
+    : defaultIntro;
 
   return (
     <>
