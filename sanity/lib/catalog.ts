@@ -31,6 +31,9 @@ type SanityProductRecord = {
   sku?: string;
 
   price?: number;
+  procurementCost?: number;
+  ecommerceEnabled?: boolean;
+  posEnabled?: boolean;
   rating?: number;
   reviewCount?: number;
 
@@ -121,6 +124,9 @@ const productProjection = `{
   "slug": slug.current,
   sku,
   price,
+  procurementCost,
+  ecommerceEnabled,
+  posEnabled,
   rating,
   reviewCount,
   shortDescription,
@@ -345,6 +351,9 @@ function mapProduct(
     currency:
       "KES",
 
+    ecommerceEnabled: record.ecommerceEnabled !== false,
+    posEnabled: record.posEnabled !== false,
+
     rating:
       typeof record.rating === "number"
         ? record.rating
@@ -477,6 +486,7 @@ function mapShopLook(record: SanityShopLookRecord): ShopLook {
         Boolean(
           line?.product?._id &&
             line.product.available !== false &&
+            line.product.ecommerceEnabled !== false &&
             typeof line.product.price === "number" &&
             line.product.price > 0,
         ),
@@ -1166,7 +1176,7 @@ export const fallbackShopNavigation: ShopNavigation =
 /* PRODUCTS                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export async function getStoreProducts(): Promise<
+export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce"): Promise<
   StoreProduct[]
 > {
   if (
@@ -1185,7 +1195,8 @@ export async function getStoreProducts(): Promise<
         defined(slug.current) &&
         defined(price) &&
         price > 0 &&
-        available != false
+        available != false &&
+        ${channel === "pos" ? "posEnabled != false" : "ecommerceEnabled != false"}
       ]
       | order(name asc)
       ${productProjection}`,
@@ -1215,7 +1226,8 @@ export async function getStoreProductBySlug(
         slug.current == $slug &&
         defined(price) &&
         price > 0 &&
-        available != false
+        available != false &&
+        ecommerceEnabled != false
       ][0]
       ${productProjection}`,
 
@@ -1251,6 +1263,7 @@ export async function getRelatedStoreProducts(
             defined(price) &&
             price > 0 &&
             available != false &&
+            ecommerceEnabled != false &&
             primaryCategory._ref == $categoryId
           ]
           | order(name asc)
@@ -1285,7 +1298,8 @@ export async function getRelatedStoreProducts(
         _id != $id &&
         defined(price) &&
         price > 0 &&
-        available != false
+        available != false &&
+        ecommerceEnabled != false
       ]
       | order(name asc)
       [0...10]

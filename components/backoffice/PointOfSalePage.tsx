@@ -110,7 +110,7 @@ export default function PointOfSalePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/catalog", { cache: "no-store" })
+    void fetch("/api/catalog?channel=pos", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Could not load the live catalogue.");
         return response.json() as Promise<{ products?: StoreProduct[] }>;

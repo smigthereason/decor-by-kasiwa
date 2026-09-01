@@ -29,6 +29,8 @@ export type StoreProduct = {
 
   price: number;
   currency: "KES";
+  ecommerceEnabled?: boolean;
+  posEnabled?: boolean;
   demoPrice?: boolean;
 
   rating?: number;

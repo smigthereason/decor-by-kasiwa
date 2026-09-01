@@ -55,6 +55,7 @@ type RawProduct = {
   price?: number;
   initialStock?: number;
   available?: boolean;
+  posEnabled?: boolean;
   category?: string;
   variants?: Array<{
     _key?: string;
@@ -288,6 +289,7 @@ async function fetchProducts(productIds: string[]) {
       price,
       initialStock,
       available,
+      posEnabled,
       "category": primaryCategory->title,
       variants
     }`,
@@ -334,7 +336,7 @@ async function buildLines(cart: PosCartLine[]) {
   const lines: PosLine[] = normalized.map((line, index) => {
     const product = byId.get(line.productId);
     if (!product) throw new Error("A POS product could not be found in the live catalogue.");
-    if (product.available === false) throw new Error(`${product.name || "Product"} is unavailable.`);
+    if (product.available === false || product.posEnabled === false) throw new Error(`${product.name || "Product"} is not available on POS.`);
     if (typeof product.price !== "number" || product.price <= 0) throw new Error(`${product.name || "Product"} has no valid price.`);
     if (typeof product.initialStock === "number" && product.initialStock < line.quantity) {
       throw new Error(`${product.name || "Product"} only has ${Math.max(product.initialStock, 0)} unit(s) available.`);

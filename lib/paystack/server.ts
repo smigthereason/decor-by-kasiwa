@@ -36,6 +36,7 @@ type RawCheckoutProduct = {
   price?: number;
   initialStock?: number;
   available?: boolean;
+  ecommerceEnabled?: boolean;
   category?: string;
   variants?: Array<{
     _key?: string;
@@ -273,6 +274,7 @@ async function fetchCheckoutProducts(productIds: string[]) {
       price,
       initialStock,
       available,
+      ecommerceEnabled,
       "category": primaryCategory->title,
       variants
     }`,
@@ -326,8 +328,8 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       throw new Error("A product in your bag is no longer available.");
     }
 
-    if (product.available === false) {
-      throw new Error(`${product.name || "A product"} is currently unavailable.`);
+    if (product.available === false || product.ecommerceEnabled === false) {
+      throw new Error(`${product.name || "A product"} is not available for online purchase.`);
     }
 
     if (typeof product.price !== "number" || product.price <= 0) {

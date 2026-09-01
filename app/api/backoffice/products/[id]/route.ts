@@ -72,6 +72,8 @@ export async function PATCH(
         incoming: form.get("incoming"),
         reorderPoint: form.get("reorderPoint"),
         unitCost: form.get("unitCost"),
+        ecommerceEnabled: form.get("ecommerceEnabled"),
+        posEnabled: form.get("posEnabled"),
         retailPrice: form.get("retailPrice"),
         location: form.get("location"),
         available: form.get("available"),
@@ -100,6 +102,15 @@ export async function PATCH(
     if (available !== undefined) productPatch.available = available;
     const bestSeller = booleanValue(body.bestSeller);
     if (bestSeller !== undefined) productPatch.bestSeller = bestSeller;
+    const ecommerceEnabled = booleanValue(body.ecommerceEnabled);
+    const posEnabled = booleanValue(body.posEnabled);
+    if (ecommerceEnabled !== undefined) productPatch.ecommerceEnabled = ecommerceEnabled;
+    if (posEnabled !== undefined) productPatch.posEnabled = posEnabled;
+    const currentEcommerce = ecommerceEnabled ?? true;
+    const currentPos = posEnabled ?? true;
+    if (body.ecommerceEnabled !== undefined && body.posEnabled !== undefined && !currentEcommerce && !currentPos) {
+      return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
+    }
 
     const heroImage = await uploadHeroImage(heroImageFile);
     if (heroImage) productPatch.heroImage = heroImage;
@@ -113,7 +124,11 @@ export async function PATCH(
     const reorderPoint = numericValue(body.reorderPoint);
     if (reorderPoint !== undefined) inventoryPatch.reorderPoint = Math.max(0, reorderPoint);
     const unitCost = numericValue(body.unitCost);
-    if (unitCost !== undefined) inventoryPatch.unitCost = Math.max(0, unitCost);
+    if (unitCost !== undefined) {
+      const procurementCost = Math.max(0, unitCost);
+      inventoryPatch.unitCost = procurementCost;
+      productPatch.procurementCost = procurementCost;
+    }
 
     const transaction = serverClient.transaction();
 

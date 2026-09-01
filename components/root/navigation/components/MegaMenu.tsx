@@ -7,10 +7,11 @@ import type { ShopNavigation } from "@/types/commerce";
 
 interface MegaMenuProps {
   navigation: ShopNavigation;
+  shopLookPreview?: { title: string; slug: string; imageUrl?: string };
   onNavigate: () => void;
 }
 
-export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
+export function MegaMenu({ navigation, shopLookPreview, onNavigate }: MegaMenuProps) {
   const clearanceCategory = navigation.categories.find(
     (category) => category.slug === "clearance"
   );
@@ -31,7 +32,7 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
           <Link
             href="/shop"
             onClick={onNavigate}
-            className="text-[11px] font-medium !text-[var(--paper)] underline underline-offset-4 transition-colors hover:text-[var(--ink)]"
+            className="text-[11px] font-medium !text-[var(--ink)] underline underline-offset-4 transition-colors hover:!text-[var(--muted)]"
           >
             View all pieces
           </Link>
@@ -40,15 +41,21 @@ export function MegaMenu({ navigation, onNavigate }: MegaMenuProps) {
         {/* Category Grid */}
         <div className="grid grid-cols-4 items-stretch gap-x-5 gap-y-7 xl:grid-cols-6">
           <Link
-            href="/shop-by-look"
+            href={shopLookPreview ? `/shop-by-look/${encodeURIComponent(shopLookPreview.slug)}` : "/shop-by-look"}
             onClick={onNavigate}
-            className="group flex min-h-[190px] flex-col justify-between rounded-xl border hairline bg-[var(--deep-green)] p-4 text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
+            className="group relative flex min-h-[190px] overflow-hidden rounded-xl border hairline bg-[var(--deep-green)] text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
           >
-            <div className="grid size-10 place-items-center rounded-full bg-white/10"><Layers3 size={18} /></div>
-            <div>
-              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-white/55">Curated room edits</p>
-              <p className="mt-2 text-sm font-semibold">Shop by Look</p>
-              <p className="mt-1 text-[10px] leading-4 text-white/60">Buy the complete look or choose individual pieces.</p>
+            {shopLookPreview?.imageUrl ? (
+              <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url("${shopLookPreview.imageUrl}")` }} />
+            ) : null}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/5" />
+            <div className="relative z-10 flex w-full flex-col justify-between p-4">
+              <div className="grid size-10 place-items-center rounded-full bg-white/15 backdrop-blur-sm"><Layers3 size={18} /></div>
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-white/70">Curated room edits</p>
+                <p className="mt-2 text-sm font-semibold">Shop by Look</p>
+                <p className="mt-1 line-clamp-1 text-[10px] leading-4 text-white/75">{shopLookPreview?.title || "Buy the complete look or choose individual pieces."}</p>
+              </div>
             </div>
           </Link>
           {navigation.categories.map((category) => (

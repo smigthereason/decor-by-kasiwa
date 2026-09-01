@@ -149,6 +149,12 @@ export async function POST(request: Request) {
     }
 
     const initialStock = Math.max(0, numberValue(form.get("initialStock")));
+    const procurementCost = Math.max(0, numberValue(form.get("procurementCost")));
+    const ecommerceEnabled = booleanValue(form.get("ecommerceEnabled"), true);
+    const posEnabled = booleanValue(form.get("posEnabled"), true);
+    if (!ecommerceEnabled && !posEnabled) {
+      return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
+    }
     const compareAtPrice = numberValue(form.get("compareAtPrice"));
     const rating = numberValue(form.get("rating"));
     const reviewCount = Math.max(0, Math.floor(numberValue(form.get("reviewCount"))));
@@ -160,6 +166,9 @@ export async function POST(request: Request) {
       slug: { _type: "slug", current: slug },
       sku,
       price,
+      procurementCost,
+      ecommerceEnabled,
+      posEnabled,
       ...(compareAtPrice > 0 ? { compareAtPrice } : {}),
       ...(rating >= 4 && rating <= 4.8 ? { rating } : {}),
       ...(reviewCount > 0 ? { reviewCount } : {}),
@@ -195,7 +204,7 @@ export async function POST(request: Request) {
       reserved: 0,
       incoming: Math.max(0, numberValue(form.get("incoming"))),
       reorderPoint: Math.max(0, numberValue(form.get("reorderPoint"), 5)),
-      unitCost: Math.max(0, numberValue(form.get("unitCost"))),
+      unitCost: procurementCost,
       createdAt: now,
       updatedAt: now,
     });

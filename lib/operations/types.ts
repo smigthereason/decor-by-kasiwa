@@ -120,6 +120,8 @@ export type InventoryItem = {
   description?: string;
   available?: boolean;
   bestSeller?: boolean;
+  ecommerceEnabled?: boolean;
+  posEnabled?: boolean;
 };
 
 export type Shipment = {

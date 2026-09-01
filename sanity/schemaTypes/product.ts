@@ -64,6 +64,14 @@ export const product = defineType({
       validation: (rule) => rule.required().min(1),
     }),
     defineField({
+      name: "procurementCost",
+      title: "Procurement cost (KES)",
+      description: "Initial/procurement cost used for profit and loss reporting.",
+      type: "number",
+      group: "core",
+      validation: (rule) => rule.min(0),
+    }),
+    defineField({
       name: "compareAtPrice",
       title: "Compare-at price (KES)",
       description: "Optional original price for offers/sale presentation.",
@@ -170,6 +178,8 @@ export const product = defineType({
       group: "details",
       validation: (rule) => rule.min(0),
     }),
+    defineField({ name: "ecommerceEnabled", title: "Sell on e-commerce", description: "Show this product on the customer-facing online shop.", type: "boolean", group: "visibility", initialValue: true }),
+    defineField({ name: "posEnabled", title: "Sell on POS", description: "Make this product available to staff in Point of Sale.", type: "boolean", group: "visibility", initialValue: true }),
     defineField({ name: "featured", title: "Featured product", type: "boolean", group: "visibility", initialValue: false }),
     defineField({ name: "newArrival", title: "New arrival", type: "boolean", group: "visibility", initialValue: false }),
     defineField({ name: "bestSeller", title: "Best seller", type: "boolean", group: "visibility", initialValue: false }),

@@ -18,6 +18,7 @@ export default function ProductCreatePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
   const [selected, setSelected] = useState({ categories: [] as string[], collections: [] as string[], spaces: [] as string[], styles: [] as string[] });
 
   useEffect(() => {
@@ -48,6 +49,13 @@ export default function ProductCreatePage() {
     form.set("collections", JSON.stringify(selected.collections));
     form.set("spaces", JSON.stringify(selected.spaces));
     form.set("styles", JSON.stringify(selected.styles));
+    if (!salesChannels.ecommerce && !salesChannels.pos) {
+      setMessage("Select at least one sales channel: E-commerce or POS.");
+      setSaving(false);
+      return;
+    }
+    form.set("ecommerceEnabled", String(salesChannels.ecommerce));
+    form.set("posEnabled", String(salesChannels.pos));
     form.set("variants", JSON.stringify(variants.map(({ image: _image, ...variant }) => ({
       ...variant,
       price: variant.price ? Number(variant.price) : null,
@@ -118,7 +126,7 @@ export default function ProductCreatePage() {
               <Field label="Initial stock"><input name="initialStock" type="number" min="0" defaultValue="0" /></Field>
               <Field label="Incoming"><input name="incoming" type="number" min="0" defaultValue="0" /></Field>
               <Field label="Reorder level"><input name="reorderPoint" type="number" min="0" defaultValue="5" /></Field>
-              <Field label="Unit cost (KES)"><input name="unitCost" type="number" min="0" step="0.01" defaultValue="0" /></Field>
+              <Field label="Procurement cost (KES)" hint="Initial cost used for profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue="0" /></Field>
               <Field label="Inventory location" className="sm:col-span-2 lg:col-span-1 xl:col-span-2"><input name="location" defaultValue="Main store" /></Field>
             </div>
           </Card>
@@ -128,6 +136,14 @@ export default function ProductCreatePage() {
             <OptionGroup title="Collections" items={options.collections} selected={selected.collections} onToggle={(id)=>toggle("collections",id)} />
             <OptionGroup title="Shop by Space" items={options.spaces} selected={selected.spaces} onToggle={(id)=>toggle("spaces",id)} />
             <OptionGroup title="Shop by Style" items={options.styles} selected={selected.styles} onToggle={(id)=>toggle("styles",id)} />
+          </Card>
+
+          <Card title="Sales channels">
+            <p className="mb-4 text-xs leading-5 text-[var(--muted)]">Choose where this product can be sold. Keep both enabled to sell it online and at the POS.</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <ChannelToggle label="E-commerce" description="Customer-facing online shop" checked={salesChannels.ecommerce} onChange={(checked) => setSalesChannels((current) => ({ ...current, ecommerce: checked }))} />
+              <ChannelToggle label="Point of Sale" description="Admin/store POS only" checked={salesChannels.pos} onChange={(checked) => setSalesChannels((current) => ({ ...current, pos: checked }))} />
+            </div>
           </Card>
 
           <Card title="Visibility">
@@ -157,3 +173,10 @@ function Field({ label, hint, className="", children }: { label: string; hint?: 
 function FileField({ label, name, multiple=false }: { label: string; name: string; multiple?: boolean }) { return <label className="block rounded-xl border border-dashed hairline bg-[var(--paper-2)] p-4"><span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]"><ImagePlus size={14}/>{label}</span><input type="file" name={name} accept="image/*" multiple={multiple} className="mt-3 block w-full text-xs"/></label>; }
 function CheckField({ name, label, defaultChecked=false }: { name: string; label: string; defaultChecked?: boolean }) { return <label className="flex min-h-11 items-center gap-3 rounded-xl border hairline p-3 text-xs font-medium"><input name={name} value="true" type="checkbox" defaultChecked={defaultChecked} className="size-4 accent-[var(--deep-green)]"/>{label}</label>; }
 function OptionGroup({ title, items, selected, onToggle }: { title: string; items: Option[]; selected: string[]; onToggle: (id:string)=>void }) { if(!items.length) return null; return <div className="mb-5 last:mb-0"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{title}</p><div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-xl border hairline p-3">{items.map((item)=><button key={item._id} type="button" onClick={()=>onToggle(item._id)} className={`rounded-full border px-3 py-2 text-[9px] font-semibold ${selected.includes(item._id)?"border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream":"hairline bg-[var(--paper)]"}`}>{item.title}</button>)}</div></div>; }
+
+function ChannelToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex min-h-16 items-center justify-between gap-4 rounded-xl border hairline p-3 text-left">
+    <span><span className="block text-xs font-semibold">{label}</span><span className="mt-1 block text-[10px] text-[var(--muted)]">{description}</span></span>
+    <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-[var(--deep-green)]" : "bg-black/15"}`}><span className={`absolute top-1 size-4 rounded-full bg-white transition ${checked ? "left-6" : "left-1"}`} /></span>
+  </button>;
+}

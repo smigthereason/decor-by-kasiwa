@@ -16,7 +16,7 @@ export const inventoryRecord = defineType({
     defineField({ name: "reserved", title: "Reserved Units", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "incoming", title: "Incoming Units", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "reorderPoint", title: "Reorder Point", type: "number", initialValue: 5, validation: (Rule) => Rule.min(0) }),
-    defineField({ name: "unitCost", title: "Unit Cost (KES)", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "unitCost", title: "Procurement Cost (KES)", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
   ],
   preview: {
     select: { title: "product.name", subtitle: "location" },

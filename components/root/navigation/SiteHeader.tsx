@@ -17,9 +17,10 @@ import type { ShopNavigation } from "@/types/commerce";
 
 interface SiteHeaderProps {
   navigation: ShopNavigation;
+  shopLookPreview?: { title: string; slug: string; imageUrl?: string };
 }
 
-export default function SiteHeader({ navigation }: SiteHeaderProps) {
+export default function SiteHeader({ navigation, shopLookPreview }: SiteHeaderProps) {
   const { cartCount, user, wishlist } = useCommerce();
   const {
     pathname,
@@ -73,7 +74,7 @@ export default function SiteHeader({ navigation }: SiteHeaderProps) {
           </Suspense>
 
           {shopMenuOpen && (
-            <MegaMenu navigation={navigation} onNavigate={() => setShopMenuOpen(false)} />
+            <MegaMenu navigation={navigation} shopLookPreview={shopLookPreview} onNavigate={() => setShopMenuOpen(false)} />
           )}
         </div>
       </header>

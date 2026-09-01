@@ -81,7 +81,13 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     payload.set("reserved", String(draft.reserved));
     payload.set("incoming", String(draft.incoming));
     payload.set("reorderPoint", String(draft.reorderPoint));
+    if (draft.ecommerceEnabled === false && draft.posEnabled === false) {
+      setMessage("Select at least one sales channel: E-commerce or POS.");
+      return;
+    }
     payload.set("unitCost", String(draft.unitCost));
+    payload.set("ecommerceEnabled", String(draft.ecommerceEnabled !== false));
+    payload.set("posEnabled", String(draft.posEnabled !== false));
     payload.set("retailPrice", String(draft.retailPrice));
     payload.set("location", draft.location);
     payload.set("available", String(draft.available !== false));
@@ -241,7 +247,15 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-4 border-t hairline pt-5 sm:grid-cols-3">
+            <div className="mt-6 grid gap-4 border-t hairline pt-5 sm:grid-cols-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Procurement cost</p>
+                {editing ? (
+                  <input type="number" min={0} value={draft.unitCost} onChange={(e) => setDraft({ ...draft, unitCost: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--deep-green)]" />
+                ) : (
+                  <p className="mt-2 text-lg font-semibold">{formatKes(product.unitCost)}</p>
+                )}
+              </div>
               <div>
                 <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Available</p>
                 <p className="mt-2 text-lg font-semibold">{availableStock(product)}</p>
@@ -252,6 +266,17 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
                   <input type="number" min={0} value={draft.retailPrice} onChange={(e) => setDraft({ ...draft, retailPrice: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--deep-green)]" />
                 ) : (
                   <p className="mt-2 text-lg font-semibold">{formatKes(product.retailPrice)}</p>
+                )}
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Sales channels</p>
+                {editing ? (
+                  <div className="mt-3 grid gap-2 text-sm">
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={draft.ecommerceEnabled !== false} onChange={(e) => setDraft({ ...draft, ecommerceEnabled: e.target.checked })} /> E-commerce</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={draft.posEnabled !== false} onChange={(e) => setDraft({ ...draft, posEnabled: e.target.checked })} /> POS</label>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold">{[product.ecommerceEnabled !== false ? "E-commerce" : null, product.posEnabled !== false ? "POS" : null].filter(Boolean).join(" + ")}</p>
                 )}
               </div>
               <div>

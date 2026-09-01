@@ -22,6 +22,9 @@ type RawProduct = {
   initialStock?: number;
   available?: boolean;
   bestSeller?: boolean;
+  ecommerceEnabled?: boolean;
+  posEnabled?: boolean;
+  procurementCost?: number;
   shortDescription?: string;
   description?: string;
   category?: string;
@@ -71,6 +74,9 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
       initialStock,
       available,
       bestSeller,
+      ecommerceEnabled,
+      posEnabled,
+      procurementCost,
       shortDescription,
       description,
       "slug": slug.current,
@@ -102,13 +108,15 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
     reserved: row.inventory?.reserved || 0,
     incoming: row.inventory?.incoming || 0,
     reorderPoint: row.inventory?.reorderPoint ?? 5,
-    unitCost: row.inventory?.unitCost || 0,
+    unitCost: row.inventory?.unitCost ?? row.procurementCost ?? 0,
     retailPrice: typeof row.price === "number" ? row.price : 0,
     image: row.image || undefined,
     shortDescription: row.shortDescription || undefined,
     description: row.description || undefined,
     available: row.available !== false,
     bestSeller: row.bestSeller === true,
+    ecommerceEnabled: row.ecommerceEnabled !== false,
+    posEnabled: row.posEnabled !== false,
   }));
 }
 
