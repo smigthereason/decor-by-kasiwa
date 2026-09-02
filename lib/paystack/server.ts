@@ -6,6 +6,8 @@ import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { getDeliveryZoneById } from "@/lib/shipping-server";
+import { sendOrderConfirmationEmail } from "@/lib/order-email";
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -83,6 +85,8 @@ type PendingOrder = {
   paymentProvider?: string;
   currency?: string;
   paidAt?: string;
+  orderConfirmationEmailSentAt?: string;
+  deliveryOptionLabel?: string;
   lineItems?: PendingOrderLine[];
 };
 
@@ -413,12 +417,14 @@ export async function initializePaystackCheckout({
   address,
   cart,
   paymentMethod,
+  deliveryOptionId,
   callbackBaseUrl,
 }: {
   email: string;
   address: CheckoutAddress;
   cart: CheckoutCartLine[];
   paymentMethod: string;
+  deliveryOptionId?: string;
   callbackBaseUrl: string;
 }) {
   const normalizedEmail = normalizeEmail(email);
@@ -439,7 +445,11 @@ export async function initializePaystackCheckout({
     (sum, line) => sum + line.unitPrice * line.quantity,
     0,
   );
-  const deliveryFee = 0;
+  const deliveryOption = await getDeliveryZoneById(deliveryOptionId);
+  if (!deliveryOption) {
+    throw new Error("Select a valid shipping / delivery option before payment.");
+  }
+  const deliveryFee = deliveryOption.fee;
   const total = subtotal + deliveryFee;
 
   if (!Number.isFinite(total) || total <= 0) {
@@ -469,7 +479,9 @@ export async function initializePaystackCheckout({
     customerName: deliveryAddress.fullName,
     customerEmail: normalizedEmail,
     customerPhone: deliveryAddress.phone,
-    deliveryLocation: buildDeliveryLocation(deliveryAddress),
+    deliveryLocation: `${deliveryOption.label} · ${buildDeliveryLocation(deliveryAddress)}`,
+    deliveryOptionId: deliveryOption.id,
+    deliveryOptionLabel: deliveryOption.label,
     deliveryAddress,
     createdAt: now,
     updatedAt: now,
@@ -596,6 +608,8 @@ async function fetchPendingOrder(reference: string) {
       paymentProvider,
       currency,
       paidAt,
+      orderConfirmationEmailSentAt,
+      deliveryOptionLabel,
       "lineItems": lineItems[]{
         _key,
         "productId": coalesce(product._ref, productId),
@@ -669,6 +683,28 @@ function toVerifiedOrder(
   };
 }
 
+async function sendConfirmationIfNeeded(order: PendingOrder, paymentChannel?: string) {
+  if (order.orderConfirmationEmailSentAt) return;
+  try {
+    await sendOrderConfirmationEmail({
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      deliveryLocation: order.deliveryLocation,
+      subtotal: Number(order.subtotal || 0),
+      deliveryFee: Number(order.deliveryFee || 0),
+      total: Number(order.total || 0),
+      paymentMethod: paymentLabel(paymentChannel || order.paymentChannel),
+      items: (order.lineItems || []).map((line) => ({
+        name: line.name, quantity: Number(line.quantity || 0), unitPrice: Number(line.unitPrice || 0), finish: line.finish, size: line.size,
+      })),
+    });
+  } catch (cause) {
+    console.error("Order confirmation email failed:", cause);
+  }
+}
+
 export async function finalizePaystackPayment(reference: string) {
   assertReference(reference);
 
@@ -679,6 +715,7 @@ export async function finalizePaystackPayment(reference: string) {
   }
 
   if (order.paymentStatus === "paid") {
+    await sendConfirmationIfNeeded(order, order.paymentChannel);
     return toVerifiedOrder(order, order.paymentChannel);
   }
 
@@ -926,6 +963,7 @@ export async function finalizePaystackPayment(reference: string) {
     throw new Error("Payment was processed but the finalized order could not be loaded.");
   }
 
+  await sendConfirmationIfNeeded(finalized, transaction.channel);
   return toVerifiedOrder(finalized, transaction.channel);
 }
 

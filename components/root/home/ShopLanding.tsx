@@ -859,7 +859,7 @@ export default function ShopLanding({
   const categoryCarouselItems: CategoryCarouselItem[] = [
     {
       id: "shop-by-look",
-      title: "Shop by Look",
+      title: "Shop the Look",
       href: "/shop-by-look",
       imageUrl: featuredLook?.heroImageUrl || heroImage || null,
     },
@@ -914,7 +914,7 @@ export default function ShopLanding({
       {featuredLook && (
         <section className="relative border-t hairline w-full border-b hairline ">
           <div className="px-4 pt-5 sm:px-6 sm:pt-9 lg:px-10 lg:pt-12">
-            <SectionHeading eyebrow="Capture the look" title="Shop by Look" href="/shop-by-look" />
+            <SectionHeading eyebrow="Capture the look" title="Shop the Look" href="/shop-by-look" />
           </div>
           <div className="grid w-full overflow-hidden bg-[var(--paper)] lg:grid-cols-[1fr_0.95fr]">
             {/* Image Section */}
@@ -1005,10 +1005,40 @@ export default function ShopLanding({
         </section>
       )}
 
-      {/* ====== COMMENTED OUT: CAROUSELS AFTER "SHOP BY LOOK" ====== */}
+      {/* Shop discovery links requested for the landing page */}
+      {navigation.spaces.length > 0 && (
+        <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
+          <SectionHeading title="Shop by Space" href="/shop" />
+          <Carousel>
+            {navigation.spaces.map((item) => (
+              <Link
+                key={item.slug}
+                href={`/shop?space=${encodeURIComponent(item.slug)}`}
+                className="group flex min-w-[190px] items-center justify-between rounded-xl border hairline bg-[var(--paper)] p-5 text-sm font-semibold transition-shadow hover:shadow-md sm:min-w-[220px]"
+              >
+                <span>{item.title}</span><ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+              </Link>
+            ))}
+          </Carousel>
+        </section>
+      )}
 
-
-
+      {navigation.styles.length > 0 && (
+        <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
+          <SectionHeading title="Shop by Style" href="/shop" />
+          <Carousel>
+            {navigation.styles.map((item) => (
+              <Link
+                key={item.slug}
+                href={`/shop?style=${encodeURIComponent(item.slug)}`}
+                className="group flex min-w-[190px] items-center justify-between rounded-xl border hairline bg-[var(--paper)] p-5 text-sm font-semibold transition-shadow hover:shadow-md sm:min-w-[220px]"
+              >
+                <span>{item.title}</span><ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+              </Link>
+            ))}
+          </Carousel>
+        </section>
+      )}
 
       <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
         <SectionHeading eyebrow="Budget your spend" title="Shop by price" href="/shop" />

@@ -13,6 +13,7 @@ type InitializeBody = {
   address?: CheckoutAddress;
   cart?: CheckoutCartLine[];
   paymentMethod?: string;
+  deliveryOptionId?: string;
 };
 
 export async function POST(request: Request) {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
       address: body.address,
       cart: body.cart,
       paymentMethod: body.paymentMethod || "Card",
+      deliveryOptionId: body.deliveryOptionId,
       callbackBaseUrl,
     });
 

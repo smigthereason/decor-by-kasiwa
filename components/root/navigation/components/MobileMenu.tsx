@@ -112,7 +112,7 @@ export function MobileMenu({ isOpen, onClose, navigation, search, setSearch, onS
                     onClick={onClose}
                     className="flex min-h-12 items-center border-b border-soft-cream/5 text-[14px] font-semibold text-soft-cream transition-colors hover:text-soft-cream/80"
                   >
-                    Shop by Look <span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-soft-cream/45">Curated edits</span>
+                    Shop the Look <span className="ml-2 text-[9px] uppercase tracking-[0.08em] text-soft-cream/45">Curated edits</span>
                   </Link>
                   {navigation.categories.map((category) => (
                     <MobileCategoryRow

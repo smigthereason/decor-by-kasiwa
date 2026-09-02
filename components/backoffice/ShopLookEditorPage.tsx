@@ -108,7 +108,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
     try {
       const response = await fetch("/api/backoffice/shop-looks", { cache: "no-store" });
       const payload = (await response.json()) as ApiPayload & { message?: string };
-      if (!response.ok) throw new Error(payload.message || "Shop by Look could not be loaded.");
+      if (!response.ok) throw new Error(payload.message || "Shop the Look could not be loaded.");
       setData(payload);
 
       if (lookId) {
@@ -138,7 +138,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
       }
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Shop by Look could not be loaded.");
+      setError(cause instanceof Error ? cause.message : "Shop the Look could not be loaded.");
     } finally {
       setLoading(false);
     }
@@ -274,7 +274,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Link href={basePath} className="group inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-              <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1" /> Back to Shop by Look
+              <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1" /> Back to Shop the Look
             </Link>
             <p className="kicker mt-5 text-[var(--muted)]">{lookId ? "Edit curated look" : "New curated look"}</p>
             <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em] sm:text-4xl">{form.title || "Create a look"}</h1>
@@ -353,7 +353,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
               </label>
               <div className="sm:col-span-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Look image</span>
-                <span className="mt-1 block text-[10px] leading-4 text-[var(--muted)]">Upload the main lifestyle image customers should see for this Shop by Look. JPG, PNG, WebP and other image formats are supported up to 12 MB.</span>
+                <span className="mt-1 block text-[10px] leading-4 text-[var(--muted)]">Upload the main lifestyle image customers should see for this Shop the Look. JPG, PNG, WebP and other image formats are supported up to 12 MB.</span>
                 <label className="mt-3 flex min-h-28 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed hairline bg-[var(--paper-2)] px-4 text-center transition hover:border-[var(--deep-green)]">
                   <ImagePlus size={20} className="text-[var(--deep-green)]" />
                   <span className="text-xs">{heroImageFile ? heroImageFile.name : existingHeroImageUrl ? "Choose a replacement look image" : "Choose look image"}</span>

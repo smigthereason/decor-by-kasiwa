@@ -43,6 +43,8 @@ export const commerceOrder = defineType({
       title: "Delivery Location",
       type: "string",
     }),
+    defineField({ name: "deliveryOptionId", title: "Delivery Option ID", type: "string" }),
+    defineField({ name: "deliveryOptionLabel", title: "Delivery Option", type: "string" }),
     defineField({
       name: "deliveryAddress",
       title: "Delivery Address Snapshot",
@@ -103,6 +105,7 @@ export const commerceOrder = defineType({
       title: "Paid At",
       type: "datetime",
     }),
+    defineField({ name: "orderConfirmationEmailSentAt", title: "Order Confirmation Email Sent At", type: "datetime", readOnly: true }),
     defineField({
       name: "status",
       title: "Order Status",

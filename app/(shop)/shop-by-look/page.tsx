@@ -9,12 +9,12 @@ import { getShopLooks } from "@/sanity/lib/catalog";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Shop by Look",
+  title: "Shop the Look",
   description:
     "Shop curated Decor by Kasiwa room edits and buy the complete look or individual home décor pieces.",
   alternates: { canonical: "/shop-by-look" },
   openGraph: {
-    title: "Shop by Look | Decor by Kasiwa",
+    title: "Shop the Look | Decor by Kasiwa",
     description:
       "Discover coordinated room edits and shop every Decor by Kasiwa piece used in the look.",
     url: "/shop-by-look",
@@ -37,7 +37,7 @@ export default async function ShopByLookPage() {
               <p className="kicker">Curated room edits</p>
             </div>
             <h1 className="mt-5 text-[clamp(3rem,8vw,6.5rem)] font-semibold leading-[0.9] tracking-[-0.07em]">
-              Shop by Look.
+              Shop the Look.
             </h1>
             <p className="mt-6 max-w-2xl text-sm leading-7 text-[var(--muted)] sm:text-base">
               Start with a complete Decor by Kasiwa room edit, then buy the full look or choose only the pieces that work for your space.

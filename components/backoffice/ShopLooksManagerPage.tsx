@@ -46,11 +46,11 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
     try {
       const response = await fetch("/api/backoffice/shop-looks", { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.message || "Shop by Look could not be loaded.");
+      if (!response.ok) throw new Error(payload?.message || "Shop the Look could not be loaded.");
       setData(payload as Payload);
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Shop by Look could not be loaded.");
+      setError(cause instanceof Error ? cause.message : "Shop the Look could not be loaded.");
     } finally {
       setLoading(false);
     }
@@ -94,7 +94,7 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="kicker text-[var(--muted)]">Merchandising</p>
-            <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em] sm:text-4xl">Shop by Look</h1>
+            <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em] sm:text-4xl">Shop the Look</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">
               Build curated room edits from the live product catalogue. Admin and Store Manager can publish, feature and reorder looks without changing product inventory.
             </p>
@@ -139,7 +139,7 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
             <Layers3 size={34} strokeWidth={1.2} className="mx-auto text-[var(--deep-green)]" />
             <h2 className="mt-5 text-xl font-semibold">Create the first customer look</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">
-              Select products, set quantities, add a room/style and publish. The look appears immediately on the customer Shop by Look page.
+              Select products, set quantities, add a room/style and publish. The look appears immediately on the customer Shop the Look page.
             </p>
             <Link href={`${basePath}/new`} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">
               <Plus size={14} /> Create first look

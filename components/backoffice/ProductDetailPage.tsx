@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, X } from "lucide-react";
+import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Trash2, X } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import StatusPill from "@/components/backoffice/StatusPill";
@@ -15,11 +15,13 @@ type Mode = "admin" | "store";
 
 export default function ProductDetailPage({ mode }: { mode: Mode }) {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const productId = decodeURIComponent(params.id);
   const { data, loading, error, refresh } = useLiveOperations();
   const product = data?.products.find((item) => item.id === productId);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<InventoryItem | null>(null);
   const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
@@ -63,6 +65,25 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     setHeroImageFile(null);
     setMessage(null);
     setEditing(false);
+  }
+
+  async function deleteProduct() {
+    if (mode !== "admin" || deleting) return;
+    const confirmed = window.confirm(`Delete ${product?.name || "this product"}? This permanently removes products that are not already referenced by orders or curated content.`);
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/backoffice/products/${encodeURIComponent(liveProductId)}`, { method: "DELETE" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof result?.message === "string" ? result.message : "Product deletion failed.");
+      router.push("/admin/products");
+      router.refresh();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Product deletion failed.");
+      setDeleting(false);
+    }
   }
 
   async function save() {
@@ -129,9 +150,22 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {!editing ? (
-              <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]">
-                <Pencil size={14} /> Edit product
-              </button>
+              <>
+                {mode === "admin" ? (
+                  <Link href={`/admin/products/${encodeURIComponent(liveProductId)}/edit`} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]">
+                    <Pencil size={14} /> Edit all details
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]">
+                    <Pencil size={14} /> Edit product
+                  </button>
+                )}
+                {mode === "admin" && (
+                  <button type="button" disabled={deleting} onClick={() => void deleteProduct()} className="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-red-700 transition hover:bg-red-50 disabled:opacity-50">
+                    <Trash2 size={14} /> {deleting ? "Deleting…" : "Delete product"}
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">

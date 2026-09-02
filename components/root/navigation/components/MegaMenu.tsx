@@ -53,7 +53,7 @@ export function MegaMenu({ navigation, shopLookPreview, onNavigate }: MegaMenuPr
               <div className="grid size-10 place-items-center rounded-full bg-white/15 backdrop-blur-sm"><Layers3 size={18} /></div>
               <div>
                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-white/70">Curated room edits</p>
-                <p className="mt-2 text-sm font-semibold">Shop by Look</p>
+                <p className="mt-2 text-sm font-semibold">Shop the Look</p>
                 <p className="mt-1 line-clamp-1 text-[10px] leading-4 text-white/75">{shopLookPreview?.title || "Buy the complete look or choose individual pieces."}</p>
               </div>
             </div>

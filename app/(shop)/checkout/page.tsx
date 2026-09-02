@@ -26,6 +26,7 @@ import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import CatalogueUnavailable from "@/components/root/commerce/CatalogueUnavailable";
 import { formatMoney } from "@/lib/money";
 import { getQuantityLineTotal } from "@/lib/product-pricing";
+import type { DeliveryZone } from "@/lib/shipping";
 import type { DemoAddress } from "@/types/commerce";
 
 const emptyAddress: DemoAddress = {
@@ -57,6 +58,9 @@ export default function CheckoutPage() {
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState<DemoAddress>(emptyAddress);
   const [paymentMethod, setPaymentMethod] = useState("Card");
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryZone[]>([]);
+  const [deliveryOptionId, setDeliveryOptionId] = useState("");
+  const [deliveryLoading, setDeliveryLoading] = useState(true);
   const [error, setError] = useState("");
   const [initializingPayment, setInitializingPayment] = useState(false);
 
@@ -68,6 +72,21 @@ export default function CheckoutPage() {
       fullName: current.fullName || user.name,
     }));
   }, [user]);
+
+  useEffect(() => {
+    void fetch("/api/delivery-options", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { deliveryZones?: DeliveryZone[]; message?: string };
+        if (!response.ok) throw new Error(payload.message || "Unable to load delivery options.");
+        const zones = payload.deliveryZones || [];
+        setDeliveryOptions(zones);
+        setDeliveryOptionId((current) => current || zones[0]?.id || "");
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load delivery options."))
+      .finally(() => setDeliveryLoading(false));
+  }, []);
+
+  const selectedDeliveryOption = deliveryOptions.find((option) => option.id === deliveryOptionId);
 
   const lineItems = useMemo(
     () =>
@@ -129,6 +148,10 @@ export default function CheckoutPage() {
         setError("Please complete all required delivery details.");
         return false;
       }
+      if (!deliveryOptionId || !selectedDeliveryOption) {
+        setError("Please select a valid shipping / delivery option.");
+        return false;
+      }
     }
     return true;
   }
@@ -161,6 +184,7 @@ export default function CheckoutPage() {
           address,
           cart,
           paymentMethod,
+          deliveryOptionId,
         }),
       });
 
@@ -375,6 +399,25 @@ export default function CheckoutPage() {
                         />
                       </Field>
                     </div>
+                    <div className="sm:col-span-2">
+                      <label className="block">
+                        <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Shipping / delivery option</span>
+                        <select
+                          value={deliveryOptionId}
+                          onChange={(event) => setDeliveryOptionId(event.target.value)}
+                          disabled={deliveryLoading || deliveryOptions.length === 0}
+                          className="min-h-12 w-full rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] px-4 text-sm outline-none transition-all focus:border-[var(--ink)] focus:ring-2 focus:ring-[var(--ink)]/10 disabled:opacity-60"
+                        >
+                          {deliveryOptions.length === 0 && <option value="">{deliveryLoading ? "Loading delivery options…" : "No delivery options available"}</option>}
+                          {deliveryOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label} — {formatMoney(option.fee)}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-2 text-xs text-[var(--muted)]">{selectedDeliveryOption?.description || "The selected standard delivery fee is added automatically to your order total."}</p>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -558,9 +601,11 @@ export default function CheckoutPage() {
                 <span className="text-[var(--muted)]">Subtotal</span>
                 <span className="font-medium">{formatMoney(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between gap-4 text-sm">
                 <span className="text-[var(--muted)]">Delivery</span>
-                <span className="text-xs text-[var(--muted)]">Calculated at next step</span>
+                <span className="text-right font-medium">
+                  {selectedDeliveryOption ? `${selectedDeliveryOption.label} · ${formatMoney(selectedDeliveryOption.fee)}` : "Select a delivery option"}
+                </span>
               </div>
             </div>
 
@@ -568,7 +613,7 @@ export default function CheckoutPage() {
             <div className="mt-5 sm:mt-6 flex items-baseline justify-between rounded-lg bg-[var(--deep-green)] px-5 sm:px-6 py-4 sm:py-5 text-[var(--paper)]">
               <span className="text-xs font-medium uppercase tracking-[0.08em] opacity-80">Total</span>
               <span className="text-2xl sm:text-3xl font-medium tracking-[-0.03em]">
-                {formatMoney(subtotal)}
+                {formatMoney(subtotal + (selectedDeliveryOption?.fee || 0))}
               </span>
             </div>
 
@@ -594,7 +639,7 @@ export default function CheckoutPage() {
                 Fulfilment Note
               </p>
               <p className="mt-2">
-                Final delivery windows and freight quotes are confirmed after address verification.
+                The selected delivery zone and its current Admin-configured rate are captured with the order and included in the checkout total.
               </p>
             </div>
           </aside>

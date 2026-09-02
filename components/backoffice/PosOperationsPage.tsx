@@ -93,7 +93,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     finally { setLoading(false); }
   }, [appliedHistory, appliedReportFrom, appliedReportTo, period, tab]);
 
-  useEffect(() => { void load(tab); }, [tab, period, appliedReportFrom, appliedReportTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(tab); }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = useMemo(() => [
     { id: "history" as const, label: "Sales History", icon: ClipboardList },
