@@ -12,6 +12,9 @@ import {
   Minus,
   Plus,
   LockKeyhole,
+  Maximize2,
+  ShoppingBag,
+  X,
   Zap,
 } from "lucide-react";
 import type { StoreProduct } from "@/types/commerce";
@@ -40,6 +43,7 @@ export default function ProductDetailClient({
   const [activeImage, setActiveImage] = useState(initialVariant?.imageUrl || product.images[0] || product.heroImage || "");
   const [added, setAdded] = useState(false);
   const [buyingNow, setBuyingNow] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const wishlisted = isWishlisted(product.id);
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId);
   const soldOut = isProductSoldOut(product) || selectedVariant?.stockQuantity === 0;
@@ -121,13 +125,21 @@ export default function ProductDetailClient({
     }, 300);
   }
 
+  function handleMobileBack() {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/shop";
+  }
+
   const related = relatedProducts;
 
   return (
     <>
       <section className="flex min-h-[calc(100vh-140px)] w-full flex-col bg-[var(--paper)]">
         {/* HEADER BAR */}
-        <div className="flex w-full items-center justify-between border-b hairline px-4 py-6 md:px-8">
+        <div className="hidden w-full items-center justify-between border-b hairline px-4 py-6 md:px-8 lg:flex">
           <Link
             href="/shop"
             className="focus-ring group inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.08em]"
@@ -142,8 +154,20 @@ export default function ProductDetailClient({
           </div>
         </div>
 
-        {/* BREADCRUMB */}
-        <div className="flex items-center gap-2 border-b hairline px-4 py-4 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)] md:px-8">
+        {/* MOBILE BACK NAVIGATION */}
+        <div className="flex items-center border-b hairline px-4 py-2 lg:hidden">
+          <button
+            type="button"
+            onClick={handleMobileBack}
+            className="focus-ring -ml-2 inline-flex size-10 items-center justify-center rounded-full text-[var(--ink)] transition-colors hover:bg-[var(--paper-2)]"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={22} strokeWidth={1.6} />
+          </button>
+        </div>
+
+        {/* BREADCRUMB — DESKTOP ONLY */}
+        <div className="hidden items-center gap-2 border-b hairline px-4 py-4 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)] md:px-8 lg:flex">
           <Link href="/shop" className="focus-ring inline-flex items-center gap-2 text-[var(--ink)]">
             Shop
           </Link>
@@ -153,8 +177,243 @@ export default function ProductDetailClient({
           <span className="truncate">{product.name}</span>
         </div>
 
-        {/* MAIN CONTENT */}
-        <div className="grid flex-1 items-stretch lg:grid-cols-[1.35fr_0.65fr]">
+        {/* MOBILE PRODUCT EXPERIENCE */}
+        <div className="lg:hidden">
+          <div className="px-0 pb-8">
+            {productImages.length > 0 ? (
+              <div>
+                <div className="relative aspect-square w-full overflow-hidden border-b hairline bg-[var(--paper-2)]">
+                  <Image
+                    src={activeImage || productImages[0]}
+                    alt={`${product.name} - main view`}
+                    fill
+                    priority
+                    className="object-contain p-5"
+                    sizes="100vw"
+                    unoptimized
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setZoomOpen(true)}
+                    className="focus-ring absolute right-4 top-4 grid size-11 place-items-center rounded-full border border-[var(--ink)]/10 bg-[var(--paper)]/95 shadow-sm backdrop-blur"
+                    aria-label="Zoom product image"
+                  >
+                    <Maximize2 size={18} strokeWidth={1.6} />
+                  </button>
+
+                  {added && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute inset-x-4 bottom-5 flex items-center gap-3 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper)]/95 px-4 py-3 shadow-lg backdrop-blur"
+                      role="status"
+                    >
+                      <ShoppingBag size={20} strokeWidth={1.5} className="shrink-0 text-[var(--deep-green)]" />
+                      <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
+                        <strong className="font-semibold text-[var(--ink)]">Great choice!</strong> Added to your cart.
+                      </p>
+                    </motion.div>
+                  )}
+                </div>
+
+                {productImages.length > 1 && (
+                  <div className="flex items-center justify-center gap-3 py-4" aria-label="Product image selector">
+                    {productImages.map((image, index) => (
+                      <button
+                        type="button"
+                        key={image}
+                        onClick={() => selectImage(image)}
+                        className={`focus-ring size-3 rounded-full border transition-all ${
+                          image === activeImage
+                            ? "border-[var(--deep-green)] bg-[var(--deep-green)] shadow-[0_0_0_3px_var(--paper),0_0_0_4px_var(--deep-green)]"
+                            : "border-[var(--muted)]/70 bg-transparent"
+                        }`}
+                        aria-label={`Show image ${index + 1} of ${productImages.length}`}
+                        aria-pressed={image === activeImage}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid aspect-square place-items-center border-b hairline bg-[var(--paper-2)] px-8 text-center">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--deep-green)]">Decor by Kasiwa</p>
+                  <p className="mt-3 text-sm text-[var(--muted)]">Product imagery will be added soon.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="px-5 pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{product.category}</p>
+              <h1 className="mt-3 text-[2.15rem] font-medium leading-[1.03] tracking-[-0.045em] text-[var(--ink)]">
+                {product.name}
+              </h1>
+
+              <div className="mt-3">
+                <p className="text-[2rem] font-semibold leading-none tracking-[-0.03em]">{formatMoney(displayPrice)}</p>
+                {quantityPricingMessage && (
+                  <p className="mt-2 text-xs font-medium text-[var(--deep-green)]">{quantityPricingMessage}</p>
+                )}
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
+                <ProductRatingStars rating={rating} size={20} />
+                <span className="text-sm font-semibold">{rating.toFixed(1)}</span>
+                {typeof reviewCount === "number" && (
+                  <span className="text-sm font-medium text-[var(--deep-green)] underline underline-offset-4">
+                    {reviewCount} {reviewCount === 1 ? "Review" : "Reviews"}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm font-semibold text-[var(--deep-green)]">
+                <a href="#product-details" className="focus-ring underline decoration-1 underline-offset-4">Product Details</a>
+                <a href="#delivery-returns" className="focus-ring underline decoration-1 underline-offset-4">Easy Returns</a>
+              </div>
+
+              {colourOptions.length > 0 && (
+                <div className="mt-8">
+                  <p className="text-base text-[var(--muted)]">
+                    Colour <span className="text-[var(--ink)]">- {colour}</span>
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-4">
+                    {colourOptions.map((item) => {
+                      const variantImage = variants.find((variant) => variant.colour === item)?.imageUrl;
+                      return (
+                        <button
+                          type="button"
+                          key={item}
+                          onClick={() => selectColour(item)}
+                          className={`focus-ring relative size-14 overflow-hidden rounded-full border-2 bg-[var(--paper-2)] transition-all ${
+                            colour === item
+                              ? "border-[var(--deep-green)] shadow-[0_0_0_4px_var(--paper),0_0_0_6px_var(--deep-green)]"
+                              : "border-[var(--ink)]/15"
+                          }`}
+                          aria-label={`Select ${item}`}
+                          aria-pressed={colour === item}
+                          title={item}
+                        >
+                          {variantImage ? (
+                            <Image src={variantImage} alt="" fill unoptimized sizes="56px" className="object-cover" />
+                          ) : (
+                            <span className="absolute inset-1 rounded-full" style={{ backgroundColor: getColourSwatch(item) }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {sizeOptions.length > 0 && (
+                <div className="mt-8">
+                  <p className="text-base text-[var(--muted)]">Size <span className="text-[var(--ink)]">- {size}</span></p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {sizeOptions.map((item) => (
+                      <button
+                        type="button"
+                        key={item}
+                        onClick={() => selectSize(item)}
+                        className={`focus-ring min-w-14 rounded-full border px-4 py-3 text-sm transition-colors ${
+                          size === item
+                            ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream"
+                            : "border-[var(--ink)]/20 bg-[var(--paper)]"
+                        }`}
+                        aria-pressed={size === item}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-9 flex items-center gap-2">
+                <div className="flex min-h-14 w-[112px] shrink-0 items-center justify-between rounded-full border border-[var(--ink)]/35 px-1">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((value) => Math.max(1, value - 1))}
+                    disabled={soldOut || quantity <= 1}
+                    className="focus-ring grid size-10 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Decrease quantity"
+                  >
+                    <Minus size={18} strokeWidth={1.5} />
+                  </button>
+                  <span className="text-base">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((value) => maximumQuantity === null ? value + 1 : Math.min(maximumQuantity, value + 1))}
+                    disabled={soldOut || (maximumQuantity !== null && quantity >= maximumQuantity)}
+                    className="focus-ring grid size-10 place-items-center disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Increase quantity"
+                  >
+                    <Plus size={18} strokeWidth={1.5} />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={soldOut || purchasingUnavailable}
+                  className="focus-ring inline-flex min-h-14 min-w-0 flex-1 items-center justify-center rounded-full bg-[var(--deep-green)] px-4 text-sm font-semibold !text-soft-cream transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {catalogueError ? "Catalogue unavailable" : !catalogueReady ? "Preparing cart…" : soldOut ? "Out of stock" : added ? "Added to cart" : "Add to Basket"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => toggleWishlist(product.id)}
+                  className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-[var(--ink)]/10 bg-[var(--paper)] shadow-sm"
+                  aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                  aria-pressed={wishlisted}
+                >
+                  <Heart size={24} strokeWidth={1.5} fill={wishlisted ? "currentColor" : "none"} />
+                </button>
+              </div>
+
+              {maximumQuantity !== null && maximumQuantity <= 5 && !soldOut && (
+                <p className="mt-2 text-xs text-[var(--muted)]">Only {maximumQuantity} left in stock.</p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                disabled={buyingNow || soldOut || purchasingUnavailable}
+                className="focus-ring mt-3 inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-full border border-[var(--deep-green)] px-5 text-sm font-semibold text-[var(--deep-green)] disabled:opacity-50"
+              >
+                <Zap size={16} /> {buyingNow ? "Redirecting..." : "Buy Now"}
+              </button>
+
+              <div className="mt-8 border-t hairline pt-6">
+                <p className="text-sm leading-7 text-[var(--muted)]">{product.description}</p>
+              </div>
+
+              <div id="product-details" className="mt-5 divide-y hairline border-y hairline scroll-mt-24">
+                <DetailRow title="The piece">{product.story}</DetailRow>
+                <DetailRow title="Details & dimensions">
+                  {product.dimensions}
+                  {product.materials.length > 0 && (
+                    <>
+                      <br />
+                      {product.materials.join(" · ")}
+                    </>
+                  )}
+                </DetailRow>
+                <DetailRow title="Care">{product.care}</DetailRow>
+                <div id="delivery-returns" className="scroll-mt-24">
+                  <DetailRow title="Delivery & returns">
+                    Delivery options and prices are shown at checkout. Return terms are subject to the store's approved fulfilment and returns policy.
+                  </DetailRow>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* DESKTOP PRODUCT EXPERIENCE */}
+        <div className="hidden flex-1 items-stretch lg:grid lg:grid-cols-[1.35fr_0.65fr]">
           {/* LEFT COLUMN: IMAGES */}
           <div className="flex flex-col border-b hairline lg:border-b-0 lg:border-r">
             {productImages.length > 0 ? (
@@ -466,6 +725,29 @@ export default function ProductDetailClient({
         </div>
       </section>
 
+      {zoomOpen && productImages.length > 0 && (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-[var(--paper)]/98 p-4 lg:hidden" role="dialog" aria-modal="true" aria-label="Zoomed product image">
+          <button
+            type="button"
+            onClick={() => setZoomOpen(false)}
+            className="focus-ring absolute right-4 top-4 z-10 grid size-12 place-items-center rounded-full border border-[var(--ink)]/10 bg-[var(--paper)] shadow-sm"
+            aria-label="Close image zoom"
+          >
+            <X size={22} />
+          </button>
+          <div className="relative h-[85vh] w-full max-w-3xl">
+            <Image
+              src={activeImage || productImages[0]}
+              alt={`${product.name} zoomed view`}
+              fill
+              className="object-contain"
+              sizes="100vw"
+              unoptimized
+            />
+          </div>
+        </div>
+      )}
+
       {related.length > 0 && (
         <section className="w-full border-t hairline bg-[var(--paper)]">
           {/* RELATED HEADER - MORE SPACIOUS */}
@@ -512,6 +794,33 @@ export default function ProductDetailClient({
       )}
     </>
   );
+}
+
+
+function getColourSwatch(colour: string) {
+  const value = colour.trim().toLowerCase();
+  const swatches: Array<[string, string]> = [
+    ["warm ivory", "#F2EBDD"],
+    ["ivory", "#F7F1E4"],
+    ["cream", "#EFE5D2"],
+    ["charcoal", "#41413F"],
+    ["black", "#252525"],
+    ["sand", "#CDBB9A"],
+    ["natural", "#C7B394"],
+    ["olive", "#7C8060"],
+    ["sage", "#A8B09B"],
+    ["taupe", "#A79A8E"],
+    ["deep brown", "#4A352B"],
+    ["brown", "#765743"],
+    ["brushed brass", "#B08D57"],
+    ["warm brass", "#B68A4B"],
+    ["brass", "#B08D57"],
+    ["gold", "#C4A35A"],
+    ["white", "#F7F7F4"],
+    ["grey", "#999994"],
+    ["gray", "#999994"],
+  ];
+  return swatches.find(([name]) => value.includes(name))?.[1] || "#D8D2C4";
 }
 
 function DetailRow({
