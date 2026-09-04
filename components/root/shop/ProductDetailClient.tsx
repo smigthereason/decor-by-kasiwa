@@ -178,7 +178,7 @@ export default function ProductDetailClient({
         </div>
 
         {/* MOBILE PRODUCT EXPERIENCE */}
-        <div className="lg:hidden">
+        <div className="mobile-product-view lg:hidden">
           <div className="px-0 pb-8">
             {productImages.length > 0 ? (
               <div>
@@ -247,7 +247,7 @@ export default function ProductDetailClient({
 
             <div className="px-5 pt-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{product.category}</p>
-              <h1 className="mt-3 text-[2.15rem] font-medium leading-[1.03] tracking-[-0.045em] text-[var(--ink)]">
+              <h1 className="mt-3 text-[clamp(1.65rem,7.2vw,1.95rem)] font-medium leading-[1.08] tracking-[-0.035em] text-[var(--ink)]">
                 {product.name}
               </h1>
 
@@ -359,7 +359,7 @@ export default function ProductDetailClient({
                   disabled={soldOut || purchasingUnavailable}
                   className="focus-ring inline-flex min-h-14 min-w-0 flex-1 items-center justify-center rounded-full bg-[var(--deep-green)] px-4 text-sm font-semibold !text-soft-cream transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  {catalogueError ? "Catalogue unavailable" : !catalogueReady ? "Preparing cart…" : soldOut ? "Out of stock" : added ? "Added to cart" : "Add to Basket"}
+                  {catalogueError ? "Catalogue unavailable" : !catalogueReady ? "Preparing cart…" : soldOut ? "Out of stock" : added ? "Added to cart" : "Add to Cart"}
                 </button>
 
                 <button

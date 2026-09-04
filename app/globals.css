@@ -129,6 +129,12 @@ select {
 }
 
 
+/* Keep iOS Safari from automatically inflating product-page typography. */
+.mobile-product-view {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 .focus-ring:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 3px;

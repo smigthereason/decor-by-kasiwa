@@ -65,6 +65,33 @@ type EditorProduct = {
 
 const blankVariant = (): VariantDraft => ({ title: "", colour: "", size: "", sku: "", price: "", stockQuantity: "" });
 
+const MAX_BACKOFFICE_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+async function readApiResponse<T extends Record<string, unknown>>(response: Response): Promise<T & { message?: string }> {
+  const text = await response.text();
+  if (!text.trim()) return {} as T & { message?: string };
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as T & { message?: string };
+    }
+  } catch {
+    // Some hosting/proxy errors are plain text rather than JSON. Handle them below.
+  }
+
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (/request entity too large|payload too large|function_payload_too_large/i.test(compact)) {
+    return {
+      message: "The selected image upload is too large for the server. Keep the combined new image uploads below 4 MB and try again.",
+    } as T & { message?: string };
+  }
+
+  return {
+    message: compact.slice(0, 240) || `Request failed with status ${response.status}.`,
+  } as T & { message?: string };
+}
+
 export default function ProductCreatePage({ productId }: { productId?: string }) {
   const router = useRouter();
   const isEditing = Boolean(productId);
@@ -83,7 +110,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
   useEffect(() => {
     void fetch("/api/backoffice/products", { cache: "no-store" })
       .then(async (response) => {
-        const payload = await response.json() as OptionsPayload & { message?: string };
+        const payload = await readApiResponse<OptionsPayload>(response);
         if (!response.ok) throw new Error(payload.message || "Unable to load product options.");
         setOptions(payload);
       })
@@ -95,7 +122,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
     if (!productId) return;
     void fetch(`/api/backoffice/products/${encodeURIComponent(productId)}`, { cache: "no-store" })
       .then(async (response) => {
-        const payload = await response.json() as { product?: EditorProduct; message?: string };
+        const payload = await readApiResponse<{ product?: EditorProduct }>(response);
         if (!response.ok || !payload.product) throw new Error(payload.message || "Unable to load product.");
         const next = payload.product;
         setProduct(next);
@@ -167,10 +194,38 @@ export default function ProductCreatePage({ productId }: { productId?: string })
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
     });
 
+    const selectedUploads = Array.from(form.values()).filter(
+      (value): value is File => value instanceof File && value.size > 0,
+    );
+    const totalUploadBytes = selectedUploads.reduce((total, file) => total + file.size, 0);
+    if (totalUploadBytes > MAX_BACKOFFICE_UPLOAD_BYTES) {
+      setMessage("The selected new images are too large to upload together. Keep the combined upload below 4 MB, then save again.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const endpoint = isEditing && productId ? `/api/backoffice/products/${encodeURIComponent(productId)}` : "/api/backoffice/products";
-      const response = await fetch(endpoint, { method: isEditing ? "PATCH" : "POST", body: form });
-      const payload = await response.json() as { message?: string; productId?: string };
+      let requestBody: BodyInit = form;
+      const headers: HeadersInit = {};
+
+      // Normal catalogue edits do not need multipart data. Sending JSON keeps the
+      // request small and avoids proxy/serverless multipart payload limits.
+      if (isEditing && selectedUploads.length === 0) {
+        const jsonBody: Record<string, string> = {};
+        for (const [key, value] of form.entries()) {
+          if (typeof value === "string") jsonBody[key] = value;
+        }
+        requestBody = JSON.stringify(jsonBody);
+        headers["Content-Type"] = "application/json";
+      }
+
+      const response = await fetch(endpoint, {
+        method: isEditing ? "PATCH" : "POST",
+        body: requestBody,
+        headers,
+      });
+      const payload = await readApiResponse<{ productId?: string }>(response);
       if (!response.ok) throw new Error(payload.message || `Unable to ${isEditing ? "update" : "create"} product.`);
       const destinationId = productId || payload.productId;
       if (!destinationId) throw new Error("Product saved but its ID was not returned.");

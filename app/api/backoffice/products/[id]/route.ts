@@ -256,64 +256,69 @@ export async function PATCH(
       const heroCandidate = form.get("heroImage");
       const heroImage = await uploadImage(heroCandidate instanceof File && heroCandidate.size > 0 ? heroCandidate : null);
       if (heroImage) productPatch.heroImage = heroImage;
+    }
 
-      if (form.has("galleryExisting") || form.getAll("galleryImages").some((entry) => entry instanceof File && entry.size > 0)) {
-        let existingGallery: GalleryInput[] = [];
-        try {
-          const raw = cleanString(form.get("galleryExisting"));
-          existingGallery = raw ? JSON.parse(raw) as GalleryInput[] : [];
-          if (!Array.isArray(existingGallery)) existingGallery = [];
-        } catch {
-          return NextResponse.json({ message: "Existing gallery data is invalid." }, { status: 400 });
-        }
-
-        const retained = existingGallery
-          .filter((image) => typeof image?.assetRef === "string" && image.assetRef.trim())
-          .map((image) => ({
-            _key: image.key?.trim() || randomUUID().slice(0, 12),
-            _type: "image",
-            asset: { _type: "reference", _ref: image.assetRef!.trim() },
-          }));
-        const newFiles = form.getAll("galleryImages").filter((entry): entry is File => entry instanceof File && entry.size > 0);
-        const uploaded = (await Promise.all(newFiles.map((file) => uploadImage(file))))
-          .filter((image): image is NonNullable<typeof image> => Boolean(image))
-          .map((image) => ({ ...image, _key: randomUUID().slice(0, 12) }));
-        productPatch.gallery = [...retained, ...uploaded];
+    const hasNewGalleryFiles = Boolean(
+      form?.getAll("galleryImages").some((entry) => entry instanceof File && entry.size > 0),
+    );
+    if (body.galleryExisting !== undefined || hasNewGalleryFiles) {
+      let existingGallery: GalleryInput[] = [];
+      try {
+        const raw = cleanString(body.galleryExisting);
+        existingGallery = raw ? JSON.parse(raw) as GalleryInput[] : [];
+        if (!Array.isArray(existingGallery)) existingGallery = [];
+      } catch {
+        return NextResponse.json({ message: "Existing gallery data is invalid." }, { status: 400 });
       }
 
-      if (form.has("variants")) {
-        let variants: VariantInput[] = [];
-        try {
-          const raw = cleanString(form.get("variants"));
-          variants = raw ? JSON.parse(raw) as VariantInput[] : [];
-          if (!Array.isArray(variants)) variants = [];
-        } catch {
-          return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
-        }
+      const retained = existingGallery
+        .filter((image) => typeof image?.assetRef === "string" && image.assetRef.trim())
+        .map((image) => ({
+          _key: image.key?.trim() || randomUUID().slice(0, 12),
+          _type: "image",
+          asset: { _type: "reference", _ref: image.assetRef!.trim() },
+        }));
+      const newFiles = form
+        ? form.getAll("galleryImages").filter((entry): entry is File => entry instanceof File && entry.size > 0)
+        : [];
+      const uploaded = (await Promise.all(newFiles.map((file) => uploadImage(file))))
+        .filter((image): image is NonNullable<typeof image> => Boolean(image))
+        .map((image) => ({ ...image, _key: randomUUID().slice(0, 12) }));
+      productPatch.gallery = [...retained, ...uploaded];
+    }
 
-        const variantDocuments = [];
-        for (let index = 0; index < variants.length; index += 1) {
-          const variant = variants[index];
-          const candidate = form.get(`variantImage-${index}`);
-          const uploadedImage = await uploadImage(candidate instanceof File && candidate.size > 0 ? candidate : null);
-          const existingImage = !uploadedImage && variant.existingImageAssetRef?.trim()
-            ? { _type: "image", asset: { _type: "reference", _ref: variant.existingImageAssetRef.trim() } }
-            : undefined;
-          const image = uploadedImage || existingImage;
-          variantDocuments.push({
-            _key: variant._key?.trim() || randomUUID().slice(0, 12),
-            _type: "object",
-            title: variant.title?.trim() || undefined,
-            colour: variant.colour?.trim() || undefined,
-            size: variant.size?.trim() || undefined,
-            sku: variant.sku?.trim() || undefined,
-            price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-            stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
-            ...(image ? { image } : {}),
-          });
-        }
-        productPatch.variants = variantDocuments;
+    if (body.variants !== undefined) {
+      let variants: VariantInput[] = [];
+      try {
+        const raw = cleanString(body.variants);
+        variants = raw ? JSON.parse(raw) as VariantInput[] : [];
+        if (!Array.isArray(variants)) variants = [];
+      } catch {
+        return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
       }
+
+      const variantDocuments = [];
+      for (let index = 0; index < variants.length; index += 1) {
+        const variant = variants[index];
+        const candidate = form?.get(`variantImage-${index}`);
+        const uploadedImage = await uploadImage(candidate instanceof File && candidate.size > 0 ? candidate : null);
+        const existingImage = !uploadedImage && variant.existingImageAssetRef?.trim()
+          ? { _type: "image", asset: { _type: "reference", _ref: variant.existingImageAssetRef.trim() } }
+          : undefined;
+        const image = uploadedImage || existingImage;
+        variantDocuments.push({
+          _key: variant._key?.trim() || randomUUID().slice(0, 12),
+          _type: "object",
+          title: variant.title?.trim() || undefined,
+          colour: variant.colour?.trim() || undefined,
+          size: variant.size?.trim() || undefined,
+          sku: variant.sku?.trim() || undefined,
+          price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
+          stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
+          ...(image ? { image } : {}),
+        });
+      }
+      productPatch.variants = variantDocuments;
     }
 
     const inventoryPatch: Record<string, unknown> = {};
