@@ -8,6 +8,7 @@ export const siteSettings = defineType({
     { name: "brand", title: "Brand & contact" },
     { name: "home", title: "Home / Shop landing" },
     { name: "delivery", title: "Delivery pricing" },
+    { name: "checkout", title: "Checkout" },
     { name: "seo", title: "SEO" },
   ],
   fields: [
@@ -95,6 +96,16 @@ export const siteSettings = defineType({
           },
         },
       ],
+    }),
+
+    defineField({
+      name: "checkoutCustomerNotePrompt",
+      title: "Checkout customer note prompt",
+      description: "Short instruction shown above the optional 20-character customer note field at checkout. This can also be managed from Admin → Settings.",
+      type: "string",
+      group: "checkout",
+      initialValue: "Add a short order note (optional)",
+      validation: (rule) => rule.max(80),
     }),
 
     defineField({

@@ -17,12 +17,7 @@ export default async function StoreLayout({
     "/store",
   );
 
-  const staffRole: "ADMIN" | "STORE" | "STORE_STAFF" =
-    customer.role === "ADMIN"
-      ? "ADMIN"
-      : customer.role === "STORE"
-        ? "STORE"
-        : "STORE_STAFF";
+  const staffRole = customer.role === "CUSTOMER" ? "STORE_STAFF" : customer.role;
 
   return (
     <BackOfficeShell

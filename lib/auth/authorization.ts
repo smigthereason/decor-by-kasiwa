@@ -20,7 +20,7 @@ type StaffAccess = {
 const permissions: Record<StaffSurface, CustomerRole[]> = {
   ADMIN: ["ADMIN"],
 
-  STORE: ["ADMIN", "STORE", "STORE_STAFF"],
+  STORE: ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"],
 
   // Inventory, shipment and dispatch management remain manager/owner functions.
   STORE_MANAGER: ["ADMIN", "STORE"],

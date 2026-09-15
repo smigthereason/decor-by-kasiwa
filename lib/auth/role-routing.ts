@@ -1,4 +1,4 @@
-export type RoleRoute = "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
+export type RoleRoute = "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
 
 /**
  * Canonical landing destination for an authenticated role.
@@ -18,6 +18,11 @@ export function getRoleHomePath(
     case "STORE_STAFF":
       return "/store";
 
+    case "PRODUCTION_STAFF":
+    case "PACKAGING_STAFF":
+    case "DELIVERY_STAFF":
+      return "/store/workflow";
+
     case "CUSTOMER":
     default:
       return customerPath;
@@ -25,7 +30,7 @@ export function getRoleHomePath(
 }
 
 export function isStaffRole(role: RoleRoute | null | undefined) {
-  return role === "ADMIN" || role === "STORE" || role === "STORE_STAFF";
+  return role === "ADMIN" || role === "STORE" || role === "STORE_STAFF" || role === "PRODUCTION_STAFF" || role === "PACKAGING_STAFF" || role === "DELIVERY_STAFF";
 }
 
 /**

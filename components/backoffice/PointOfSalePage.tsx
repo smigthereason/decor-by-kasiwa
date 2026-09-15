@@ -23,6 +23,7 @@ import {
   RefreshCw,
   AlertCircle,
   CreditCard,
+  HandCoins,
   Percent,
   ReceiptText,
   UserRoundSearch,
@@ -43,7 +44,7 @@ type PosLine = {
   unitPrice: number;
 };
 
-type PaymentMethod = "mpesa" | "paystack";
+type PaymentMethod = "mpesa" | "paystack" | "manual";
 
 type SaleResponse = {
   message?: string;
@@ -102,6 +103,9 @@ export default function PointOfSalePage() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
+  const [manualPaymentName, setManualPaymentName] = useState("");
+  const [manualPaymentReference, setManualPaymentReference] = useState("");
+  const [manualAmountReceived, setManualAmountReceived] = useState("");
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
@@ -244,8 +248,7 @@ export default function PointOfSalePage() {
     const term = search.trim().toLowerCase();
     return products
       .filter((product) => product.available !== false && (product.stockQuantity === null || product.stockQuantity === undefined || product.stockQuantity > 0))
-      .filter((product) => !term || [product.name, product.sku, product.category].some((value) => value?.toLowerCase().includes(term)))
-      .slice(0, 80);
+      .filter((product) => !term || [product.name, product.sku, product.category].some((value) => value?.toLowerCase().includes(term)));
   }, [products, search]);
 
   const subtotal = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
@@ -339,6 +342,21 @@ export default function PointOfSalePage() {
       setMessage("Enter a reason for the authorised discount.");
       return;
     }
+    if (paymentMethod === "manual") {
+      if (!manualPaymentName.trim()) {
+        setMessage("Enter the name of the person who made the external payment.");
+        return;
+      }
+      if (manualPaymentReference.trim().length < 5) {
+        setMessage("Enter the M-PESA code or external payment reference.");
+        return;
+      }
+      if (!Number.isFinite(Number(manualAmountReceived)) || Number(manualAmountReceived) <= 0) {
+        setMessage("Enter the amount received outside the system.");
+        return;
+      }
+    }
+
     if (deliveryEnabled) {
       if (!deliveryLocation.trim()) {
         setMessage("Enter or select the delivery destination.");
@@ -367,6 +385,9 @@ export default function PointOfSalePage() {
           customerName,
           customerEmail,
           customerPhone,
+          manualPaymentName: paymentMethod === "manual" ? manualPaymentName.trim() : undefined,
+          manualPaymentReference: paymentMethod === "manual" ? manualPaymentReference.trim() : undefined,
+          manualAmountReceived: paymentMethod === "manual" ? Number(manualAmountReceived) : undefined,
           discount: manager && discountNumeric > 0
             ? { type: discountType, value: discountNumeric, reason: discountReason }
             : undefined,
@@ -382,6 +403,15 @@ export default function PointOfSalePage() {
       const payload = (await response.json()) as SaleResponse;
       if (!response.ok) throw new Error(payload.message || "POS sale failed.");
 
+      if (paymentMethod === "manual") {
+        setMessage(payload.displayText || "Manual payment recorded for reconciliation.");
+        if (payload.orderId) setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
+        setCart([]); setProcessing(false); setSelectedCustomerId(""); setCustomerSearch(""); setCustomerName(""); setCustomerEmail(""); setCustomerPhone("+254");
+        setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryFee("");
+        setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived("");
+        return;
+      }
+
       if (!payload.reference) throw new Error("Payment started without a payment reference.");
       if (payload.authorizationUrl) {
         window.open(payload.authorizationUrl, "dbk-paystack-pos", "popup=yes,width=520,height=760");
@@ -396,9 +426,9 @@ export default function PointOfSalePage() {
   }
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-[var(--paper-2)] text-[var(--ink)] font-sans antialiased">
+    <div className="flex h-[calc(100dvh-73px)] min-h-0 w-full flex-col overflow-hidden bg-[var(--paper-2)] text-[var(--ink)] font-sans antialiased lg:h-full">
       {/* POS Top Command Bar */}
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b hairline bg-[var(--paper)] px-4 sm:px-6 lg:px-8">
+      <header className="z-20 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b hairline bg-[var(--paper)] px-3 py-2.5 sm:px-6 lg:h-16 lg:flex-nowrap lg:px-8 lg:py-0">
         <div className="flex items-center gap-3">
           <div className="grid size-9 place-items-center rounded-xl bg-[var(--deep-green)] text-soft-cream shadow-sm">
             <Store size={18} />
@@ -406,11 +436,11 @@ export default function PointOfSalePage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold tracking-tight">Point of Sale</h1>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--deep-green)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--deep-green)]">
+              <span className="hidden items-center gap-1 rounded-full bg-[var(--deep-green)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--deep-green)] min-[420px]:inline-flex">
                 <span className="size-1.5 rounded-full bg-[var(--deep-green)] animate-pulse" /> Live Terminal
               </span>
             </div>
-            <p className="text-xs text-[var(--muted)]">In-store transactions & register</p>
+            <p className="hidden text-xs text-[var(--muted)] sm:block">In-store transactions & register</p>
           </div>
         </div>
 
@@ -429,21 +459,23 @@ export default function PointOfSalePage() {
               <ReceiptText size={14} /> {lastReceipt.receiptNumber || "Receipt"}
             </Link>
           )}
-          <a
-            href="#pos-cart-panel"
-            className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-xs font-semibold text-soft-cream shadow-sm transition-transform active:scale-95 lg:hidden"
+          <button
+            type="button"
+            onClick={() => setSalePanelExpanded(true)}
+            className="inline-flex h-10 max-w-[58vw] items-center gap-2 rounded-full bg-[var(--deep-green)] px-3 text-[11px] font-semibold text-soft-cream shadow-sm transition-transform active:scale-95 sm:max-w-none sm:px-4 sm:text-xs lg:hidden"
+            aria-label="Open current sale"
           >
-            <ShoppingCart size={15} />
-            <span>{units} items</span>
+            <ShoppingCart size={15} className="shrink-0" />
+            <span className="whitespace-nowrap">{units} items</span>
             <span className="opacity-40">|</span>
-            <span>{formatMoney(total)}</span>
-          </a>
+            <span className="truncate">{formatMoney(total)}</span>
+          </button>
         </div>
       </header>
 
       {/* Status Notification Banner */}
       {message && (
-        <div role="status" className="flex shrink-0 items-center gap-3 border-b hairline bg-[var(--deep-green)]/5 px-6 py-2.5 text-xs font-medium text-[var(--deep-green)]">
+        <div role="status" className="flex shrink-0 items-start gap-2 border-b hairline bg-[var(--deep-green)]/5 px-4 py-2.5 text-xs font-medium leading-5 text-[var(--deep-green)] sm:items-center sm:gap-3 sm:px-6">
           <AlertCircle size={16} className="shrink-0 text-[var(--deep-green)]" />
           <span className="flex-1">{message}</span>
           <button type="button" onClick={() => setMessage(null)} className="text-[10px] uppercase font-bold hover:underline">
@@ -453,12 +485,12 @@ export default function PointOfSalePage() {
       )}
 
       {/* Main POS Interface Grid */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left Pane: Catalog & Selection */}
-        <section className="flex flex-1 flex-col min-w-0 border-r hairline bg-[var(--paper)]">
+        <section id="pos-catalog-panel" className="flex min-w-0 flex-1 flex-col bg-[var(--paper)] lg:border-r lg:hairline">
           {/* Search Bar & Stats */}
-          <div className="flex flex-wrap items-center gap-3 border-b hairline p-4 sm:px-6">
-            <div className="relative flex-1 min-w-[240px]">
+          <div className="flex flex-wrap items-center gap-3 border-b hairline p-3 sm:p-4 sm:px-6">
+            <div className="relative min-w-0 flex-[1_1_220px]">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
               <input
                 value={search}
@@ -467,16 +499,19 @@ export default function PointOfSalePage() {
                 className="h-11 w-full rounded-xl border hairline bg-[var(--paper-2)] pl-10 pr-4 text-xs outline-none transition focus:border-[var(--deep-green)] focus:bg-[var(--paper)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
               />
             </div>
-            <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[var(--muted)]">
               <span className="rounded-md bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--ink)]">
                 {filtered.length}
               </span>
-              <span>Products Available</span>
+              <span>{search.trim() ? "Matching products" : "Products available"}</span>
+              {!search.trim() && products.length !== filtered.length && (
+                <span className="text-[10px]">of {products.length} POS-enabled</span>
+              )}
             </div>
           </div>
 
           {/* Product Grid Area */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 [scrollbar-width:thin]">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 [scrollbar-width:thin]">
             {loading ? (
               <div className="grid h-full place-items-center">
                 <div className="flex flex-col items-center gap-3 text-xs text-[var(--muted)]">
@@ -501,7 +536,7 @@ export default function PointOfSalePage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {filtered.map((product) => {
                   const variant = selectedVariant(product);
                   const image = variant?.imageUrl || product.heroImage;
@@ -600,7 +635,7 @@ export default function PointOfSalePage() {
           id="pos-cart-panel"
           className={salePanelExpanded
             ? "fixed inset-0 z-[90] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--paper)] shadow-2xl"
-            : "flex w-full shrink-0 flex-col border-l hairline bg-[var(--paper)] shadow-lg lg:w-[380px] lg:shadow-none xl:w-[420px]"}
+            : "hidden shrink-0 flex-col border-l hairline bg-[var(--paper)] lg:flex lg:w-[380px] xl:w-[420px]"}
         >
           {/* Order Header */}
           <div className="flex items-center justify-between border-b hairline p-4 sm:px-6">
@@ -745,7 +780,7 @@ export default function PointOfSalePage() {
                     className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--deep-green)]"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <div className="relative">
                     <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
                     <input
@@ -777,7 +812,7 @@ export default function PointOfSalePage() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Authorised Discount</span>
                   <Percent size={14} className="text-[var(--deep-green)]" />
                 </div>
-                <div className="grid grid-cols-[105px_1fr] gap-2">
+                <div className="grid gap-2 min-[420px]:grid-cols-[105px_1fr]">
                   <select
                     value={discountType}
                     onChange={(e) => setDiscountType(e.target.value as "percent" | "fixed")}
@@ -856,11 +891,11 @@ export default function PointOfSalePage() {
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment Method</span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("mpesa")}
-                  className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border px-1 text-[10px] font-semibold transition-all ${
+                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
                     paymentMethod === "mpesa"
                       ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
@@ -871,7 +906,7 @@ export default function PointOfSalePage() {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("paystack")}
-                  className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border px-1 text-[10px] font-semibold transition-all ${
+                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
                     paymentMethod === "paystack"
                       ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
@@ -879,13 +914,33 @@ export default function PointOfSalePage() {
                 >
                   <CreditCard size={14} /> Paystack
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("manual")}
+                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
+                    paymentMethod === "manual"
+                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
+                      : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
+                  }`}
+                >
+                  <HandCoins size={14} /> Manual Payment
+                </button>
               </div>
 
               <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
                 {paymentMethod === "mpesa"
                   ? <>Send an M-PESA STK payment prompt to the customer&apos;s phone through Paystack.</>
-                  : <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>}
+                  : paymentMethod === "paystack"
+                    ? <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>
+                    : <>Record a payment the customer already made outside this system. The payer, reference and amount are retained for reconciliation.</>}
               </p>
+              {paymentMethod === "manual" && (
+                <div className="grid gap-2 rounded-xl border hairline bg-[var(--paper-2)] p-3">
+                  <input value={manualPaymentName} onChange={(event) => setManualPaymentName(event.target.value)} placeholder="Paid by / payer name" className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--deep-green)]" />
+                  <input value={manualPaymentReference} onChange={(event) => setManualPaymentReference(event.target.value.toUpperCase())} placeholder="M-PESA code / payment reference" className="h-9 rounded-lg border hairline bg-white px-3 text-xs uppercase outline-none focus:border-[var(--deep-green)]" />
+                  <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => setManualAmountReceived(event.target.value)} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--deep-green)]" />
+                </div>
+              )}
             </div>
 
             {/* Total Summary & Checkout Button */}
@@ -923,9 +978,13 @@ export default function PointOfSalePage() {
                   <span className="inline-flex items-center gap-2">
                     <Smartphone size={16} /> Send M-PESA Prompt
                   </span>
-                ) : (
+                ) : paymentMethod === "paystack" ? (
                   <span className="inline-flex items-center gap-2">
                     <CreditCard size={16} /> Open Paystack Payment
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <HandCoins size={16} /> Record Manual Payment
                   </span>
                 )}
               </button>

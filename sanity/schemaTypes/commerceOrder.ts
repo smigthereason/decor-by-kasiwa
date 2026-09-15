@@ -43,6 +43,13 @@ export const commerceOrder = defineType({
       title: "Delivery Location",
       type: "string",
     }),
+    defineField({
+      name: "customerNote",
+      title: "Customer checkout note",
+      type: "string",
+      description: "Optional short note entered by the customer at checkout.",
+      validation: (Rule) => Rule.max(20),
+    }),
     defineField({ name: "deliveryOptionId", title: "Delivery Option ID", type: "string" }),
     defineField({ name: "deliveryOptionLabel", title: "Delivery Option", type: "string" }),
     defineField({
@@ -173,6 +180,9 @@ export const commerceOrder = defineType({
     defineField({ name: "balanceDue", title: "Balance Due", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "cashTendered", title: "Cash Tendered", type: "number", validation: (Rule) => Rule.min(0) }),
     defineField({ name: "cashChangeDue", title: "Cash Change Due", type: "number", validation: (Rule) => Rule.min(0) }),
+    defineField({ name: "manualPaymentName", title: "Manual Payment Payer", type: "string" }),
+    defineField({ name: "manualPaymentReference", title: "Manual Payment Reference", type: "string" }),
+    defineField({ name: "manualAmountReceived", title: "Manual Amount Received", type: "number", validation: (Rule) => Rule.min(0) }),
     defineField({ name: "refundedAmount", title: "Refunded Amount", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "receiptNumber", title: "Receipt Number", type: "string" }),
     defineField({
@@ -208,6 +218,32 @@ export const commerceOrder = defineType({
           { title: "In-store handover", value: "IN_STORE" },
         ],
       },
+    }),
+    defineField({
+      name: "fulfilmentStages",
+      title: "Required Fulfilment Stages",
+      type: "array",
+      of: [{ type: "string" }],
+      options: { list: [
+        { title: "Production", value: "PRODUCTION" },
+        { title: "Packaging", value: "PACKAGING" },
+        { title: "Delivery", value: "DELIVERY" },
+      ] },
+    }),
+    defineField({ name: "currentFulfilmentStage", title: "Current Fulfilment Stage", type: "string", options: { list: [
+      { title: "Production", value: "PRODUCTION" }, { title: "Packaging", value: "PACKAGING" }, { title: "Delivery", value: "DELIVERY" }, { title: "Completed", value: "COMPLETED" },
+    ] } }),
+    defineField({ name: "assignedFulfilmentStaff", title: "Assigned Fulfilment Staff", type: "reference", to: [{ type: "customerUser" }] }),
+    defineField({ name: "assignedFulfilmentStaffName", title: "Assigned Fulfilment Staff Name", type: "string" }),
+    defineField({
+      name: "fulfilmentHistory", title: "Fulfilment History", type: "array", of: [{ type: "object", fields: [
+        defineField({ name: "stage", title: "Stage", type: "string" }),
+        defineField({ name: "completedAt", title: "Completed At", type: "datetime" }),
+        defineField({ name: "completedBy", title: "Completed By", type: "reference", to: [{ type: "customerUser" }] }),
+        defineField({ name: "completedByName", title: "Completed By Name", type: "string" }),
+        defineField({ name: "assignedNextTo", title: "Assigned Next To", type: "reference", to: [{ type: "customerUser" }] }),
+        defineField({ name: "assignedNextToName", title: "Assigned Next To Name", type: "string" }),
+      ] }]
     }),
     defineField({
       name: "soldBy",

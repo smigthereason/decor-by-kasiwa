@@ -46,7 +46,7 @@ type RawCustomer = {
   phone?: string;
   image?: string | null;
   googleId?: string | null;
-  role?: "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
+  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
   address1?: string;
@@ -130,6 +130,7 @@ export async function getLiveOrders(): Promise<Order[]> {
       customerEmail,
       customerPhone,
       deliveryLocation,
+      customerNote,
       createdAt,
       updatedAt,
       status,
@@ -150,6 +151,9 @@ export async function getLiveOrders(): Promise<Order[]> {
       receiptNumber,
       salesChannel,
       fulfilmentType,
+      fulfilmentStages,
+      currentFulfilmentStage,
+      assignedFulfilmentStaffName,
       soldByName,
       soldByRole,
       soldAt,

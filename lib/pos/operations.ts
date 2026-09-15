@@ -157,7 +157,7 @@ export type SalesReport = {
   deliveryPayables: number;
   onlineSales: number;
   posSales: number;
-  cashPayments: number;
+  manualPayments: number;
   mpesaPayments: number;
   paystackPayments: number;
   outstandingReceivables: number;
@@ -261,7 +261,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     deliveryPayables: orders.reduce((sum, order) => sum + deliveryValue(order), 0),
     onlineSales: channelRevenue((order) => order.salesChannel === "ONLINE"),
     posSales: channelRevenue((order) => order.salesChannel === "POS"),
-    cashPayments: channelMoneyIn((order) => order.paymentChannel === "cash"),
+    manualPayments: channelMoneyIn((order) => order.paymentProvider === "manual" || order.paymentChannel === "external"),
     mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
     paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
     outstandingReceivables: Number(globalReceivables || 0),

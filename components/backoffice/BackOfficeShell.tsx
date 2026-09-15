@@ -14,17 +14,21 @@ import {
   ChartNoAxesCombined,
   ClipboardList,
   ContactRound,
+  FolderTree,
+  GitBranch,
   LayoutDashboard,
   Layers3,
   LogOut,
   Menu,
   PackageCheck,
   PackageOpen,
+  ReceiptText,
   SearchCheck,
   Settings,
   ShoppingBag,
   ShoppingCart,
   Truck,
+  UsersRound,
   Warehouse,
   X,
 } from "lucide-react";
@@ -34,8 +38,8 @@ import { useBackofficeNotifications } from "@/lib/operations/client";
 import { Logo } from "@/public/index";
 
 type Mode = "admin" | "store";
-type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF";
-type BadgeKey = "newOrders" | "deliveries" | "restockRequests";
+type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
+type BadgeKey = "newOrders" | "deliveries" | "restockRequests" | "workflowJobs";
 
 type NavigationItem = {
   label: string;
@@ -57,15 +61,21 @@ const adminNavigation: NavigationItem[] = [
   { label: "Point of Sale", href: "/admin/pos", icon: ShoppingCart },
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
+  { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Shop the Look", href: "/admin/shop-looks", icon: Layers3 },
   { label: "Customers", href: "/admin/customers", icon: ContactRound },
+  { label: "Staff", href: "/admin/staff", icon: UsersRound },
   { label: "Shipments", href: "/admin/shipments", icon: Truck },
   { label: "Analytics", href: "/admin/analytics", icon: ChartNoAxesCombined },
+  { label: "Sales Operations", href: "/admin/pos/operations", icon: ReceiptText },
+  { label: "Fulfilment Workflow", href: "/admin/workflow", icon: GitBranch, badge: "workflowJobs" },
 ];
 
 const storeManagerNavigation: NavigationItem[] = [
   { label: "Store Overview", href: "/store", icon: Warehouse },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
+  { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
+  { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
   { label: "Order Queue", href: "/store/orders", icon: ClipboardList, badge: "newOrders" },
   { label: "Products", href: "/store/products", icon: Boxes, badge: "restockRequests" },
   { label: "Shop the Look", href: "/store/shop-looks", icon: Layers3 },
@@ -77,9 +87,15 @@ const storeManagerNavigation: NavigationItem[] = [
 const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
+  { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
+  { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
   { label: "Inventory", href: "/store/inventory", icon: SearchCheck },
   { label: "Deliveries", href: "/store/deliveries", icon: Truck, badge: "deliveries" },
   { label: "Restock Alerts", href: "/store/restock", icon: AlertTriangle },
+];
+
+const fulfilmentStaffNavigation: NavigationItem[] = [
+  { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
 ];
 
 function AlertBadge({ count, dark = false }: { count: number; dark?: boolean }) {
@@ -108,22 +124,26 @@ export default function BackOfficeShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const { notifications } = useBackofficeNotifications();
 
+  const fulfilmentOnly = ["PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"].includes(staffRole);
   const navigation =
     mode === "admin"
       ? adminNavigation
-      : staffRole === "STORE_STAFF"
-        ? salesStaffNavigation
-        : storeManagerNavigation;
+      : fulfilmentOnly
+        ? fulfilmentStaffNavigation
+        : staffRole === "STORE_STAFF"
+          ? salesStaffNavigation
+          : storeManagerNavigation;
 
-  const title = mode === "admin" ? "Admin Office" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : "Store Operations";
+  const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";
   const settingsHref = mode === "admin" ? "/admin/settings" : "/store/settings";
   const staffRoleLabel =
-    staffRole === "ADMIN"
-      ? "STORE OWNER / ADMIN"
-      : staffRole === "STORE"
-        ? "STORE MANAGER"
-        : "SALES STAFF";
+    staffRole === "ADMIN" ? "STORE OWNER / ADMIN"
+      : staffRole === "STORE" ? "STORE MANAGER"
+        : staffRole === "PRODUCTION_STAFF" ? "PRODUCTION STAFF"
+          : staffRole === "PACKAGING_STAFF" ? "PACKAGING STAFF"
+            : staffRole === "DELIVERY_STAFF" ? "DELIVERY STAFF"
+              : "SALES STAFF";
 
   function countFor(item: NavigationItem) {
     return item.badge ? notifications[item.badge] : 0;

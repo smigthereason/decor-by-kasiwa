@@ -61,6 +61,8 @@ export default function CheckoutPage() {
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryZone[]>([]);
   const [deliveryOptionId, setDeliveryOptionId] = useState("");
   const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [customerNote, setCustomerNote] = useState("");
+  const [checkoutNotePrompt, setCheckoutNotePrompt] = useState("Add a short order note (optional)");
   const [error, setError] = useState("");
   const [initializingPayment, setInitializingPayment] = useState(false);
 
@@ -74,6 +76,18 @@ export default function CheckoutPage() {
   }, [user]);
 
   useEffect(() => {
+    void fetch("/api/checkout-settings", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const payload = await response.json() as { checkoutCustomerNotePrompt?: string };
+        if (payload.checkoutCustomerNotePrompt?.trim()) {
+          setCheckoutNotePrompt(payload.checkoutCustomerNotePrompt.trim());
+        }
+      })
+      .catch(() => {
+        // Checkout remains usable with the local fallback prompt.
+      });
+
     void fetch("/api/delivery-options", { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { deliveryZones?: DeliveryZone[]; message?: string };
@@ -185,6 +199,7 @@ export default function CheckoutPage() {
           cart,
           paymentMethod,
           deliveryOptionId,
+          customerNote: customerNote.trim(),
         }),
       });
 
@@ -416,6 +431,19 @@ export default function CheckoutPage() {
                           ))}
                         </select>
                         <p className="mt-2 text-xs text-[var(--muted)]">{selectedDeliveryOption?.description || "The selected standard delivery fee is added automatically to your order total."}</p>
+                      </label>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block">
+                        <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{checkoutNotePrompt}</span>
+                        <input
+                          value={customerNote}
+                          onChange={(event) => setCustomerNote(event.target.value.slice(0, 20))}
+                          maxLength={20}
+                          placeholder="Optional note"
+                          className="min-h-12 w-full rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] px-4 text-sm outline-none transition-all focus:border-[var(--ink)] focus:ring-2 focus:ring-[var(--ink)]/10"
+                        />
+                        <p className="mt-2 text-right text-[10px] tabular-nums text-[var(--muted)]">{customerNote.length}/20</p>
                       </label>
                     </div>
                   </div>

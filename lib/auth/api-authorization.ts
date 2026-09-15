@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { getCustomerByDocumentId } from "@/lib/auth/sanity-users";
 
-export type ApiStaffRole = "ADMIN" | "STORE" | "STORE_STAFF";
+export type ApiStaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 
 export async function getApiStaff(
   allowedRoles: ApiStaffRole[],
@@ -31,21 +31,19 @@ export async function getApiStaff(
     return { ok: false, status: 403 };
   }
 
-  if (
-    customer.role !== "ADMIN" &&
-    customer.role !== "STORE" &&
-    customer.role !== "STORE_STAFF"
-  ) {
+  const staffRoles: ApiStaffRole[] = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"];
+  if (!staffRoles.includes(customer.role as ApiStaffRole)) {
     return { ok: false, status: 403 };
   }
 
-  if (!allowedRoles.includes(customer.role)) {
+  const role = customer.role as ApiStaffRole;
+  if (!allowedRoles.includes(role)) {
     return { ok: false, status: 403 };
   }
 
   return {
     ok: true,
-    role: customer.role,
+    role,
     customerId: customer._id,
     customerName: customer.name || customer.email || "Staff",
     customerEmail: customer.email,

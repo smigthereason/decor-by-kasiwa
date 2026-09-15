@@ -1,4 +1,4 @@
-export type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF";
+export type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 
 export type OrderStatus =
   | "pending"
@@ -42,7 +42,7 @@ export type Customer = {
   orders: number;
   lifetimeValue: number;
   lastOrderAt: string;
-  role?: "CUSTOMER" | "STORE_STAFF" | "STORE" | "ADMIN";
+  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
   authenticated?: boolean;
@@ -69,6 +69,7 @@ export type Order = {
   customerEmail: string;
   customerPhone: string;
   deliveryLocation: string;
+  customerNote?: string;
   createdAt: string;
   updatedAt?: string;
   status: OrderStatus;
@@ -89,6 +90,9 @@ export type Order = {
   providerReceiptNumber?: string;
   salesChannel?: "ONLINE" | "POS";
   fulfilmentType?: "DELIVERY" | "IN_STORE";
+  fulfilmentStages?: Array<"PRODUCTION" | "PACKAGING" | "DELIVERY">;
+  currentFulfilmentStage?: "PRODUCTION" | "PACKAGING" | "DELIVERY" | "COMPLETED";
+  assignedFulfilmentStaffName?: string;
   soldByName?: string;
   soldByRole?: StaffRole;
   soldAt?: string;
@@ -189,6 +193,7 @@ export type BackofficeNotifications = {
   newOrders: number;
   deliveries: number;
   restockRequests: number;
+  workflowJobs: number;
 };
 
 export type OperationsSnapshot = {

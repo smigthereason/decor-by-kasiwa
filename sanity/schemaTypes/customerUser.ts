@@ -24,9 +24,26 @@ export const customerUser = defineType({
       options: { list: [
         { title: "Customer", value: "CUSTOMER" },
         { title: "Sales Staff / Cashier", value: "STORE_STAFF" },
+        { title: "Production Staff", value: "PRODUCTION_STAFF" },
+        { title: "Packaging Staff", value: "PACKAGING_STAFF" },
+        { title: "Delivery Staff", value: "DELIVERY_STAFF" },
         { title: "Store Manager", value: "STORE" },
         { title: "Admin / Store Owner", value: "ADMIN" },
       ], layout: "radio" }, validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "permissions", title: "Operational permissions", type: "array", of: [{ type: "string" }],
+      description: "Fine-grained responsibilities for staff members who work across more than one operational area.",
+      options: { list: [
+        { title: "POS Sales", value: "POS_SALES" },
+        { title: "WhatsApp Sales", value: "WHATSAPP_SALES" },
+        { title: "TikTok Sales", value: "TIKTOK_SALES" },
+        { title: "Ground Sales", value: "GROUND_SALES" },
+        { title: "Production", value: "PRODUCTION" },
+        { title: "Printing", value: "PRINTING" },
+        { title: "Packaging", value: "PACKAGING" },
+        { title: "Delivery", value: "DELIVERY" },
+      ] },
     }),
     defineField({
       name: "status", title: "Status", type: "string", initialValue: "ACTIVE",

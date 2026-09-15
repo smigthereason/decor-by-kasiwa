@@ -7,6 +7,7 @@ import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { workflowForProducts } from "@/lib/operations/workflow";
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -39,9 +40,10 @@ export type PosSaleInput = {
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
-  paymentMethod: "mpesa" | "paystack";
-  cashConfirmed?: boolean;
-  cashAmountReceived?: number;
+  paymentMethod: "mpesa" | "paystack" | "manual";
+  manualPaymentName?: string;
+  manualPaymentReference?: string;
+  manualAmountReceived?: number;
   deliveryLocation?: string;
   deliveryFee?: number;
   discount?: PosDiscountInput | null;
@@ -99,6 +101,8 @@ type PosOrder = {
   deliveryFee?: number;
   deliveryLocation?: string;
   fulfilmentType?: "DELIVERY" | "IN_STORE";
+  fulfilmentStages?: Array<"PRODUCTION" | "PACKAGING" | "DELIVERY">;
+  currentFulfilmentStage?: "PRODUCTION" | "PACKAGING" | "DELIVERY" | "COMPLETED";
   receiptNumber?: string;
   paymentReference?: string;
   paymentProvider?: string;
@@ -479,6 +483,8 @@ async function fetchPosOrder(reference: string) {
       deliveryFee,
       deliveryLocation,
       fulfilmentType,
+      fulfilmentStages,
+      currentFulfilmentStage,
       receiptNumber,
       paymentReference,
       paymentProvider,
@@ -593,6 +599,7 @@ function addPaymentRecordToTransaction({
   amount,
   seller,
   now,
+  providerReceiptNumber,
 }: {
   transaction: ReturnType<typeof serverClient.transaction>;
   reference: string;
@@ -606,6 +613,7 @@ function addPaymentRecordToTransaction({
   amount: number;
   seller: PosSeller;
   now: string;
+  providerReceiptNumber?: string;
 }) {
   transaction.createIfNotExists({
     _id: paymentTransactionId(reference),
@@ -618,6 +626,7 @@ function addPaymentRecordToTransaction({
     salesChannel: "POS",
     provider,
     channel,
+    ...(providerReceiptNumber ? { providerReceiptNumber } : {}),
     status,
     amount,
     currency: CURRENCY,
@@ -685,9 +694,21 @@ async function linkCustomerToCompletedSale(order: PosOrder, customerInput: Retur
   return customer;
 }
 
-export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) {
-  if (!input.cashConfirmed) throw new Error("Confirm that cash was received before completing the sale.");
+export async function createPosManualSale(input: PosSaleInput, seller: PosSeller) {
   const customer = customerDetails(input);
+  const payerName = cleanText(input.manualPaymentName);
+  const externalReference = cleanText(input.manualPaymentReference).toUpperCase();
+  const requestedPayment = Number(input.manualAmountReceived);
+  if (!payerName) throw new Error("Enter the name of the person who made the external payment.");
+  if (externalReference.length < 5) throw new Error("Enter the M-PESA code or external payment reference.");
+  if (!Number.isFinite(requestedPayment) || requestedPayment <= 0) throw new Error("Enter the amount received outside the system.");
+
+  const duplicateReference = await serverClient.fetch<{ _id: string } | null>(
+    `*[_type == "paymentTransaction" && provider == "manual" && providerReceiptNumber == $reference][0]{_id}`,
+    { reference: externalReference },
+    { cache: "no-store" },
+  );
+  if (duplicateReference) throw new Error("That external payment reference has already been recorded. Check Sales Operations before recording it again.");
 
   const reference = referenceFor(input.requestId);
   const existing = await fetchPosOrder(reference);
@@ -696,13 +717,12 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
   const { lines, products } = await buildLines(input.cart);
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
-  const total = Math.max(0, subtotal - discount.discountAmount);
-  const requestedPayment = Number(input.cashAmountReceived ?? total);
-  if (!Number.isFinite(requestedPayment) || requestedPayment <= 0) throw new Error("Enter the cash amount received.");
+  const delivery = deliveryPayable(input);
+  const total = Math.max(0, subtotal - discount.discountAmount + delivery.deliveryFee);
   const amountPaid = Math.min(requestedPayment, total);
   const balanceDue = Math.max(0, total - amountPaid);
-  const cashChangeDue = Math.max(0, requestedPayment - total);
   const paymentStatus = balanceDue > 0 ? "partially_paid" : "paid";
+  const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const now = new Date().toISOString();
   const orderId = orderIdFor(reference);
   const receiptNumber = receiptNumberFor(reference);
@@ -717,30 +737,32 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
     customerName: customer.name,
     customerEmail: customer.email || undefined,
     customerPhone: customer.phone,
-    deliveryLocation: "In-store purchase",
+    deliveryLocation: delivery.deliveryLocation,
     createdAt: now,
     updatedAt: now,
     paidAt: now,
     soldAt: now,
-    status: "delivered",
+    status: workflow.currentFulfilmentStage ? "processing" : delivery.fulfilmentType === "IN_STORE" ? "delivered" : "paid",
     paymentStatus,
     subtotal,
-    deliveryFee: 0,
+    deliveryFee: delivery.deliveryFee,
     ...discount,
     total,
     amountPaid,
     balanceDue,
-    cashTendered: requestedPayment,
-    cashChangeDue,
+    manualPaymentName: payerName,
+    manualPaymentReference: externalReference,
+    manualAmountReceived: requestedPayment,
     refundedAmount: 0,
     receiptNumber,
     currency: CURRENCY,
     salesChannel: "POS",
-    fulfilmentType: "IN_STORE",
+    fulfilmentType: delivery.fulfilmentType,
+    fulfilmentStages: workflow.fulfilmentStages,
+    ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
     paymentReference: reference,
-    paymentProvider: "cash",
-    paymentChannel: "cash",
-    cashReceived: true,
+    paymentProvider: "manual",
+    paymentChannel: "external",
     soldBy: { _type: "reference", _ref: seller.id },
     soldByName: seller.name,
     soldByRole: seller.role,
@@ -752,35 +774,20 @@ export async function createPosCashSale(input: PosSaleInput, seller: PosSeller) 
   });
 
   addPaymentRecordToTransaction({
-    transaction,
-    reference,
-    orderId,
-    orderNumber: reference,
-    customerName: customer.name,
-    customerPhone: customer.phone,
-    provider: "cash",
-    channel: "cash",
-    status: paymentStatus,
-    amount: amountPaid,
-    seller,
-    now,
+    transaction, reference, orderId, orderNumber: reference, customerName: customer.name, customerPhone: customer.phone,
+    provider: "manual", channel: "external", providerReceiptNumber: externalReference, status: paymentStatus, amount: requestedPayment, seller, now,
   });
   addAuditToTransaction({
-    transaction,
-    key: `pos-sale|${reference}`,
-    eventType: "POS_SALE_RECORDED",
-    entityId: orderId,
-    entityLabel: reference,
-    seller,
-    detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} cash sale · total KES ${total.toLocaleString("en-KE")} · tendered KES ${requestedPayment.toLocaleString("en-KE")} · change KES ${cashChangeDue.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
+    transaction, key: `pos-sale|${reference}`, eventType: "POS_MANUAL_PAYMENT_RECORDED", entityId: orderId, entityLabel: reference, seller,
+    detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} manual/external sale · payer ${payerName} · reference ${externalReference} · recorded KES ${amountPaid.toLocaleString("en-KE")} · expected KES ${total.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
     now,
   });
 
   await transaction.commit();
   const created = await fetchPosOrder(reference);
-  if (!created) throw new Error("POS cash sale completed but could not be reloaded.");
+  if (!created) throw new Error("POS manual payment sale completed but could not be reloaded.");
   await linkCustomerToCompletedSale(created, customer);
-  return summary(created);
+  return { ...summary(created), displayText: `Manual payment ${externalReference} recorded for reconciliation.` };
 }
 
 async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller, channel: "mobile_money" | "card") {
@@ -790,6 +797,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
   if (existing) return { existing, customer };
 
   const { lines } = await buildLines(input.cart);
+  const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
   const delivery = deliveryPayable(input);
@@ -824,6 +832,8 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     currency: CURRENCY,
     salesChannel: "POS",
     fulfilmentType: delivery.fulfilmentType,
+    fulfilmentStages: workflow.fulfilmentStages,
+    ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
     paymentReference: reference,
     paymentProvider: "paystack",
     paymentChannel: channel,
@@ -990,7 +1000,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   transaction.patch(order._id, (patch) =>
     patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
-      status: Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+      status: order.currentFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
       paymentChannel: payment.channel || order.paymentChannel || "paystack",
       paystackTransactionId: String(payment.id),
       providerReceiptNumber: String(payment.id),

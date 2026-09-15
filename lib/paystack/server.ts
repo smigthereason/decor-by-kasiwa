@@ -8,6 +8,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { getDeliveryZoneById } from "@/lib/shipping-server";
 import { sendOrderConfirmationEmail } from "@/lib/order-email";
+import { workflowForProducts } from "@/lib/operations/workflow";
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -87,6 +88,8 @@ type PendingOrder = {
   paidAt?: string;
   orderConfirmationEmailSentAt?: string;
   deliveryOptionLabel?: string;
+  fulfilmentStages?: Array<"PRODUCTION" | "PACKAGING" | "DELIVERY">;
+  currentFulfilmentStage?: "PRODUCTION" | "PACKAGING" | "DELIVERY" | "COMPLETED";
   lineItems?: PendingOrderLine[];
 };
 
@@ -418,6 +421,7 @@ export async function initializePaystackCheckout({
   cart,
   paymentMethod,
   deliveryOptionId,
+  customerNote,
   callbackBaseUrl,
 }: {
   email: string;
@@ -425,6 +429,7 @@ export async function initializePaystackCheckout({
   cart: CheckoutCartLine[];
   paymentMethod: string;
   deliveryOptionId?: string;
+  customerNote?: string;
   callbackBaseUrl: string;
 }) {
   const normalizedEmail = normalizeEmail(email);
@@ -440,6 +445,7 @@ export async function initializePaystackCheckout({
   }
 
   const { lineItems } = await buildAuthoritativeOrderLines(cart);
+  const workflow = await workflowForProducts(lineItems.map((line) => line.productId));
 
   const subtotal = lineItems.reduce(
     (sum, line) => sum + line.unitPrice * line.quantity,
@@ -462,6 +468,11 @@ export async function initializePaystackCheckout({
   const orderNumber = createOrderNumber(reference);
   const now = new Date().toISOString();
   const paymentChannel = paymentChannelFor(paymentMethod);
+  const normalizedCustomerNote = normalizeText(customerNote || "");
+  if (normalizedCustomerNote.length > 20) {
+    throw new Error("Order note must be 20 characters or fewer.");
+  }
+
   const deliveryAddress: CheckoutAddress = {
     fullName: normalizeText(address.fullName),
     phone: normalizeText(address.phone),
@@ -479,6 +490,7 @@ export async function initializePaystackCheckout({
     customerName: deliveryAddress.fullName,
     customerEmail: normalizedEmail,
     customerPhone: deliveryAddress.phone,
+    ...(normalizedCustomerNote ? { customerNote: normalizedCustomerNote } : {}),
     deliveryLocation: `${deliveryOption.label} · ${buildDeliveryLocation(deliveryAddress)}`,
     deliveryOptionId: deliveryOption.id,
     deliveryOptionLabel: deliveryOption.label,
@@ -498,6 +510,8 @@ export async function initializePaystackCheckout({
     currency: CURRENCY,
     salesChannel: "ONLINE",
     fulfilmentType: "DELIVERY",
+    fulfilmentStages: workflow.fulfilmentStages,
+    ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
     paymentReference: reference,
     paymentProvider: "paystack",
     paymentChannel,
@@ -610,6 +624,8 @@ async function fetchPendingOrder(reference: string) {
       paidAt,
       orderConfirmationEmailSentAt,
       deliveryOptionLabel,
+      fulfilmentStages,
+      currentFulfilmentStage,
       "lineItems": lineItems[]{
         _key,
         "productId": coalesce(product._ref, productId),
@@ -838,7 +854,7 @@ export async function finalizePaystackPayment(reference: string) {
           _ref: customer._id,
         },
         paymentStatus: "paid",
-        status: "ready_for_store",
+        status: order.currentFulfilmentStage ? "processing" : "ready_for_store",
         paymentProvider: "paystack",
         paymentReference: reference,
         paymentChannel: transaction.channel || order.paymentChannel || "paystack",

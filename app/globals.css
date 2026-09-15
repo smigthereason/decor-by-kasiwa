@@ -2,7 +2,8 @@
 
 /*
  * Decor by Kasiwa — client-approved palette
- * Deep Green  #0E2B26
+ * Brand Green #0B8F4F
+ * Deep Green  #075F36 (accessible companion for small text / dense UI)
  * Sage Green  #8CA78B
  * Warm Beige  #E8DFCF
  * Soft Cream  #FAF7F2
@@ -10,7 +11,8 @@
  * Charcoal    #1F2321
  */
 :root {
-  --deep-green: #0e2b26;
+  --brand-green: #0b8f4f;
+  --deep-green: #075f36;
   --sage-green: #8ca78b;
   --warm-beige: #e8dfcf;
   --soft-cream: #faf7f2;
@@ -24,7 +26,7 @@
   --ink: var(--charcoal);
   --muted: color-mix(in srgb, var(--charcoal) 58%, var(--soft-cream));
   --line: color-mix(in srgb, var(--charcoal) 20%, var(--soft-cream));
-  --forest: var(--deep-green);
+  --forest: var(--brand-green);
   --sage: var(--sage-green);
   --sand: var(--warm-beige);
   --gold: var(--brand-gold);
@@ -33,6 +35,7 @@
 
 /* Named Tailwind v4 colour utilities for exact client palette values. */
 @theme inline {
+  --color-brand-green: var(--brand-green);
   --color-deep-green: var(--deep-green);
   --color-sage-green: var(--sage-green);
   --color-warm-beige: var(--warm-beige);

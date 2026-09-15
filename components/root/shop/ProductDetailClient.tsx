@@ -182,7 +182,7 @@ export default function ProductDetailClient({
           <div className="px-0 pb-8">
             {productImages.length > 0 ? (
               <div>
-                <div className="relative aspect-square w-full overflow-hidden border-b hairline bg-[var(--paper-2)]">
+                <div className="relative aspect-square w-full overflow-hidden border-b hairline bg-white">
                   <Image
                     src={activeImage || productImages[0]}
                     alt={`${product.name} - main view`}
@@ -195,9 +195,19 @@ export default function ProductDetailClient({
 
                   <button
                     type="button"
+                    onClick={() => toggleWishlist(product.id)}
+                    className="focus-ring absolute right-4 top-4 z-10 grid size-11 place-items-center rounded-full border border-[var(--ink)]/10 bg-white/95 shadow-sm backdrop-blur"
+                    aria-label={wishlisted ? "Remove from wishlist" : "Save to wishlist"}
+                    aria-pressed={wishlisted}
+                  >
+                    <Heart size={21} strokeWidth={1.5} fill={wishlisted ? "currentColor" : "none"} />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setZoomOpen(true)}
-                    className="focus-ring absolute right-4 top-4 grid size-11 place-items-center rounded-full border border-[var(--ink)]/10 bg-[var(--paper)]/95 shadow-sm backdrop-blur"
-                    aria-label="Zoom product image"
+                    className="focus-ring absolute bottom-4 left-4 z-10 grid size-11 place-items-center rounded-full border border-[var(--ink)]/10 bg-white/95 shadow-sm backdrop-blur"
+                    aria-label="Expand product image"
                   >
                     <Maximize2 size={18} strokeWidth={1.6} />
                   </button>
@@ -206,7 +216,7 @@ export default function ProductDetailClient({
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="absolute inset-x-4 bottom-5 flex items-center gap-3 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper)]/95 px-4 py-3 shadow-lg backdrop-blur"
+                      className="absolute inset-x-4 bottom-20 flex items-center gap-3 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper)]/95 px-4 py-3 shadow-lg backdrop-blur"
                       role="status"
                     >
                       <ShoppingBag size={20} strokeWidth={1.5} className="shrink-0 text-[var(--deep-green)]" />
@@ -226,7 +236,7 @@ export default function ProductDetailClient({
                         onClick={() => selectImage(image)}
                         className={`focus-ring size-3 rounded-full border transition-all ${
                           image === activeImage
-                            ? "border-[var(--deep-green)] bg-[var(--deep-green)] shadow-[0_0_0_3px_var(--paper),0_0_0_4px_var(--deep-green)]"
+                            ? "border-[var(--brand-green)] bg-[var(--brand-green)] shadow-[0_0_0_3px_var(--paper),0_0_0_4px_var(--brand-green)]"
                             : "border-[var(--muted)]/70 bg-transparent"
                         }`}
                         aria-label={`Show image ${index + 1} of ${productImages.length}`}
@@ -237,7 +247,7 @@ export default function ProductDetailClient({
                 )}
               </div>
             ) : (
-              <div className="grid aspect-square place-items-center border-b hairline bg-[var(--paper-2)] px-8 text-center">
+              <div className="grid aspect-square place-items-center border-b hairline bg-white px-8 text-center">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--deep-green)]">Decor by Kasiwa</p>
                   <p className="mt-3 text-sm text-[var(--muted)]">Product imagery will be added soon.</p>
@@ -246,7 +256,42 @@ export default function ProductDetailClient({
             )}
 
             <div className="px-5 pt-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{product.category}</p>
+              {colourOptions.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-base text-[var(--muted)]">
+                    Colour <span className="text-[var(--ink)]">- {colour}</span>
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-4">
+                    {colourOptions.map((item) => {
+                      const variantImage = variants.find((variant) => variant.colour === item)?.imageUrl;
+                      return (
+                        <button
+                          type="button"
+                          key={item}
+                          onClick={() => selectColour(item)}
+                          className={`focus-ring relative size-14 overflow-hidden rounded-full border-2 bg-white transition-all ${
+                            colour === item
+                              ? "border-[var(--brand-green)] shadow-[0_0_0_4px_white,0_0_0_6px_var(--brand-green)]"
+                              : "border-[var(--ink)]/15"
+                          }`}
+                          aria-label={`Select ${item}`}
+                          aria-pressed={colour === item}
+                          title={item}
+                        >
+                          {variantImage ? (
+                            <Image src={variantImage} alt="" fill unoptimized sizes="56px" className="object-cover" />
+                          ) : (
+                            <span className="absolute inset-1 rounded-full" style={{ backgroundColor: getColourSwatch(item) }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+
+              <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{product.category}</p>
               <h1 className="mt-3 text-[clamp(1.65rem,7.2vw,1.95rem)] font-medium leading-[1.08] tracking-[-0.035em] text-[var(--ink)]">
                 {product.name}
               </h1>
@@ -273,39 +318,6 @@ export default function ProductDetailClient({
                 <a href="#delivery-returns" className="focus-ring underline decoration-1 underline-offset-4">Easy Returns</a>
               </div>
 
-              {colourOptions.length > 0 && (
-                <div className="mt-8">
-                  <p className="text-base text-[var(--muted)]">
-                    Colour <span className="text-[var(--ink)]">- {colour}</span>
-                  </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-4">
-                    {colourOptions.map((item) => {
-                      const variantImage = variants.find((variant) => variant.colour === item)?.imageUrl;
-                      return (
-                        <button
-                          type="button"
-                          key={item}
-                          onClick={() => selectColour(item)}
-                          className={`focus-ring relative size-14 overflow-hidden rounded-full border-2 bg-[var(--paper-2)] transition-all ${
-                            colour === item
-                              ? "border-[var(--deep-green)] shadow-[0_0_0_4px_var(--paper),0_0_0_6px_var(--deep-green)]"
-                              : "border-[var(--ink)]/15"
-                          }`}
-                          aria-label={`Select ${item}`}
-                          aria-pressed={colour === item}
-                          title={item}
-                        >
-                          {variantImage ? (
-                            <Image src={variantImage} alt="" fill unoptimized sizes="56px" className="object-cover" />
-                          ) : (
-                            <span className="absolute inset-1 rounded-full" style={{ backgroundColor: getColourSwatch(item) }} />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               {sizeOptions.length > 0 && (
                 <div className="mt-8">
@@ -362,15 +374,6 @@ export default function ProductDetailClient({
                   {catalogueError ? "Catalogue unavailable" : !catalogueReady ? "Preparing cart…" : soldOut ? "Out of stock" : added ? "Added to cart" : "Add to Cart"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => toggleWishlist(product.id)}
-                  className="focus-ring grid size-12 shrink-0 place-items-center rounded-full border border-[var(--ink)]/10 bg-[var(--paper)] shadow-sm"
-                  aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                  aria-pressed={wishlisted}
-                >
-                  <Heart size={24} strokeWidth={1.5} fill={wishlisted ? "currentColor" : "none"} />
-                </button>
               </div>
 
               {maximumQuantity !== null && maximumQuantity <= 5 && !soldOut && (

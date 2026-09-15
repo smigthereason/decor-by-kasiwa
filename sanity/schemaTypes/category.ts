@@ -50,6 +50,20 @@ export const category = defineType({
       initialValue: true,
     }),
     defineField({
+      name: "fulfilmentStages",
+      title: "Fulfilment stages",
+      description: "Operational stages required after a sale. Stages always run Production → Packaging → Delivery.",
+      type: "array",
+      of: [{ type: "string" }],
+      options: {
+        list: [
+          { title: "Production", value: "PRODUCTION" },
+          { title: "Packaging", value: "PACKAGING" },
+          { title: "Delivery", value: "DELIVERY" },
+        ],
+      },
+    }),
+    defineField({
       name: "active",
       title: "Active",
       type: "boolean",

@@ -69,6 +69,7 @@ export function useBackofficeNotifications(pollMs = 30000) {
     newOrders: 0,
     deliveries: 0,
     restockRequests: 0,
+    workflowJobs: 0,
   });
 
   const refreshNotifications = useCallback(async () => {

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Check, LoaderCircle, Plus, Settings, Trash2, Truck, UserRound } from "lucide-react";
+import { Check, LoaderCircle, MessageSquareText, Plus, Settings, Trash2, Truck, UserRound } from "lucide-react";
 
 import { DEFAULT_DELIVERY_ZONES, type DeliveryZone } from "@/lib/shipping";
 
@@ -32,6 +32,10 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
   const [deliveryLoading, setDeliveryLoading] = useState(manageDelivery);
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
+  const [checkoutPrompt, setCheckoutPrompt] = useState("Add a short order note (optional)");
+  const [checkoutLoading, setCheckoutLoading] = useState(manageDelivery);
+  const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void fetch("/api/account/profile", { cache: "no-store" })
@@ -54,6 +58,18 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
       })
       .catch((cause) => setDeliveryMessage(cause instanceof Error ? cause.message : "Unable to load delivery pricing."))
       .finally(() => setDeliveryLoading(false));
+  }, [manageDelivery]);
+
+  useEffect(() => {
+    if (!manageDelivery) return;
+    void fetch("/api/backoffice/checkout-settings", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { checkoutCustomerNotePrompt?: string; message?: string };
+        if (!response.ok) throw new Error(payload.message || "Unable to load checkout settings.");
+        if (payload.checkoutCustomerNotePrompt) setCheckoutPrompt(payload.checkoutCustomerNotePrompt);
+      })
+      .catch((cause) => setCheckoutMessage(cause instanceof Error ? cause.message : "Unable to load checkout settings."))
+      .finally(() => setCheckoutLoading(false));
   }, [manageDelivery]);
 
   async function saveProfile(event: FormEvent) {
@@ -121,6 +137,28 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
     }
   }
 
+  async function saveCheckoutSettings(event: FormEvent) {
+    event.preventDefault();
+    setCheckoutSaving(true);
+    setCheckoutMessage(null);
+    try {
+      const response = await fetch("/api/backoffice/checkout-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkoutCustomerNotePrompt: checkoutPrompt }),
+      });
+      const payload = await response.json() as { checkoutCustomerNotePrompt?: string; message?: string };
+      if (!response.ok) throw new Error(payload.message || "Unable to save checkout settings.");
+      if (payload.checkoutCustomerNotePrompt) setCheckoutPrompt(payload.checkoutCustomerNotePrompt);
+      setCheckoutMessage("Checkout note prompt saved.");
+      router.refresh();
+    } catch (cause) {
+      setCheckoutMessage(cause instanceof Error ? cause.message : "Unable to save checkout settings.");
+    } finally {
+      setCheckoutSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-full bg-[var(--paper-2)]">
       <header className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10">
@@ -143,6 +181,31 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
             <div className="sm:col-span-2 flex items-center justify-between gap-3 border-t hairline pt-5"><p role="status" className="text-xs text-[var(--muted)]">{message || "Changes are saved to your live staff profile."}</p><button type="submit" disabled={saving} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{saving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save profile</button></div>
           </form>}
         </section>
+
+        {manageDelivery && (
+          <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-7">
+            <div className="mb-5 flex items-start gap-4">
+              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] !text-soft-cream"><MessageSquareText size={18}/></div>
+              <div>
+                <p className="text-sm font-semibold">Checkout customer note</p>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">Customers can add an optional note of up to 20 characters. Change the instruction displayed above that field here.</p>
+              </div>
+            </div>
+            {checkoutLoading ? (
+              <div className="flex items-center gap-2 py-8 text-sm text-[var(--muted)]"><LoaderCircle size={16} className="animate-spin"/>Loading checkout settings…</div>
+            ) : (
+              <form onSubmit={saveCheckoutSettings} className="space-y-4">
+                <SettingField label="Customer note prompt">
+                  <input maxLength={80} value={checkoutPrompt} onChange={(event) => setCheckoutPrompt(event.target.value)} required />
+                </SettingField>
+                <div className="flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p role="status" className="text-xs text-[var(--muted)]">{checkoutMessage || "The customer note itself is limited to 20 characters."}</p>
+                  <button type="submit" disabled={checkoutSaving} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{checkoutSaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save checkout note</button>
+                </div>
+              </form>
+            )}
+          </section>
+        )}
 
         {manageDelivery && (
           <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-7">

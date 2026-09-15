@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import {
+  createPosManualSale,
   createPosMpesaSale,
   createPosPaystackSale,
   type PosSaleInput,
@@ -15,8 +16,8 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as PosSaleInput;
-    if (!["mpesa", "paystack"].includes(body.paymentMethod)) {
-      return NextResponse.json({ message: "This shop is cashless. Select M-PESA or Paystack." }, { status: 400 });
+    if (!["mpesa", "paystack", "manual"].includes(body.paymentMethod)) {
+      return NextResponse.json({ message: "Select M-PESA, Paystack, or Manual Payment." }, { status: 400 });
     }
 
     const seller = {
@@ -29,7 +30,9 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     const result = body.paymentMethod === "mpesa"
       ? await createPosMpesaSale(body, seller)
-      : await createPosPaystackSale(body, seller, origin);
+      : body.paymentMethod === "manual"
+        ? await createPosManualSale(body, seller)
+        : await createPosPaystackSale(body, seller, origin);
 
     return NextResponse.json(result);
   } catch (cause) {

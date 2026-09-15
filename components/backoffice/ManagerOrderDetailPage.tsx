@@ -133,6 +133,12 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
             <p className="mt-1 text-xs text-[var(--muted)]">{order.customerEmail}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{order.customerPhone || "No phone supplied"}</p>
             <p className="mt-3 text-xs leading-5">{order.deliveryLocation}</p>
+            {order.customerNote && (
+              <div className="mt-4 rounded-lg border hairline bg-[var(--paper-2)] p-3">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Customer note</p>
+                <p className="mt-1 text-sm font-medium">{order.customerNote}</p>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border hairline bg-[var(--paper)] p-5">
@@ -146,7 +152,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                   {order.soldAt ? ` · ${formatDateTime(order.soldAt)}` : ""}.
                 </p>
                 <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
-                  Payment channel: {order.paymentChannel === "cash" ? "Cash" : order.paymentChannel || "POS"}. This sale is fulfilled in-store and is not part of the delivery dispatch workflow.
+                  Payment channel: {order.paymentChannel === "external" ? "Manual Payment" : order.paymentChannel || "POS"}.{order.currentFulfilmentStage ? ` Current fulfilment stage: ${order.currentFulfilmentStage.toLowerCase()}.` : ""}
                 </p>
               </div>
             )}

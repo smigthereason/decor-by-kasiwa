@@ -490,14 +490,16 @@ export default function AdminCustomerDetailPage() {
                   className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
                 >
                   <option value="CUSTOMER">Customer</option>
-                    <option value="STORE_STAFF">Sales Staff / Cashier</option>
-
+                  <option value="STORE_STAFF">Sales Staff / Cashier</option>
+                  <option value="PRODUCTION_STAFF">Production Staff</option>
+                  <option value="PACKAGING_STAFF">Packaging Staff</option>
+                  <option value="DELIVERY_STAFF">Delivery Staff</option>
                   <option value="STORE">Store Manager</option>
 
                   <option value="ADMIN">Admin / Store Owner</option>
                 </select>
                               <span className="text-[10px] font-normal normal-case leading-relaxed tracking-normal text-[var(--muted)]">
-                  Sales Staff can search inventory, receive dispatched deliveries and raise restock alerts. Store Manager handles orders, products, inventory, shipments and dispatch. Admin is the store owner with full access.
+                  Operational staff use role-specific workflow access. Sales Staff handles POS/sales responsibilities; Production, Packaging and Delivery staff receive only their fulfilment workflow. Store Manager handles orders and operations. Admin has full access.
                 </span>
 </label>
 

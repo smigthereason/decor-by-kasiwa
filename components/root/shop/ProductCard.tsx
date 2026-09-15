@@ -68,12 +68,12 @@ export default function ProductCard({
   return (
     <Link
       href={`/shop/${product.slug}`}
-      className="group flex flex-col overflow-hidden rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] transition-all hover:border-[var(--ink)]/30 hover:shadow-lg"
+      className="group flex flex-col overflow-hidden rounded-lg border border-[var(--ink)]/10 bg-white transition-all hover:border-[var(--ink)]/30 hover:shadow-lg"
     >
       {/* PRODUCT IMAGE */}
       <div
         className={[
-          "relative overflow-hidden bg-[var(--paper-2)]",
+          "relative overflow-hidden bg-white",
           homeCompact ? "aspect-square sm:aspect-[4/5]" : "aspect-[4/5]",
         ].join(" ")}
       >
@@ -88,7 +88,7 @@ export default function ProductCard({
             priority
           />
         ) : (
-          <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-6 text-center">
+          <div className="absolute inset-0 grid place-items-center bg-white px-6 text-center">
             <div>
               <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--deep-green)]">Decor by Kasiwa</p>
               <p className="mt-2 text-xs text-[var(--muted)]">Product image coming soon</p>
