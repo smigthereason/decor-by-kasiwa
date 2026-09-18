@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, LockKeyhole, LogOut, Heart, Calendar, Package, C
 import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import { formatMoney } from "@/lib/money";
 import CustomerProfileForm from "@/components/root/account/CustomerProfileForm";
+import PasswordSettingsForm from "@/components/root/account/PasswordSettingsForm";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function AccountPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             {shouldRouteToWorkspace ? "Opening workspace…" : "Loading account…"}
           </p>
@@ -49,12 +50,12 @@ export default function AccountPage() {
           Your Account.
         </h1>
         <p className="mt-8 max-w-lg text-sm leading-relaxed text-[var(--muted)]">
-          Sign in with Google to access your account, saved items and order history.
+          Sign in with email and password or Google to access your account, saved items and order history.
         </p>
         <div className="mt-8 flex flex-wrap gap-2">
           <Link
             href="/account/login"
-            className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
+            className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all duration-200 hover:gap-3 hover:bg-[var(--brand-green)] hover:shadow-lg"
           >
             <span>Sign in</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -83,7 +84,7 @@ export default function AccountPage() {
       </div>
 
       {/* WELCOME HERO SECTION */}
-      <div className="relative overflow-hidden border-b hairline bg-[var(--deep-green)] text-[var(--paper)]">
+      <div className="relative overflow-hidden border-b hairline bg-[var(--brand-green)] text-[var(--paper)]">
         <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-soft-cream/5 to-transparent" />
         <div className="relative px-4 py-12 md:px-8 md:py-16 lg:px-12">
           <div className="flex flex-wrap items-end justify-between gap-6">
@@ -134,7 +135,7 @@ export default function AccountPage() {
               href="/wishlist"
               className="group flex items-center gap-4 rounded-lg border border-[var(--ink)]/10 bg-[var(--paper)] p-4 transition-all hover:border-[var(--ink)]/30 hover:shadow-lg sm:p-5"
             >
-              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] text-[var(--paper)]">
+              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--brand-green)] text-[var(--paper)]">
                 <Heart size={18} strokeWidth={1.5} />
               </span>
               <div className="flex-1">
@@ -173,6 +174,7 @@ export default function AccountPage() {
             </Link>
 
             <CustomerProfileForm />
+            <PasswordSettingsForm compact />
           </div>
 
           {/* RIGHT COLUMN - ORDER HISTORY */}
@@ -243,7 +245,7 @@ export default function AccountPage() {
                 </p>
                 <Link
                   href="/shop"
-                  className="focus-ring group mt-6 inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
+                  className="focus-ring group mt-6 inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
                 >
                   <span>Start shopping</span>
                   <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

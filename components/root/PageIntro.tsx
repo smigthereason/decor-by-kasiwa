@@ -51,7 +51,7 @@ export default function PageIntro({
 
   return (
     <section
-      className="relative isolate w-full overflow-hidden bg-[var(--deep-green)] text-soft-cream"
+      className="relative isolate w-full overflow-hidden bg-[var(--brand-green)] text-soft-cream"
       aria-label={`${eyebrow}: ${title}`}
     >
       <div className="relative min-h-[560px] w-full sm:min-h-[620px] lg:h-[clamp(620px,72vh,820px)]">

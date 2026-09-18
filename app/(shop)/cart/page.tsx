@@ -26,7 +26,7 @@ export default function CartPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing bag…
           </p>
@@ -51,7 +51,7 @@ export default function CartPage() {
         </p>
         <Link
           href="/shop"
-          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
+          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
         >
           <span>Return to collection</span>
           <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -120,7 +120,7 @@ export default function CartPage() {
                         <Image src={product.heroImage} alt={product.name} fill unoptimized priority={true} className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
                       ) : (
                         <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-3 text-center">
-                          <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--deep-green)]">Image coming soon</span>
+                          <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--brand-green)]">Image coming soon</span>
                         </div>
                       )}
                     </Link>
@@ -292,7 +292,7 @@ export default function CartPage() {
             {/* CHECKOUT BUTTON */}
             <Link
               href="/checkout"
-              className="focus-ring group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--deep-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95"
+              className="focus-ring group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95"
             >
               <span>Continue to Checkout</span>
               <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />

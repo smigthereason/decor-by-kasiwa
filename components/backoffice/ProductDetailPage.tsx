@@ -152,11 +152,11 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
             {!editing ? (
               <>
                 {mode === "admin" ? (
-                  <Link href={`/admin/products/${encodeURIComponent(liveProductId)}/edit`} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]">
+                  <Link href={`/admin/products/${encodeURIComponent(liveProductId)}/edit`} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)]">
                     <Pencil size={14} /> Edit all details
                   </Link>
                 ) : (
-                  <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]">
+                  <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)]">
                     <Pencil size={14} /> Edit product
                   </button>
                 )}
@@ -168,7 +168,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               </>
             ) : (
               <>
-                <button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">
+                <button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">
                   <Check size={14} /> {saving ? "Saving…" : "Save product"}
                 </button>
                 <button type="button" disabled={saving} onClick={cancelEdit} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] disabled:opacity-50">
@@ -212,7 +212,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
           <div className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6">
             <p className="kicker text-[var(--muted)]">Location</p>
             {editing ? (
-              <input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} className="mt-3 w-full rounded-lg border hairline px-4 py-3 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10" />
+              <input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} className="mt-3 w-full rounded-lg border hairline px-4 py-3 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10" />
             ) : (
               <p className="mt-3 flex items-center gap-3 text-sm"><MapPin size={16} className="text-[var(--muted)]" />{product.location}</p>
             )}
@@ -233,15 +233,15 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               <div className="mt-5 grid gap-4">
                 <label className="grid gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Product name</span>
-                  <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="min-h-11 rounded-lg border hairline px-3 text-sm outline-none transition focus:border-[var(--deep-green)]" />
+                  <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="min-h-11 rounded-lg border hairline px-3 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                 </label>
                 <label className="grid gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Short description</span>
-                  <textarea rows={3} value={draft.shortDescription || ""} onChange={(e) => setDraft({ ...draft, shortDescription: e.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6 outline-none transition focus:border-[var(--deep-green)]" />
+                  <textarea rows={3} value={draft.shortDescription || ""} onChange={(e) => setDraft({ ...draft, shortDescription: e.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6 outline-none transition focus:border-[var(--brand-green)]" />
                 </label>
                 <label className="grid gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Full description</span>
-                  <textarea rows={7} value={draft.description || ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6 outline-none transition focus:border-[var(--deep-green)]" />
+                  <textarea rows={7} value={draft.description || ""} onChange={(e) => setDraft({ ...draft, description: e.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6 outline-none transition focus:border-[var(--brand-green)]" />
                 </label>
               </div>
             ) : (
@@ -273,7 +273,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
                 <div key={field} className="rounded-lg border hairline p-4">
                   <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">{label}</p>
                   {editing ? (
-                    <input type="number" min={0} value={draft[field]} onChange={(e) => setDraft({ ...draft, [field]: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--deep-green)]" />
+                    <input type="number" min={0} value={draft[field]} onChange={(e) => setDraft({ ...draft, [field]: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                   ) : (
                     <p className="mt-2 text-2xl font-medium">{product[field]}</p>
                   )}
@@ -285,7 +285,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Procurement cost</p>
                 {editing ? (
-                  <input type="number" min={0} value={draft.unitCost} onChange={(e) => setDraft({ ...draft, unitCost: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--deep-green)]" />
+                  <input type="number" min={0} value={draft.unitCost} onChange={(e) => setDraft({ ...draft, unitCost: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                 ) : (
                   <p className="mt-2 text-lg font-semibold">{formatKes(product.unitCost)}</p>
                 )}
@@ -297,7 +297,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Retail price</p>
                 {editing ? (
-                  <input type="number" min={0} value={draft.retailPrice} onChange={(e) => setDraft({ ...draft, retailPrice: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--deep-green)]" />
+                  <input type="number" min={0} value={draft.retailPrice} onChange={(e) => setDraft({ ...draft, retailPrice: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                 ) : (
                   <p className="mt-2 text-lg font-semibold">{formatKes(product.retailPrice)}</p>
                 )}
@@ -323,7 +323,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
                 ) : (
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="text-lg font-semibold">{product.available === false ? "Hidden" : "Available"}</span>
-                    {product.bestSeller && <span className="self-center rounded-full bg-[var(--deep-green)] px-2.5 py-1 text-[9px] font-semibold uppercase !text-soft-cream">Best seller</span>}
+                    {product.bestSeller && <span className="self-center rounded-full bg-[var(--brand-green)] px-2.5 py-1 text-[9px] font-semibold uppercase !text-soft-cream">Best seller</span>}
                   </div>
                 )}
               </div>

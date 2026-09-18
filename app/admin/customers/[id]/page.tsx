@@ -422,7 +422,7 @@ export default function AdminCustomerDetailPage() {
                     })
                   }
                   autoComplete="name"
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 />
               </label>
 
@@ -464,7 +464,7 @@ export default function AdminCustomerDetailPage() {
                   }
                   placeholder="+254 7XX XXX XXX"
                   autoComplete="tel"
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 />
               </label>
 
@@ -487,7 +487,7 @@ export default function AdminCustomerDetailPage() {
                         .value as CustomerRole,
                     })
                   }
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 >
                   <option value="CUSTOMER">Customer</option>
                   <option value="STORE_STAFF">Sales Staff / Cashier</option>
@@ -523,7 +523,7 @@ export default function AdminCustomerDetailPage() {
                           .value as CustomerStatus,
                     })
                   }
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 >
                   <option value="ACTIVE">
                     Active
@@ -556,7 +556,7 @@ export default function AdminCustomerDetailPage() {
                     })
                   }
                   autoComplete="address-line1"
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 />
               </label>
 
@@ -581,7 +581,7 @@ export default function AdminCustomerDetailPage() {
                     })
                   }
                   autoComplete="address-line2"
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 />
               </label>
 
@@ -607,7 +607,7 @@ export default function AdminCustomerDetailPage() {
                       })
                     }
                     autoComplete="address-level2"
-                    className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                    className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                   />
                 </label>
 
@@ -631,7 +631,7 @@ export default function AdminCustomerDetailPage() {
                     }
                     placeholder="e.g. Nairobi"
                     autoComplete="address-level1"
-                    className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                    className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                   />
                 </label>
               </div>
@@ -657,7 +657,7 @@ export default function AdminCustomerDetailPage() {
                     })
                   }
                   autoComplete="country-name"
-                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--deep-green)]"
+                  className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 />
               </label>
             </div>
@@ -671,7 +671,7 @@ export default function AdminCustomerDetailPage() {
                   "mt-4 rounded-lg px-3 py-2.5 text-xs",
                   saveError
                     ? "bg-red-50 text-red-700"
-                    : "bg-[var(--sage-green)]/15 text-[var(--deep-green)]",
+                    : "bg-[var(--sage-green)]/15 text-[var(--brand-green)]",
                 ].join(
                   " ",
                 )}
@@ -689,7 +689,7 @@ export default function AdminCustomerDetailPage() {
               disabled={
                 saving
               }
-              className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-soft-cream transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-soft-cream transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {saving ? (
                 <LoaderCircle

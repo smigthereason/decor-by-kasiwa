@@ -293,7 +293,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
               type="button"
               onClick={() => void save()}
               disabled={saving}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
             >
               <Check size={14} /> {saving ? "Saving…" : "Save look"}
             </button>
@@ -319,7 +319,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                       slug: slugTouched ? current.slug : toSlug(title),
                     }));
                   }}
-                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--deep-green)]"
+                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--brand-green)]"
                   placeholder="Warm minimalist living room"
                 />
               </label>
@@ -328,7 +328,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                 <input
                   value={form.slug}
                   onChange={(event) => { setSlugTouched(true); setField("slug", toSlug(event.target.value)); }}
-                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--deep-green)]"
+                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--brand-green)]"
                   placeholder="warm-minimalist-living-room"
                 />
               </label>
@@ -337,7 +337,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                 <input
                   value={form.eyebrow}
                   onChange={(event) => setField("eyebrow", event.target.value)}
-                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--deep-green)]"
+                  className="mt-2 min-h-11 w-full rounded-lg border hairline bg-transparent px-4 text-sm outline-none focus:border-[var(--brand-green)]"
                   placeholder="Living room edit"
                 />
               </label>
@@ -347,15 +347,15 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                   value={form.description}
                   onChange={(event) => setField("description", event.target.value)}
                   rows={5}
-                  className="mt-2 w-full rounded-lg border hairline bg-transparent px-4 py-3 text-sm leading-6 outline-none focus:border-[var(--deep-green)]"
+                  className="mt-2 w-full rounded-lg border hairline bg-transparent px-4 py-3 text-sm leading-6 outline-none focus:border-[var(--brand-green)]"
                   placeholder="Describe how the pieces work together and the feeling of the room."
                 />
               </label>
               <div className="sm:col-span-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Look image</span>
                 <span className="mt-1 block text-[10px] leading-4 text-[var(--muted)]">Upload the main lifestyle image customers should see for this Shop the Look. JPG, PNG, WebP and other image formats are supported up to 12 MB.</span>
-                <label className="mt-3 flex min-h-28 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed hairline bg-[var(--paper-2)] px-4 text-center transition hover:border-[var(--deep-green)]">
-                  <ImagePlus size={20} className="text-[var(--deep-green)]" />
+                <label className="mt-3 flex min-h-28 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed hairline bg-[var(--paper-2)] px-4 text-center transition hover:border-[var(--brand-green)]">
+                  <ImagePlus size={20} className="text-[var(--brand-green)]" />
                   <span className="text-xs">{heroImageFile ? heroImageFile.name : existingHeroImageUrl ? "Choose a replacement look image" : "Choose look image"}</span>
                   <input
                     type="file"
@@ -412,7 +412,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
                     <p className="truncate text-xs font-semibold">{product.name || "Untitled product"}</p>
                     <p className="mt-1 text-[10px] text-[var(--muted)]">{product.sku || "NO-SKU"} · {formatMoney(Number(product.price || 0))}</p>
                   </div>
-                  <Plus size={15} className="shrink-0 text-[var(--deep-green)]" />
+                  <Plus size={15} className="shrink-0 text-[var(--brand-green)]" />
                 </button>
               )) : <p className="p-5 text-xs text-[var(--muted)]">No matching products.</p>}
             </div>
@@ -467,7 +467,7 @@ export default function ShopLookEditorPage({ mode, lookId }: { mode: Mode; lookI
               {previewImage ? (
                 <Image src={previewImage} alt="Look preview" fill unoptimized className="object-cover" />
               ) : (
-                <div className="absolute inset-0 grid place-items-center text-[var(--deep-green)]"><Layers3 size={42} strokeWidth={1.1} /></div>
+                <div className="absolute inset-0 grid place-items-center text-[var(--brand-green)]"><Layers3 size={42} strokeWidth={1.1} /></div>
               )}
             </div>
             <div className="p-5">

@@ -109,7 +109,7 @@ export default function AutoCategoryCarousel({ items }: { items: CategoryCarouse
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               ) : (
-                <div className="absolute inset-0 grid place-items-center px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]">
+                <div className="absolute inset-0 grid place-items-center px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-green)]">
                   {item.title}
                 </div>
               )}

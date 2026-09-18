@@ -32,7 +32,7 @@ export default async function ShopByLookPage() {
       <section className="border-b hairline px-4 py-12 sm:px-6 lg:px-10 lg:py-16">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
-            <div className="flex items-center gap-3 text-[var(--deep-green)]">
+            <div className="flex items-center gap-3 text-[var(--brand-green)]">
               <Layers3 size={22} strokeWidth={1.35} />
               <p className="kicker">Curated room edits</p>
             </div>
@@ -65,14 +65,14 @@ export default async function ShopByLookPage() {
                     className="object-cover transition-transform duration-700 group-hover:scale-[1.025]"
                   />
                 ) : (
-                  <div className="absolute inset-0 grid place-items-center text-[var(--deep-green)]">
+                  <div className="absolute inset-0 grid place-items-center text-[var(--brand-green)]">
                     <Layers3 size={46} strokeWidth={1} />
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col justify-center p-6 sm:p-9 lg:p-12">
-                <p className="kicker text-[var(--deep-green)]">{featured.eyebrow || "Featured look"}</p>
+                <p className="kicker text-[var(--brand-green)]">{featured.eyebrow || "Featured look"}</p>
                 <h2 className="mt-3 text-[clamp(2.2rem,5vw,4.2rem)] font-semibold leading-[0.95] tracking-[-0.055em]">
                   {featured.title}
                 </h2>
@@ -114,7 +114,7 @@ export default async function ShopByLookPage() {
                             className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
                           />
                         ) : (
-                          <div className="absolute inset-0 grid place-items-center text-[var(--deep-green)]">
+                          <div className="absolute inset-0 grid place-items-center text-[var(--brand-green)]">
                             <Layers3 size={34} strokeWidth={1} />
                           </div>
                         )}
@@ -144,14 +144,14 @@ export default async function ShopByLookPage() {
       ) : (
         <section className="px-4 py-16 sm:px-6 lg:px-10">
           <div className="mx-auto max-w-3xl rounded-2xl border hairline bg-[var(--paper-2)] p-8 text-center sm:p-12">
-            <Layers3 size={34} strokeWidth={1.25} className="mx-auto text-[var(--deep-green)]" />
+            <Layers3 size={34} strokeWidth={1.25} className="mx-auto text-[var(--brand-green)]" />
             <h2 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">Our first looks are being curated.</h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--muted)]">
               Check back shortly, or continue shopping the full Decor by Kasiwa catalogue.
             </p>
             <Link
               href="/shop"
-              className="mt-7 inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+              className="mt-7 inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
             >
               Continue shopping <ArrowRight size={14} />
             </Link>

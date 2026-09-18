@@ -118,7 +118,7 @@
 //       {showLeftArrow && (
 //         <button
 //           onClick={() => scroll("left")}
-//           className="absolute left-0 top-1/2 z-10 -translate-y-1/2 -ml-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--deep-green)]"
+//           className="absolute left-0 top-1/2 z-10 -translate-y-1/2 -ml-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--brand-green)]"
 //           aria-label="Scroll left"
 //         >
 //           <ChevronLeft size={20} className="text-[var(--ink)]" />
@@ -153,7 +153,7 @@
 //       {showRightArrow && (
 //         <button
 //           onClick={() => scroll("right")}
-//           className="absolute right-0 top-1/2 z-10 -translate-y-1/2 -mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--deep-green)]"
+//           className="absolute right-0 top-1/2 z-10 -translate-y-1/2 -mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--brand-green)]"
 //           aria-label="Scroll right"
 //         >
 //           <ChevronRight size={20} className="text-[var(--ink)]" />
@@ -245,7 +245,7 @@
 //           key={title}
 //           className="flex min-w-[220px] flex-col gap-3 rounded-xl border hairline bg-[var(--paper)] p-5 sm:min-w-[240px] lg:min-w-[260px]"
 //         >
-//           <Icon size={20} strokeWidth={1.5} className="text-[var(--deep-green)]" />
+//           <Icon size={20} strokeWidth={1.5} className="text-[var(--brand-green)]" />
 //           <div>
 //             <p className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</p>
 //             <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">{description}</p>
@@ -339,7 +339,7 @@
 //         <div className="grid min-h-[520px] lg:grid-cols-[0.82fr_1.18fr] lg:min-h-[650px]">
 //           <div className="flex items-center bg-[var(--paper-2)] px-5 py-14 sm:px-8 lg:px-12 xl:px-16">
 //             <div className="max-w-xl">
-//               <p className="kicker text-[var(--deep-green)]">{heroEyebrow}</p>
+//               <p className="kicker text-[var(--brand-green)]">{heroEyebrow}</p>
 //               <h1 className="mt-5 text-[clamp(3.2rem,7vw,6.6rem)] font-semibold leading-[0.9] tracking-[-0.07em] text-[var(--ink)]">
 //                 {heroTitle}
 //               </h1>
@@ -349,7 +349,7 @@
 //               <div className="mt-8 flex flex-wrap gap-3">
 //                 <Link
 //                   href="/shop"
-//                   className="focus-ring inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 text-[11px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+//                   className="focus-ring inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[11px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
 //                 >
 //                   {heroCtaLabel} <ArrowRight size={14} />
 //                 </Link>
@@ -375,7 +375,7 @@
 //                 className="object-cover"
 //               />
 //             ) : (
-//               <div className="absolute inset-0 grid place-items-center px-8 text-center text-[var(--deep-green)]">
+//               <div className="absolute inset-0 grid place-items-center px-8 text-center text-[var(--brand-green)]">
 //                 <p className="max-w-md text-3xl font-medium tracking-[-0.04em]">Curated pieces for considered Kenyan spaces.</p>
 //               </div>
 //             )}
@@ -506,7 +506,7 @@
 //                 {/* View Complete Look Button */}
 //                 <Link
 //                   href={`/shop-by-look/${featuredLook.slug}`}
-//                   className="group inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--deep-green)] px-3 text-[8px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:opacity-90 active:scale-[0.98] sm:min-h-10 sm:w-fit sm:px-4 sm:text-[9px] md:min-h-11 md:px-5"
+//                   className="group inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--brand-green)] px-3 text-[8px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:opacity-90 active:scale-[0.98] sm:min-h-10 sm:w-fit sm:px-4 sm:text-[9px] md:min-h-11 md:px-5"
 //                 >
 //                   View complete look
 //                   <ArrowRight
@@ -660,7 +660,7 @@ function Carousel({ children, itemWidth = 240, gap = 16 }: CarouselProps) {
       {showLeftArrow && (
         <button
           onClick={() => scroll("left")}
-          className="absolute left-0 top-1/2 z-10 -translate-y-1/2 -ml-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--deep-green)]"
+          className="absolute left-0 top-1/2 z-10 -translate-y-1/2 -ml-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--brand-green)]"
           aria-label="Scroll left"
         >
           <ChevronLeft size={20} className="text-[var(--ink)]" />
@@ -695,7 +695,7 @@ function Carousel({ children, itemWidth = 240, gap = 16 }: CarouselProps) {
       {showRightArrow && (
         <button
           onClick={() => scroll("right")}
-          className="absolute right-0 top-1/2 z-10 -translate-y-1/2 -mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--deep-green)]"
+          className="absolute right-0 top-1/2 z-10 -translate-y-1/2 -mr-4 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-lg border hairline transition-all hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--brand-green)]"
           aria-label="Scroll right"
         >
           <ChevronRight size={20} className="text-[var(--ink)]" />
@@ -787,7 +787,7 @@ function TrustCarousel() {
           key={title}
           className="flex min-w-[220px] flex-col gap-3 rounded-xl border hairline bg-[var(--paper)] p-5 sm:min-w-[240px] lg:min-w-[260px]"
         >
-          <Icon size={20} strokeWidth={1.5} className="text-[var(--deep-green)]" />
+          <Icon size={20} strokeWidth={1.5} className="text-[var(--brand-green)]" />
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</p>
             <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">{description}</p>
@@ -991,7 +991,7 @@ export default function ShopLanding({
                 {/* View Complete Look Button */}
                 <Link
                   href={`/shop-by-look/${featuredLook.slug}`}
-                  className="group inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--deep-green)] px-3 text-[8px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:opacity-90 active:scale-[0.98] sm:min-h-10 sm:w-fit sm:px-4 sm:text-[9px] md:min-h-11 md:px-5"
+                  className="group inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-md bg-[var(--brand-green)] px-3 text-[8px] font-semibold uppercase tracking-[0.08em] !text-white transition-all hover:opacity-90 active:scale-[0.98] sm:min-h-10 sm:w-fit sm:px-4 sm:text-[9px] md:min-h-11 md:px-5"
                 >
                   View complete look
                   <ArrowRight

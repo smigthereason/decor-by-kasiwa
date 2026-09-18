@@ -30,7 +30,7 @@ export default function ExportButtons({
         type="button"
         disabled={unavailable}
         onClick={() => downloadPdfReport({ title, columns, rows, fileName })}
-        className="inline-flex min-h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <FileDown size={13} /> PDF
       </button>
@@ -38,7 +38,7 @@ export default function ExportButtons({
         type="button"
         disabled={unavailable}
         onClick={() => downloadExcelReport({ title, columns, rows, fileName })}
-        className="inline-flex min-h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)] disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex min-h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <FileSpreadsheet size={13} /> Excel
       </button>

@@ -43,7 +43,7 @@ export function MegaMenu({ navigation, shopLookPreview, onNavigate }: MegaMenuPr
           <Link
             href={shopLookPreview ? `/shop-by-look/${encodeURIComponent(shopLookPreview.slug)}` : "/shop-by-look"}
             onClick={onNavigate}
-            className="group relative flex min-h-[190px] overflow-hidden rounded-xl border hairline bg-[var(--deep-green)] text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
+            className="group relative flex min-h-[190px] overflow-hidden rounded-xl border hairline bg-[var(--brand-green)] text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
           >
             {shopLookPreview?.imageUrl ? (
               <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url("${shopLookPreview.imageUrl}")` }} />

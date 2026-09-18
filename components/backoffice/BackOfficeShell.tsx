@@ -35,6 +35,7 @@ import {
 import { signOut } from "next-auth/react";
 
 import { useBackofficeNotifications } from "@/lib/operations/client";
+import StaffActivityTracker, { endTrackedStaffActivitySession } from "@/components/backoffice/StaffActivityTracker";
 import { Logo } from "@/public/index";
 
 type Mode = "admin" | "store";
@@ -104,7 +105,7 @@ function AlertBadge({ count, dark = false }: { count: number; dark?: boolean }) 
     <span
       className={[
         "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums",
-        dark ? "bg-[var(--paper)] text-[var(--deep-green)]" : "bg-[var(--deep-green)] !text-soft-cream",
+        dark ? "bg-[var(--paper)] text-[var(--brand-green)]" : "bg-[var(--brand-green)] !text-soft-cream",
       ].join(" ")}
       aria-label={`${count} notifications`}
     >
@@ -154,11 +155,15 @@ export default function BackOfficeShell({
   }
 
   function handleSignOut() {
-    void signOut({ callbackUrl: "/" });
+    void (async () => {
+      await endTrackedStaffActivitySession();
+      await signOut({ callbackUrl: "/" });
+    })();
   }
 
   return (
     <div className="min-h-screen w-full max-w-full bg-[var(--paper-2)] text-[var(--ink)] lg:h-screen lg:overflow-hidden">
+      <StaffActivityTracker />
       <header className="sticky top-0 z-50 border-b border-[var(--ink)]/[0.09] bg-[var(--paper)] lg:hidden">
         <div className="flex items-center justify-between px-4 py-4">
           <Link href={rootHref} className="flex items-center gap-3">
@@ -265,7 +270,7 @@ export default function BackOfficeShell({
       </AnimatePresence>
 
       <div className="w-full max-w-full lg:h-screen lg:pl-[248px]">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] border-r border-[var(--ink)]/[0.09] bg-[var(--deep-green)] text-[var(--paper)] lg:block">
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] border-r border-[var(--ink)]/[0.09] bg-[var(--brand-green)] text-[var(--paper)] lg:block">
           <div className="flex h-full min-h-0 flex-col px-4 py-5">
             <Link href={rootHref} className="block pb-5">
               <Image src={Logo} alt="Decor by Kasiwa" width={260} height={130} priority className="h-auto w-[160px] brightness-0 invert" />
@@ -307,7 +312,7 @@ export default function BackOfficeShell({
               })}
             </nav>
 
-            <div className="shrink-0 border-t border-white/15 bg-[var(--deep-green)] pt-4">
+            <div className="shrink-0 border-t border-white/15 bg-[var(--brand-green)] pt-4">
               <p className="mb-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-white/30">Switch workspace</p>
               <Link href="/" className="group flex items-center gap-3 py-2 text-[12px] uppercase tracking-[0.12em] text-white/50 transition-all duration-300 hover:text-white">
                 <ArrowLeft size={15} strokeWidth={1.4} className="transition-transform duration-300 group-hover:-translate-x-1" /> Customer site
@@ -344,7 +349,7 @@ export default function BackOfficeShell({
               <div className="text-right">
                 <p className="text-[11px] font-semibold text-[var(--ink)]">{staffName}</p>
                 <p className="mt-0.5 text-[9px] text-[var(--muted)]">{staffEmail}</p>
-                <span className="mt-1 inline-flex rounded-full bg-[var(--paper-2)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-[var(--deep-green)]">{staffRoleLabel}</span>
+                <span className="mt-1 inline-flex rounded-full bg-[var(--paper-2)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-[var(--brand-green)]">{staffRoleLabel}</span>
               </div>
               <span className="size-1.5 rounded-full bg-[var(--sage-green)]" title="Live operations" />
             </div>

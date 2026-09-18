@@ -6,6 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Check, LoaderCircle, MessageSquareText, Plus, Settings, Trash2, Truck, UserRound } from "lucide-react";
 
 import { DEFAULT_DELIVERY_ZONES, type DeliveryZone } from "@/lib/shipping";
+import PasswordSettingsForm from "@/components/root/account/PasswordSettingsForm";
 
 type Profile = {
   name: string;
@@ -162,13 +163,13 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
   return (
     <div className="min-h-full bg-[var(--paper-2)]">
       <header className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10">
-        <div className="flex items-center gap-3"><Settings size={18} className="text-[var(--deep-green)]"/><div><p className="kicker text-[var(--muted)]">Settings</p><h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">Workspace settings</h1></div></div>
+        <div className="flex items-center gap-3"><Settings size={18} className="text-[var(--brand-green)]"/><div><p className="kicker text-[var(--muted)]">Settings</p><h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">Workspace settings</h1></div></div>
         <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">Manage your staff profile{manageDelivery ? " and the standard delivery rates used by e-commerce checkout" : ""}.</p>
       </header>
 
       <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6 lg:p-8">
         <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-7">
-          <div className="mb-6 flex items-center gap-4 rounded-xl bg-[var(--paper-2)] p-4"><div className="grid size-11 place-items-center rounded-full bg-[var(--deep-green)] !text-soft-cream"><UserRound size={18}/></div><div><p className="text-sm font-semibold">Staff profile</p><p className="mt-1 text-xs text-[var(--muted)]">{session?.user?.email || profile.email}</p><p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]">{String(session?.user?.role || "STAFF").replaceAll("_", " ")}</p></div></div>
+          <div className="mb-6 flex items-center gap-4 rounded-xl bg-[var(--paper-2)] p-4"><div className="grid size-11 place-items-center rounded-full bg-[var(--brand-green)] !text-soft-cream"><UserRound size={18}/></div><div><p className="text-sm font-semibold">Staff profile</p><p className="mt-1 text-xs text-[var(--muted)]">{session?.user?.email || profile.email}</p><p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-green)]">{String(session?.user?.role || "STAFF").replaceAll("_", " ")}</p></div></div>
           {loading ? <div className="flex items-center gap-2 py-10 text-sm text-[var(--muted)]"><LoaderCircle size={16} className="animate-spin"/>Loading settings…</div> : <form onSubmit={saveProfile} className="grid gap-4 sm:grid-cols-2">
             <SettingField label="Name" className="sm:col-span-2"><input value={profile.name} onChange={(e)=>setProfile({...profile,name:e.target.value})} required /></SettingField>
             <SettingField label="Email" className="sm:col-span-2"><input value={profile.email} disabled className="opacity-60"/><p className="mt-1 text-[10px] text-[var(--muted)]">Email is tied to your authenticated account and is read-only here.</p></SettingField>
@@ -178,14 +179,16 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
             <SettingField label="Address line 2" className="sm:col-span-2"><input value={profile.address2} onChange={(e)=>setProfile({...profile,address2:e.target.value})}/></SettingField>
             <SettingField label="City / Town"><input value={profile.city} onChange={(e)=>setProfile({...profile,city:e.target.value})}/></SettingField>
             <SettingField label="County / Region"><input value={profile.region} onChange={(e)=>setProfile({...profile,region:e.target.value})}/></SettingField>
-            <div className="sm:col-span-2 flex items-center justify-between gap-3 border-t hairline pt-5"><p role="status" className="text-xs text-[var(--muted)]">{message || "Changes are saved to your live staff profile."}</p><button type="submit" disabled={saving} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{saving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save profile</button></div>
+            <div className="sm:col-span-2 flex items-center justify-between gap-3 border-t hairline pt-5"><p role="status" className="text-xs text-[var(--muted)]">{message || "Changes are saved to your live staff profile."}</p><button type="submit" disabled={saving} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{saving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save profile</button></div>
           </form>}
         </section>
+
+        <PasswordSettingsForm />
 
         {manageDelivery && (
           <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-7">
             <div className="mb-5 flex items-start gap-4">
-              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] !text-soft-cream"><MessageSquareText size={18}/></div>
+              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--brand-green)] !text-soft-cream"><MessageSquareText size={18}/></div>
               <div>
                 <p className="text-sm font-semibold">Checkout customer note</p>
                 <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">Customers can add an optional note of up to 20 characters. Change the instruction displayed above that field here.</p>
@@ -200,7 +203,7 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
                 </SettingField>
                 <div className="flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between">
                   <p role="status" className="text-xs text-[var(--muted)]">{checkoutMessage || "The customer note itself is limited to 20 characters."}</p>
-                  <button type="submit" disabled={checkoutSaving} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{checkoutSaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save checkout note</button>
+                  <button type="submit" disabled={checkoutSaving} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{checkoutSaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save checkout note</button>
                 </div>
               </form>
             )}
@@ -211,7 +214,7 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
           <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-7">
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-start gap-4">
-                <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--deep-green)] !text-soft-cream"><Truck size={18}/></div>
+                <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--brand-green)] !text-soft-cream"><Truck size={18}/></div>
                 <div>
                   <p className="text-sm font-semibold">E-commerce delivery pricing</p>
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--muted)]">Set standard delivery zones and prices. Customers select one at checkout and the configured fee is added automatically to the order total. You can add, edit, disable or delete zones.</p>
@@ -239,14 +242,14 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
                       <SettingField label="Checkout description">
                         <input value={zone.description || ""} onChange={(event) => updateDeliveryZone(index, { description: event.target.value })} placeholder="Optional customer-facing note" />
                       </SettingField>
-                      <label className="flex min-h-11 items-center gap-3 rounded-lg border hairline bg-[var(--paper)] px-4 text-xs font-medium"><input type="checkbox" checked={zone.active} onChange={(event) => updateDeliveryZone(index, { active: event.target.checked })} className="size-4 accent-[var(--deep-green)]"/>Available at checkout</label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-lg border hairline bg-[var(--paper)] px-4 text-xs font-medium"><input type="checkbox" checked={zone.active} onChange={(event) => updateDeliveryZone(index, { active: event.target.checked })} className="size-4 accent-[var(--brand-green)]"/>Available at checkout</label>
                     </div>
                   </div>
                 ))}
 
                 <div className="flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between">
                   <p role="status" className="text-xs text-[var(--muted)]">{deliveryMessage || "Sample rate: Within Nairobi — KES 300. Edit it or add more zones such as CBD, South B, Kiambu, or upcountry."}</p>
-                  <button type="submit" disabled={deliverySaving || deliveryZones.length === 0} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{deliverySaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save delivery rates</button>
+                  <button type="submit" disabled={deliverySaving || deliveryZones.length === 0} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{deliverySaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save delivery rates</button>
                 </div>
               </form>
             )}
@@ -258,5 +261,5 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
 }
 
 function SettingField({ label, className="", children }: { label: string; className?: string; children: ReactNode }) {
-  return <label className={`block ${className}`}><span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{label}</span><div className="mt-2 [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:text-sm [&_input]:outline-none [&_input]:transition [&_input]:focus:border-[var(--deep-green)]">{children}</div></label>;
+  return <label className={`block ${className}`}><span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{label}</span><div className="mt-2 [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:text-sm [&_input]:outline-none [&_input]:transition [&_input]:focus:border-[var(--brand-green)]">{children}</div></label>;
 }

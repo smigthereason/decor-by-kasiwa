@@ -22,7 +22,7 @@ export function DesktopSearch({ search, setSearch, onSubmit }: DesktopSearchProp
       />
       <button
         type="submit"
-        className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--soft-cream)] text-[var(--deep-green)] transition-transform hover:scale-[1.04]"
+        className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--soft-cream)] text-[var(--brand-green)] transition-transform hover:scale-[1.04]"
         aria-label="Submit search"
       >
         <Search size={13} strokeWidth={1.75} />

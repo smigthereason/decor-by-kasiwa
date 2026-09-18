@@ -16,7 +16,7 @@ export default function CatalogueUnavailable({ message }: { message?: string | n
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="focus-ring mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[11px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+          className="focus-ring mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[11px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
         >
           <RefreshCw size={14} /> Retry
         </button>

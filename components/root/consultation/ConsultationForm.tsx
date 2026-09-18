@@ -216,7 +216,7 @@ export default function ConsultationForm() {
           {steps.map((_, index) => (
             <span
               key={index}
-              className={`h-1 w-8 ${index <= step ? "bg-[var(--deep-green)]" : "bg-charcoal/10"}`}
+              className={`h-1 w-8 ${index <= step ? "bg-[var(--brand-green)]" : "bg-charcoal/10"}`}
             />
           ))}
         </div>
@@ -243,7 +243,7 @@ export default function ConsultationForm() {
           <button
             type="button"
             onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)]"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)]"
           >
             Continue <ArrowRight size={14} />
           </button>
@@ -251,7 +251,7 @@ export default function ConsultationForm() {
           <button
             type="submit"
             disabled={status === "sending"}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 py-3 text-xs uppercase tracking-[0.08em] text-[var(--paper)] disabled:opacity-50"
           >
             {status === "sending" ? "Sending..." : "Send enquiry"} <ArrowRight size={14} />
           </button>
@@ -282,7 +282,7 @@ function Choice({
       onClick={onClick}
       className={`flex min-h-16 items-center justify-between border px-4 text-left text-sm transition-colors ${
         active
-          ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
+          ? "border-[var(--ink)] bg-[var(--brand-green)] text-[var(--paper)]"
           : "hairline hover:bg-[var(--paper-2)]"
       }`}
     >

@@ -106,10 +106,19 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const name = clean(form.get("name"));
     const price = numberValue(form.get("price"));
+    const wholesalePriceText = clean(form.get("wholesalePrice"));
+    const wholesaleQuantityText = clean(form.get("wholesaleMinQuantity"));
+    const wholesalePrice = wholesalePriceText ? numberValue(form.get("wholesalePrice")) : 0;
+    const wholesaleMinQuantity = wholesaleQuantityText ? Math.floor(numberValue(form.get("wholesaleMinQuantity"))) : 0;
     const primaryCategory = clean(form.get("primaryCategory"));
 
     if (!name) return NextResponse.json({ message: "Product name is required." }, { status: 400 });
-    if (!(price > 0)) return NextResponse.json({ message: "Price must be greater than zero." }, { status: 400 });
+    if (!(price > 0)) return NextResponse.json({ message: "Retail price must be greater than zero." }, { status: 400 });
+    if (wholesalePriceText || wholesaleQuantityText) {
+      if (!(wholesalePrice > 0)) return NextResponse.json({ message: "Wholesale price must be greater than zero." }, { status: 400 });
+      if (wholesalePrice >= price) return NextResponse.json({ message: "Wholesale price must be lower than the retail price." }, { status: 400 });
+      if (wholesaleMinQuantity < 2) return NextResponse.json({ message: "Wholesale quantity threshold must be at least 2." }, { status: 400 });
+    }
     if (!primaryCategory) return NextResponse.json({ message: "Primary category is required." }, { status: 400 });
 
     const productId = `product.${randomUUID().replaceAll("-", "")}`;
@@ -166,6 +175,7 @@ export async function POST(request: Request) {
       slug: { _type: "slug", current: slug },
       sku,
       price,
+      ...(wholesalePrice > 0 && wholesaleMinQuantity >= 2 ? { wholesalePrice, wholesaleMinQuantity } : {}),
       procurementCost,
       ecommerceEnabled,
       posEnabled,

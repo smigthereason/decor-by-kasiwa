@@ -39,7 +39,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
         <span className="max-w-20 truncate">
           {user ? user.name.split(" ")[0] : "Sign in"}
         </span>
-        <span className="grid size-7.5 place-items-center rounded-full bg-[var(--soft-cream)] text-[var(--deep-green)]">
+        <span className="grid size-7.5 place-items-center rounded-full bg-[var(--soft-cream)] text-[var(--brand-green)]">
           <CircleUserRound size={20} strokeWidth={1.1} />
         </span>
       </Link>
@@ -52,7 +52,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
       >
         <Heart size={18} strokeWidth={1.45} className="sm:h-5 sm:w-5" />
         {wishlist.length > 0 && (
-          <span className="absolute -right-1 -top-1 grid min-h-[15px] min-w-[15px] place-items-center rounded-full bg-[var(--brand-gold)] px-1 text-[9px] font-semibold leading-none text-[var(--deep-green)] sm:-right-2 sm:-top-0.5 sm:text-[10px]">
+          <span className="absolute -right-1 -top-1 grid min-h-[15px] min-w-[15px] place-items-center rounded-full bg-[var(--brand-gold)] px-1 text-[9px] font-semibold leading-none text-[var(--brand-green)] sm:-right-2 sm:-top-0.5 sm:text-[10px]">
             {wishlist.length > 99 ? "99+" : wishlist.length}
           </span>
         )}
@@ -66,7 +66,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
       >
         <ShoppingBag size={18} strokeWidth={1.45} className="sm:h-5 sm:w-5" />
         {cartCount > 0 && (
-          <span className="absolute -right-1 -top-1 grid min-h-[15px] min-w-[15px] place-items-center rounded-full bg-[var(--brand-gold)] px-1 text-[9px] font-semibold leading-none text-[var(--deep-green)] sm:-right-2 sm:-top-0.5 sm:text-[10px]">
+          <span className="absolute -right-1 -top-1 grid min-h-[15px] min-w-[15px] place-items-center rounded-full bg-[var(--brand-gold)] px-1 text-[9px] font-semibold leading-none text-[var(--brand-green)] sm:-right-2 sm:-top-0.5 sm:text-[10px]">
             {cartCount > 99 ? "99+" : cartCount}
           </span>
         )}
@@ -83,7 +83,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
           "sm:size-10",
           "lg:hidden",
           user
-            ? "border-white/70 bg-white text-[var(--deep-green)] shadow-sm"
+            ? "border-white/70 bg-white text-[var(--brand-green)] shadow-sm"
             : "border-white/10 bg-white/10 text-white",
         ].join(" ")}
       >
@@ -91,7 +91,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
         {user && (
           <span
             aria-hidden="true"
-            className="absolute bottom-[1px] right-[1px] size-[8px] rounded-full border-2 border-[var(--deep-green)] bg-[var(--brand-gold)] sm:bottom-[2px] sm:right-[2px]"
+            className="absolute bottom-[1px] right-[1px] size-[8px] rounded-full border-2 border-[var(--brand-green)] bg-[var(--brand-gold)] sm:bottom-[2px] sm:right-[2px]"
           />
         )}
       </Link>

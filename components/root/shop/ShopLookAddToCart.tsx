@@ -36,7 +36,7 @@ export default function ShopLookAddToCart({ lines }: { lines: LookLine[] }) {
         type="button"
         onClick={addLook}
         disabled={lines.length === 0}
-        className="focus-ring inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50"
+        className="focus-ring inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50"
       >
         {complete ? <Check size={15} /> : <ShoppingCart size={15} />}
         {complete ? "Look added to cart" : "Add complete look to cart"}

@@ -48,7 +48,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
         </h1>
         <div className="flex flex-wrap items-end justify-between gap-4"><p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
           Admin and Store Manager use the same live Sanity catalogue and can update stock, incoming inventory, reorder levels, prices and shop visibility.
-        </p>{mode === "admin" && <Link href="/admin/products/new" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Plus size={14}/>Add product</Link>}</div>
+        </p>{mode === "admin" && <Link href="/admin/products/new" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Plus size={14}/>Add product</Link>}</div>
       </div>
 
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
@@ -59,14 +59,14 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Search name, SKU or category..."
-              className="w-full rounded-full border hairline bg-[var(--paper)] py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="w-full rounded-full border hairline bg-[var(--paper)] py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             />
           </div>
           <div className="relative w-full sm:w-auto sm:min-w-52">
             <select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
-              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             >
               {categories.map((category) => <option key={category}>{category}</option>)}
             </select>
@@ -76,7 +76,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
             <select
               value={merchandisingFilter}
               onChange={(event) => setMerchandisingFilter(event.target.value)}
-              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             >
               <option>All</option>
               <option>Best sellers</option>
@@ -109,12 +109,12 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--deep-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
+                          <p className="truncate text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--brand-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
                           <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{product.sku} · {product.category}</p>
                         </div>
                         <Link
                           href={`${basePath}/${encodeURIComponent(product.id)}`}
-                          className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                          className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--brand-green)] hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                           aria-label={`Open ${product.name}`}
                         >
                           <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -160,7 +160,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                             style={product.image ? { backgroundImage: `url("${product.image}")` } : undefined}
                           />
                           <div>
-                            <p className="text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--deep-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
+                            <p className="text-sm font-semibold">{product.name}</p>{product.bestSeller && <span className="mt-1 inline-flex rounded-full bg-[var(--brand-green)] px-2 py-0.5 text-[8px] font-semibold uppercase !text-soft-cream">Best seller</span>}
                             <p className="mt-1 text-[10px] text-[var(--muted)]">{product.location}</p>
                           </div>
                         </div>
@@ -173,7 +173,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
                       <td className="px-4 py-4 text-right">
                         <Link
                           href={`${basePath}/${encodeURIComponent(product.id)}`}
-                          className="group inline-grid size-9 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                          className="group inline-grid size-9 place-items-center rounded-full border hairline transition hover:border-[var(--brand-green)] hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                           aria-label={`Open ${product.name}`}
                         >
                           <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />

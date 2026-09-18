@@ -61,7 +61,7 @@ export default async function ShopLookDetailPage({ params }: PageProps) {
               className="object-cover"
             />
           ) : (
-            <div className="absolute inset-0 grid place-items-center text-[var(--deep-green)]">
+            <div className="absolute inset-0 grid place-items-center text-[var(--brand-green)]">
               <Layers3 size={56} strokeWidth={1} />
             </div>
           )}
@@ -75,7 +75,7 @@ export default async function ShopLookDetailPage({ params }: PageProps) {
             >
               <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1" /> All looks
             </Link>
-            <p className="kicker mt-10 text-[var(--deep-green)]">{look.eyebrow || "Curated by Decor by Kasiwa"}</p>
+            <p className="kicker mt-10 text-[var(--brand-green)]">{look.eyebrow || "Curated by Decor by Kasiwa"}</p>
             <h1 className="mt-4 text-[clamp(3rem,7vw,6rem)] font-semibold leading-[0.9] tracking-[-0.065em]">
               {look.title}
             </h1>

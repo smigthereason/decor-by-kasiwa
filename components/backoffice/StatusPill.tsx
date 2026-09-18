@@ -26,7 +26,7 @@ const labels: Record<string, string> = {
 export default function StatusPill({ value }: Props) {
   const tone =
     value === "delivered" || value === "healthy" || value === "paid"
-      ? "border-[var(--deep-green)]/20 bg-[var(--sage-green)]/15 text-[var(--deep-green)]"
+      ? "border-[var(--brand-green)]/20 bg-[var(--sage-green)]/15 text-[var(--brand-green)]"
       : value === "cancelled" || value === "failed" || value === "exception" || value === "out"
         ? "border-[#7b3b32]/20 bg-[#7b3b32]/10 text-[#6b3028]"
         : value === "low"

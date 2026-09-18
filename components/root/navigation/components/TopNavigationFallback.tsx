@@ -3,7 +3,7 @@ import { topNavigation } from "../constants/navigation";
 
 export function TopNavigationFallback({ pathname }: { pathname: string }) {
   return (
-    <nav aria-label="Primary shop navigation" className="h-[44px] border-t border-white/10 bg-[var(--deep-green)]">
+    <nav aria-label="Primary shop navigation" className="h-[44px] border-t border-white/10 bg-[var(--brand-green)]">
       <div className="flex h-full items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {topNavigation.map((item) => (
           <Link

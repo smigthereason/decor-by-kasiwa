@@ -60,9 +60,9 @@ export default function StoreShipmentsPage() {
       </div>
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search shipments..." className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10" /></div>
+          <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search shipments..." className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10" /></div>
           <div className="relative min-w-52">
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10">
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10">
               {statuses.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
@@ -82,7 +82,7 @@ export default function StoreShipmentsPage() {
                     <>
                       <label className="mt-4 block text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Preparation status</label>
                       <div className="relative mt-2">
-                        <select disabled={savingId === shipment.id} value={shipment.status} onChange={(e) => void updateStatus(shipment.id, e.target.value as ShipmentStatus)} className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] disabled:opacity-50">
+                        <select disabled={savingId === shipment.id} value={shipment.status} onChange={(e) => void updateStatus(shipment.id, e.target.value as ShipmentStatus)} className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] disabled:opacity-50">
                           {preparationWorkflow.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
                         </select>
                         <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />

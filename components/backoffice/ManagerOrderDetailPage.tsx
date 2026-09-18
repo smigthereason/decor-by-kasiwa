@@ -145,8 +145,8 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
             <p className="kicker text-[var(--muted)]">Workflow</p>
 
             {isPosSale && (
-              <div className="mt-4 rounded-lg border border-[var(--deep-green)]/15 bg-[var(--deep-green)]/[0.04] p-4">
-                <p className="text-xs font-semibold text-[var(--deep-green)]">Physical POS sale</p>
+              <div className="mt-4 rounded-lg border border-[var(--brand-green)]/15 bg-[var(--brand-green)]/[0.04] p-4">
+                <p className="text-xs font-semibold text-[var(--brand-green)]">Physical POS sale</p>
                 <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
                   Sold by {order.soldByName || "staff"}{order.soldByRole ? ` · ${order.soldByRole.replaceAll("_", " ")}` : ""}
                   {order.soldAt ? ` · ${formatDateTime(order.soldAt)}` : ""}.
@@ -165,7 +165,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                     disabled={saving}
                     value={availableStatuses.includes(order.status) ? order.status : availableStatuses[0]}
                     onChange={(e) => void update({ status: e.target.value as OrderStatus })}
-                    className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm font-medium outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm font-medium outline-none transition-colors focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {availableStatuses.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
                   </select>
@@ -182,7 +182,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                     disabled={saving}
                     value={order.paymentStatus}
                     onChange={(e) => void update({ paymentStatus: e.target.value as PaymentStatus })}
-                    className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm font-medium outline-none transition-colors focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm font-medium outline-none transition-colors focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {paymentStatuses.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
@@ -196,7 +196,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                 type="button"
                 disabled={saving || !canDispatch}
                 onClick={() => void dispatchOrder()}
-                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Send size={14} /> {saving ? "Working…" : "Dispatch for delivery"}
               </button>

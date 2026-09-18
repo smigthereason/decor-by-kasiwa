@@ -16,7 +16,7 @@ export default function WishlistPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing saved items…
           </p>
@@ -61,7 +61,7 @@ export default function WishlistPage() {
           </p>
           <Link
             href="/shop"
-            className="group mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
+            className="group mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
           >
             <span>Explore shop</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -134,7 +134,7 @@ export default function WishlistPage() {
                       <Image src={product.heroImage} alt={product.name} fill unoptimized priority sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.035]" />
                     ) : (
                       <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-4 text-center">
-                        <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--deep-green)]">Image coming soon</span>
+                        <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--brand-green)]">Image coming soon</span>
                       </div>
                     )}
 
@@ -197,7 +197,7 @@ export default function WishlistPage() {
                     type="button"
                     onClick={() => addToCart(product.id, 1, product.colours?.[0])}
                     disabled={soldOut}
-                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ShoppingCart size={12} />
                     <span>{soldOut ? "Out of stock" : "Add to Cart"}</span>

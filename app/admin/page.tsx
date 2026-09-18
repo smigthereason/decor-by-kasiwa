@@ -49,7 +49,7 @@ export default function AdminOverviewPage() {
             <Link href="/admin/products" className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]">
               <Boxes size={13} /> Products
             </Link>
-            <Link href="/admin/orders" className="inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">
+            <Link href="/admin/orders" className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">
               <ShoppingBag size={13} /> Orders
             </Link>
           </div>

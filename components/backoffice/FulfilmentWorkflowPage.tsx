@@ -150,7 +150,7 @@ export default function FulfilmentWorkflowPage() {
 
         <div className="mt-5 rounded-2xl border hairline bg-white p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <UserCheck size={18} className="mt-0.5 shrink-0 text-[var(--deep-green)]" />
+            <UserCheck size={18} className="mt-0.5 shrink-0 text-[var(--brand-green)]" />
             <div>
               <p className="text-xs font-semibold">How a workflow starts</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
@@ -174,7 +174,7 @@ export default function FulfilmentWorkflowPage() {
               <section key={group.stage} className="min-w-0 rounded-2xl border hairline bg-white p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold"><PackageCheck size={16} className="shrink-0" />{stageLabel(group.stage)}</h2>
-                  <span className="shrink-0 rounded-full bg-[var(--brand-green)]/10 px-2 py-1 text-[10px] font-semibold text-[var(--deep-green)]">{group.jobs.length}</span>
+                  <span className="shrink-0 rounded-full bg-[var(--brand-green)]/10 px-2 py-1 text-[10px] font-semibold text-[var(--brand-green)]">{group.jobs.length}</span>
                 </div>
                 <div className="mt-4 space-y-3">
                   {group.jobs.length === 0 ? (
@@ -209,7 +209,7 @@ export default function FulfilmentWorkflowPage() {
                             <button
                               disabled={saving === `assign-${job.id}`}
                               onClick={() => void assignCurrent(job)}
-                              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--deep-green)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--brand-green)] px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
                             >
                               {saving === `assign-${job.id}` ? <LoaderCircle size={14} className="animate-spin" /> : <UserCheck size={14} />}
                               Assign first stage
@@ -230,7 +230,7 @@ export default function FulfilmentWorkflowPage() {
                             <button
                               disabled={saving === job.id}
                               onClick={() => void complete(job)}
-                              className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--deep-green)] px-3 py-2.5 text-center text-xs font-semibold text-white disabled:opacity-50"
+                              className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--brand-green)] px-3 py-2.5 text-center text-xs font-semibold text-white disabled:opacity-50"
                             >
                               {saving === job.id ? <LoaderCircle size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                               <span>{next ? `Complete & send to ${next.toLowerCase()}` : "Mark stage complete"}</span>

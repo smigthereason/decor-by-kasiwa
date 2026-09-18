@@ -90,7 +90,7 @@ export default function ProductCard({
         ) : (
           <div className="absolute inset-0 grid place-items-center bg-white px-6 text-center">
             <div>
-              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--deep-green)]">Decor by Kasiwa</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-green)]">Decor by Kasiwa</p>
               <p className="mt-2 text-xs text-[var(--muted)]">Product image coming soon</p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export default function ProductCard({
                 {product.category === "Decor" ? "Décor" : product.category}
               </span>
               {product.bestSeller && (
-                <span className="rounded-full bg-[var(--deep-green)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream shadow-sm">
+                <span className="rounded-full bg-[var(--brand-green)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream shadow-sm">
                   Best seller
                 </span>
               )}
@@ -118,7 +118,7 @@ export default function ProductCard({
         )}
 
         {homeCompact && product.bestSeller && (
-          <span className="absolute left-2 top-2 rounded-full bg-[var(--deep-green)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.06em] !text-soft-cream shadow-sm sm:left-3 sm:top-3 sm:px-2.5">
+          <span className="absolute left-2 top-2 rounded-full bg-[var(--brand-green)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.06em] !text-soft-cream shadow-sm sm:left-3 sm:top-3 sm:px-2.5">
             Best seller
           </span>
         )}

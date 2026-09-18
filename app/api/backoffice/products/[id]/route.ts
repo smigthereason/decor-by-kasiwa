@@ -98,6 +98,8 @@ export async function GET(
       sku,
       "slug": slug.current,
       price,
+      wholesalePrice,
+      wholesaleMinQuantity,
       procurementCost,
       compareAtPrice,
       rating,
@@ -159,7 +161,7 @@ export async function PATCH(
       form = await request.formData();
       for (const key of [
         "name", "shortDescription", "description", "onHand", "initialStock", "reserved", "incoming", "reorderPoint",
-        "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "compareAtPrice",
+        "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice",
         "rating", "reviewCount", "location", "available", "featured", "newArrival", "bestSeller", "onSale",
         "primaryCategory", "categories", "collections", "spaces", "styles", "colours", "materials", "dimensions",
         "careInstructions", "variants", "galleryExisting",
@@ -197,7 +199,7 @@ export async function PATCH(
 
     const retailPrice = numericValue(body.price ?? body.retailPrice);
     if (retailPrice !== undefined) {
-      if (!(retailPrice > 0)) return NextResponse.json({ message: "Price must be greater than zero." }, { status: 400 });
+      if (!(retailPrice > 0)) return NextResponse.json({ message: "Retail price must be greater than zero." }, { status: 400 });
       productPatch.price = retailPrice;
     }
 
@@ -214,6 +216,34 @@ export async function PATCH(
     if (posEnabled !== undefined) productPatch.posEnabled = posEnabled;
     if (body.ecommerceEnabled !== undefined && body.posEnabled !== undefined && !ecommerceEnabled && !posEnabled) {
       return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
+    }
+
+    const wholesaleFieldsProvided = body.wholesalePrice !== undefined || body.wholesaleMinQuantity !== undefined;
+    if (wholesaleFieldsProvided) {
+      const wholesalePriceText = cleanString(body.wholesalePrice);
+      const wholesaleQuantityText = cleanString(body.wholesaleMinQuantity);
+      if (!wholesalePriceText && !wholesaleQuantityText) {
+        productUnset.push("wholesalePrice", "wholesaleMinQuantity");
+      } else {
+        const wholesalePrice = numericValue(body.wholesalePrice);
+        const wholesaleMinQuantity = numericValue(body.wholesaleMinQuantity);
+        if (!(wholesalePrice && wholesalePrice > 0)) {
+          return NextResponse.json({ message: "Wholesale price must be greater than zero." }, { status: 400 });
+        }
+        if (!(wholesaleMinQuantity && Math.floor(wholesaleMinQuantity) >= 2)) {
+          return NextResponse.json({ message: "Wholesale quantity threshold must be at least 2." }, { status: 400 });
+        }
+        const currentRetailPrice = retailPrice ?? await serverClient.fetch<number | null>(
+          `*[_type == "product" && _id == $productId][0].price`,
+          { productId },
+          { cache: "no-store" },
+        );
+        if (!(currentRetailPrice && wholesalePrice < currentRetailPrice)) {
+          return NextResponse.json({ message: "Wholesale price must be lower than the retail price." }, { status: 400 });
+        }
+        productPatch.wholesalePrice = wholesalePrice;
+        productPatch.wholesaleMinQuantity = Math.floor(wholesaleMinQuantity);
+      }
     }
 
     const procurementCost = numericValue(body.procurementCost ?? body.unitCost);

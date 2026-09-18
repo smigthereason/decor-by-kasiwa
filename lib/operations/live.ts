@@ -48,7 +48,7 @@ type RawCustomer = {
   googleId?: string | null;
   role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
-  source?: "GOOGLE" | "GUEST_CHECKOUT" | "ADMIN";
+  source?: "GOOGLE" | "EMAIL_PASSWORD" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
   address1?: string;
   address2?: string;
   city?: string;

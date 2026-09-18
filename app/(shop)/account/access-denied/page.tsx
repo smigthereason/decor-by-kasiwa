@@ -20,7 +20,7 @@ export default function AccessDeniedPage() {
           <LockKeyhole
             size={24}
             strokeWidth={1.4}
-            className="text-[var(--deep-green)]"
+            className="text-[var(--brand-green)]"
           />
         </span>
 
@@ -43,7 +43,7 @@ export default function AccessDeniedPage() {
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link
             href="/account"
-            className="focus-ring inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+            className="focus-ring inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
           >
             <ArrowLeft size={13} />
             My Account

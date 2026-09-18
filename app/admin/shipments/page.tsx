@@ -45,14 +45,14 @@ export default function AdminShipmentsPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search shipments..."
-              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             />
           </div>
           <div className="relative w-full sm:w-auto sm:min-w-52">
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             >
               {statuses.map((item) => <option key={item}>{item.replaceAll("_", " ")}</option>)}
             </select>

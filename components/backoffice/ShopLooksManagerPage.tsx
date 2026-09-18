@@ -109,7 +109,7 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
             </Link>
             <Link
               href={`${basePath}/new`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
             >
               <Plus size={14} /> Create look
             </Link>
@@ -136,12 +136,12 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
           <LiveDataState loading={loading} error={error} onRetry={load} />
         ) : data.looks.length === 0 ? (
           <div className="rounded-2xl border hairline bg-[var(--paper)] p-8 text-center sm:p-12">
-            <Layers3 size={34} strokeWidth={1.2} className="mx-auto text-[var(--deep-green)]" />
+            <Layers3 size={34} strokeWidth={1.2} className="mx-auto text-[var(--brand-green)]" />
             <h2 className="mt-5 text-xl font-semibold">Create the first customer look</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">
               Select products, set quantities, add a room/style and publish. The look appears immediately on the customer Shop the Look page.
             </p>
-            <Link href={`${basePath}/new`} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">
+            <Link href={`${basePath}/new`} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">
               <Plus size={14} /> Create first look
             </Link>
           </div>
@@ -165,13 +165,13 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
                         className="object-cover"
                       />
                     ) : (
-                      <div className="absolute inset-0 grid place-items-center text-[var(--deep-green)]"><Layers3 size={34} strokeWidth={1.1} /></div>
+                      <div className="absolute inset-0 grid place-items-center text-[var(--brand-green)]"><Layers3 size={34} strokeWidth={1.1} /></div>
                     )}
                     <div className="absolute left-3 top-3 flex gap-2">
                       <span className="rounded-full bg-[var(--paper)]/95 px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.09em]">
                         {look.active === false ? "Hidden" : "Live"}
                       </span>
-                      {look.featured && <span className="rounded-full bg-[var(--deep-green)] px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.09em] !text-soft-cream">Featured</span>}
+                      {look.featured && <span className="rounded-full bg-[var(--brand-green)] px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.09em] !text-soft-cream">Featured</span>}
                     </div>
                   </div>
                   <div className="p-5">
@@ -187,7 +187,7 @@ export default function ShopLooksManagerPage({ mode }: { mode: Mode }) {
                     <div className="mt-5 flex items-center justify-between gap-3">
                       <Link
                         href={`${basePath}/${encodeURIComponent(look._id)}`}
-                        className="group inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--deep-green)]"
+                        className="group inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)]"
                       >
                         Edit look <ArrowUpRight size={13} className="transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                       </Link>

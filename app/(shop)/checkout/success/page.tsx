@@ -204,7 +204,7 @@ function SuccessContent() {
         <div className="max-w-lg text-center">
           <LoaderCircle
             size={30}
-            className="mx-auto animate-spin text-[var(--deep-green)]"
+            className="mx-auto animate-spin text-[var(--brand-green)]"
           />
 
           <p className="kicker mt-5 text-[var(--muted)]">
@@ -260,7 +260,7 @@ function SuccessContent() {
             <div className="mt-8 flex flex-wrap justify-center gap-2">
               <Link
                 href="/checkout"
-                className="focus-ring inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
+                className="focus-ring inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"
               >
                 Return to checkout
               </Link>
@@ -307,7 +307,7 @@ function SuccessContent() {
 
       <div className="border-b hairline px-4 py-16 text-center md:px-8 md:py-20">
         <div className="mx-auto max-w-3xl">
-          <div className="mx-auto grid size-14 place-items-center rounded-full bg-[var(--deep-green)]">
+          <div className="mx-auto grid size-14 place-items-center rounded-full bg-[var(--brand-green)]">
             <Check
               size={20}
               strokeWidth={2.5}
@@ -340,7 +340,7 @@ function SuccessContent() {
           <div className="mt-8 flex flex-wrap justify-center gap-2">
             <Link
               href="/shop"
-              className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
+              className="focus-ring group inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
             >
               <span>
                 Continue shopping
@@ -530,7 +530,7 @@ export default function CheckoutSuccessPage() {
       fallback={
         <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
           <div className="text-center">
-            <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+            <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
 
             <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
               Loading order…

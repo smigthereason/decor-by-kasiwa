@@ -14,6 +14,7 @@ export const customerUser = defineType({
       name: "source", title: "Customer source", type: "string", initialValue: "GOOGLE",
       options: { list: [
         { title: "Google account", value: "GOOGLE" },
+        { title: "Email & password account", value: "EMAIL_PASSWORD" },
         { title: "Guest checkout", value: "GUEST_CHECKOUT" },
         { title: "Created by admin", value: "ADMIN" },
         { title: "Point of Sale", value: "POS" },
@@ -62,7 +63,11 @@ export const customerUser = defineType({
     defineField({ name: "outstandingBalance", title: "Outstanding Balance (KES)", type: "number", initialValue: 0, readOnly: true }),
     defineField({ name: "lastPosPurchaseAt", title: "Last POS purchase", type: "datetime", readOnly: true }),
     defineField({ name: "createdAt", title: "Created at", type: "datetime", readOnly: true }),
-    defineField({ name: "lastLoginAt", title: "Last Google login", type: "datetime", readOnly: true }),
+    defineField({ name: "passwordHash", title: "Password hash", type: "string", hidden: true, readOnly: true }),
+    defineField({ name: "passwordUpdatedAt", title: "Password updated at", type: "datetime", hidden: true, readOnly: true }),
+    defineField({ name: "passwordResetTokenHash", title: "Password reset token hash", type: "string", hidden: true, readOnly: true }),
+    defineField({ name: "passwordResetExpiresAt", title: "Password reset expires at", type: "datetime", hidden: true, readOnly: true }),
+    defineField({ name: "lastLoginAt", title: "Last login", type: "datetime", readOnly: true }),
     defineField({ name: "updatedAt", title: "Updated at", type: "datetime", readOnly: true }),
   ],
   preview: {

@@ -55,6 +55,8 @@ type RawProduct = {
   name?: string;
   slug?: string;
   price?: number;
+  wholesalePrice?: number;
+  wholesaleMinQuantity?: number;
   initialStock?: number;
   available?: boolean;
   posEnabled?: boolean;
@@ -291,6 +293,8 @@ async function fetchProducts(productIds: string[]) {
       name,
       "slug": slug.current,
       price,
+      wholesalePrice,
+      wholesaleMinQuantity,
       initialStock,
       available,
       posEnabled,

@@ -61,9 +61,9 @@ export default function MobileBottomNav() {
               <Icon
                 size={18}
                 strokeWidth={active ? 2 : 1.5}
-                className={active ? "text-[var(--deep-green)]" : "text-[var(--muted)]"}
+                className={active ? "text-[var(--brand-green)]" : "text-[var(--muted)]"}
               />
-              <span className={active ? "text-[var(--deep-green)]" : "text-[var(--muted)]"}>
+              <span className={active ? "text-[var(--brand-green)]" : "text-[var(--muted)]"}>
                 {label}
               </span>
             </Link>

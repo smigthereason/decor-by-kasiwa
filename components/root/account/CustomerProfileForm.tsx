@@ -122,10 +122,10 @@ export default function CustomerProfileForm() {
       </div>
 
       {(message || error) && (
-        <p className={`mt-3 text-xs ${error ? "text-red-700" : "text-[var(--deep-green)]"}`}>{message || error}</p>
+        <p className={`mt-3 text-xs ${error ? "text-red-700" : "text-[var(--brand-green)]"}`}>{message || error}</p>
       )}
 
-      <button type="button" onClick={save} disabled={saving} className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-soft-cream disabled:opacity-50">
+      <button type="button" onClick={save} disabled={saving} className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-soft-cream disabled:opacity-50">
         {saving ? <LoaderCircle size={13} className="animate-spin" /> : <Check size={13} />}
         {saving ? "Saving" : "Save details"}
       </button>

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { getCustomerByDocumentId, type StaffPermission } from "@/lib/auth/sanity-users";
 import { FULFILMENT_STAGES, roleForStage, type FulfilmentStage } from "@/lib/operations/workflow";
+import { recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 const allowed = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
@@ -49,6 +50,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         status: "processing",
         updatedAt: now,
       }).commit();
+      await recordAuditEvent({
+        key: `workflow-assign|${id}|${stage}|${now}`,
+        eventType: "WORKFLOW_STAGE_ASSIGNED",
+        entityType: "commerceOrder",
+        entityId: id,
+        entityLabel: order.orderNumber,
+        actor: { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role },
+        detail: `${staff.customerName} assigned ${assigned.name} to ${stage.toLowerCase()}.`,
+        createdAt: now,
+      });
       return NextResponse.json({ ok: true, currentStage: stage, assignedTo: assigned.name });
     }
 
@@ -85,6 +96,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
     if (!nextStaff) patch.unset(["assignedFulfilmentStaff", "assignedFulfilmentStaffName"]);
     await patch.commit();
+    await recordAuditEvent({
+      key: `workflow-complete|${id}|${stage}|${now}`,
+      eventType: "WORKFLOW_STAGE_COMPLETED",
+      entityType: "commerceOrder",
+      entityId: id,
+      entityLabel: order.orderNumber,
+      actor: { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role },
+      detail: nextStaff
+        ? `${staff.customerName} completed ${stage.toLowerCase()} and assigned ${nextStage?.toLowerCase()} to ${nextStaff.name}.`
+        : `${staff.customerName} completed ${stage.toLowerCase()}. Fulfilment is complete.`,
+      createdAt: now,
+    });
     return NextResponse.json({ ok: true, nextStage: nextStage || "COMPLETED" });
   } catch (cause) {
     console.error("Workflow update failed:", cause);

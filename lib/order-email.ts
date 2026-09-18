@@ -1,8 +1,7 @@
 import "server-only";
 
+import { sendSmtpEmail } from "@/lib/email/smtp";
 import { serverClient } from "@/sanity/lib/serverClient";
-
-const RESEND_API = "https://api.resend.com/emails";
 
 type OrderEmailItem = {
   name: string;
@@ -38,18 +37,9 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function getEmailConfig() {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.ORDER_EMAIL_FROM?.trim();
-  const replyTo = process.env.ORDER_EMAIL_REPLY_TO?.trim();
-
-  if (!apiKey) throw new Error("RESEND_API_KEY is missing; customer order confirmation email was not sent.");
-  if (!from) throw new Error("ORDER_EMAIL_FROM is missing; customer order confirmation email was not sent.");
-  return { apiKey, from, replyTo };
-}
-
 export async function sendOrderConfirmationEmail(input: OrderEmailInput) {
-  const { apiKey, from, replyTo } = getEmailConfig();
+  const from = process.env.ORDER_EMAIL_FROM?.trim() || process.env.SMTP_FROM?.trim();
+  const replyTo = process.env.ORDER_EMAIL_REPLY_TO?.trim() || process.env.EMAIL_REPLY_TO?.trim();
   const rows = input.items.map((item) => {
     const details = [item.finish, item.size].filter(Boolean).join(" · ");
     return `
@@ -84,25 +74,13 @@ export async function sendOrderConfirmationEmail(input: OrderEmailInput) {
       </div>
     </div>`;
 
-  const response = await fetch(RESEND_API, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [input.customerEmail],
-      subject: `Order ${input.orderNumber} confirmed — Decor by Kasiwa`,
-      html,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
+  await sendSmtpEmail({
+    to: input.customerEmail,
+    ...(from ? { from } : {}),
+    ...(replyTo ? { replyTo } : {}),
+    subject: `Order ${input.orderNumber} confirmed — Decor by Kasiwa`,
+    html,
   });
-
-  const payload = await response.json().catch(() => ({})) as { message?: string };
-  if (!response.ok) {
-    throw new Error(payload.message || `Order confirmation email failed with HTTP ${response.status}.`);
-  }
 
   await serverClient.patch(input.orderId).set({ orderConfirmationEmailSentAt: new Date().toISOString() }).commit();
 }

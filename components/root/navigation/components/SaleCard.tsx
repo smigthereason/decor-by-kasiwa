@@ -20,7 +20,7 @@ export function SaleCard({ onNavigate, clearanceCategory }: SaleCardProps) {
           <Link
             href="/shop?collection=clearance"
             onClick={onNavigate}
-            className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] !text-[var(--deep-green)] transition-opacity hover:opacity-60"
+            className="line-clamp-2 text-[11px] font-semibold uppercase leading-[1.35] tracking-[0.07em] !text-[var(--brand-green)] transition-opacity hover:opacity-60"
           >
             Sale
           </Link>

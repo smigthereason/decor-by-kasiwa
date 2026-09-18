@@ -44,7 +44,7 @@ export default function LoginPage() {
         <div className="flex-1 p-4 py-10 md:p-8 lg:py-14 lg:px-12">
           <Suspense fallback={
             <div className="grid min-h-40 place-items-center">
-              <div className="h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+              <div className="h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
             </div>
           }>
             <LoginForm />

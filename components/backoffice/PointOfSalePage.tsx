@@ -430,14 +430,14 @@ export default function PointOfSalePage() {
       {/* POS Top Command Bar */}
       <header className="z-20 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b hairline bg-[var(--paper)] px-3 py-2.5 sm:px-6 lg:h-16 lg:flex-nowrap lg:px-8 lg:py-0">
         <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-xl bg-[var(--deep-green)] text-soft-cream shadow-sm">
+          <div className="grid size-9 place-items-center rounded-xl bg-[var(--brand-green)] text-soft-cream shadow-sm">
             <Store size={18} />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold tracking-tight">Point of Sale</h1>
-              <span className="hidden items-center gap-1 rounded-full bg-[var(--deep-green)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--deep-green)] min-[420px]:inline-flex">
-                <span className="size-1.5 rounded-full bg-[var(--deep-green)] animate-pulse" /> Live Terminal
+              <span className="hidden items-center gap-1 rounded-full bg-[var(--brand-green)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--brand-green)] min-[420px]:inline-flex">
+                <span className="size-1.5 rounded-full bg-[var(--brand-green)] animate-pulse" /> Live Terminal
               </span>
             </div>
             <p className="hidden text-xs text-[var(--muted)] sm:block">In-store transactions & register</p>
@@ -447,14 +447,14 @@ export default function PointOfSalePage() {
         <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href={`${basePath}/pos/operations`}
-            className="hidden h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[10px] font-bold uppercase tracking-wider text-[var(--deep-green)] transition hover:bg-[var(--paper-2)] md:inline-flex"
+            className="hidden h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[10px] font-bold uppercase tracking-wider text-[var(--brand-green)] transition hover:bg-[var(--paper-2)] md:inline-flex"
           >
             <ReceiptText size={14} /> Sales operations
           </Link>
           {lastReceipt && (
             <Link
               href={`${basePath}/pos/receipt/${encodeURIComponent(lastReceipt.orderId)}`}
-              className="hidden h-10 items-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[10px] font-bold uppercase tracking-wider text-soft-cream md:inline-flex"
+              className="hidden h-10 items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-bold uppercase tracking-wider text-soft-cream md:inline-flex"
             >
               <ReceiptText size={14} /> {lastReceipt.receiptNumber || "Receipt"}
             </Link>
@@ -462,7 +462,7 @@ export default function PointOfSalePage() {
           <button
             type="button"
             onClick={() => setSalePanelExpanded(true)}
-            className="inline-flex h-10 max-w-[58vw] items-center gap-2 rounded-full bg-[var(--deep-green)] px-3 text-[11px] font-semibold text-soft-cream shadow-sm transition-transform active:scale-95 sm:max-w-none sm:px-4 sm:text-xs lg:hidden"
+            className="inline-flex h-10 max-w-[58vw] items-center gap-2 rounded-full bg-[var(--brand-green)] px-3 text-[11px] font-semibold text-soft-cream shadow-sm transition-transform active:scale-95 sm:max-w-none sm:px-4 sm:text-xs lg:hidden"
             aria-label="Open current sale"
           >
             <ShoppingCart size={15} className="shrink-0" />
@@ -475,8 +475,8 @@ export default function PointOfSalePage() {
 
       {/* Status Notification Banner */}
       {message && (
-        <div role="status" className="flex shrink-0 items-start gap-2 border-b hairline bg-[var(--deep-green)]/5 px-4 py-2.5 text-xs font-medium leading-5 text-[var(--deep-green)] sm:items-center sm:gap-3 sm:px-6">
-          <AlertCircle size={16} className="shrink-0 text-[var(--deep-green)]" />
+        <div role="status" className="flex shrink-0 items-start gap-2 border-b hairline bg-[var(--brand-green)]/5 px-4 py-2.5 text-xs font-medium leading-5 text-[var(--brand-green)] sm:items-center sm:gap-3 sm:px-6">
+          <AlertCircle size={16} className="shrink-0 text-[var(--brand-green)]" />
           <span className="flex-1">{message}</span>
           <button type="button" onClick={() => setMessage(null)} className="text-[10px] uppercase font-bold hover:underline">
             Dismiss
@@ -496,7 +496,7 @@ export default function PointOfSalePage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search catalog by product name, SKU, or category..."
-                className="h-11 w-full rounded-xl border hairline bg-[var(--paper-2)] pl-10 pr-4 text-xs outline-none transition focus:border-[var(--deep-green)] focus:bg-[var(--paper)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+                className="h-11 w-full rounded-xl border hairline bg-[var(--paper-2)] pl-10 pr-4 text-xs outline-none transition focus:border-[var(--brand-green)] focus:bg-[var(--paper)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[var(--muted)]">
@@ -515,7 +515,7 @@ export default function PointOfSalePage() {
             {loading ? (
               <div className="grid h-full place-items-center">
                 <div className="flex flex-col items-center gap-3 text-xs text-[var(--muted)]">
-                  <RefreshCw size={24} className="animate-spin text-[var(--deep-green)]" />
+                  <RefreshCw size={24} className="animate-spin text-[var(--brand-green)]" />
                   <span>Syncing store inventory...</span>
                 </div>
               </div>
@@ -543,7 +543,7 @@ export default function PointOfSalePage() {
                   return (
                     <article
                       key={product.id}
-                      className="group relative flex flex-col justify-between overflow-hidden rounded-xl border hairline bg-[var(--paper)] transition-all hover:border-[var(--deep-green)]/40 hover:shadow-md"
+                      className="group relative flex flex-col justify-between overflow-hidden rounded-xl border hairline bg-[var(--paper)] transition-all hover:border-[var(--brand-green)]/40 hover:shadow-md"
                     >
                       <div>
                         {/* Image Canvas */}
@@ -562,14 +562,14 @@ export default function PointOfSalePage() {
                               <ImageOff size={22} strokeWidth={1.5} />
                             </div>
                           )}
-                          <span className="absolute right-2 top-2 rounded-full bg-[var(--paper)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-tight text-[var(--deep-green)] shadow-sm backdrop-blur-md">
+                          <span className="absolute right-2 top-2 rounded-full bg-[var(--paper)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-tight text-[var(--brand-green)] shadow-sm backdrop-blur-md">
                             {stockLabel(product, variant)}
                           </span>
                         </div>
 
                         {/* Content */}
                         <div className="p-3">
-                          <p className="line-clamp-2 text-xs font-semibold leading-snug group-hover:text-[var(--deep-green)]">
+                          <p className="line-clamp-2 text-xs font-semibold leading-snug group-hover:text-[var(--brand-green)]">
                             {product.name}
                           </p>
                           <p className="mt-0.5 truncate text-[10px] text-[var(--muted)]">
@@ -588,7 +588,7 @@ export default function PointOfSalePage() {
                                       [product.id]: event.target.value,
                                     }))
                                   }
-                                  className="h-8 w-full appearance-none rounded-lg border hairline bg-[var(--paper-2)] pl-2.5 pr-7 text-[10px] font-medium outline-none transition focus:border-[var(--deep-green)]"
+                                  className="h-8 w-full appearance-none rounded-lg border hairline bg-[var(--paper-2)] pl-2.5 pr-7 text-[10px] font-medium outline-none transition focus:border-[var(--brand-green)]"
                                   aria-label={`Select variant for ${product.name}`}
                                 >
                                   {product.variants.map((item) => (
@@ -617,7 +617,7 @@ export default function PointOfSalePage() {
                         <button
                           type="button"
                           onClick={() => addProduct(product)}
-                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--deep-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--brand-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95"
                         >
                           <Plus size={12} strokeWidth={2.5} /> Add
                         </button>
@@ -640,17 +640,17 @@ export default function PointOfSalePage() {
           {/* Order Header */}
           <div className="flex items-center justify-between border-b hairline p-4 sm:px-6">
             <div className="flex items-center gap-2">
-              <ShoppingCart size={18} className="text-[var(--deep-green)]" />
+              <ShoppingCart size={18} className="text-[var(--brand-green)]" />
               <h2 className="text-sm font-semibold tracking-tight">Current Sale</h2>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-bold tabular-nums text-[var(--deep-green)]">
+              <span className="rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-bold tabular-nums text-[var(--brand-green)]">
                 {units} {units === 1 ? "unit" : "units"}
               </span>
               <button
                 type="button"
                 onClick={() => setSalePanelExpanded((current) => !current)}
-                className="inline-grid size-9 place-items-center rounded-full border hairline bg-[var(--paper)] transition hover:border-[var(--deep-green)]"
+                className="inline-grid size-9 place-items-center rounded-full border hairline bg-[var(--paper)] transition hover:border-[var(--brand-green)]"
                 aria-label={salePanelExpanded ? "Exit full screen current sale" : "Open current sale full screen"}
                 title={salePanelExpanded ? "Exit full screen (Esc)" : "Full screen current sale"}
               >
@@ -674,7 +674,7 @@ export default function PointOfSalePage() {
               cart.map((line) => (
                 <div
                   key={line.key}
-                  className="group relative flex flex-col justify-between rounded-xl border hairline bg-[var(--paper-2)] p-3 transition-colors hover:border-[var(--deep-green)]/30"
+                  className="group relative flex flex-col justify-between rounded-xl border hairline bg-[var(--paper-2)] p-3 transition-colors hover:border-[var(--brand-green)]/30"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -736,7 +736,7 @@ export default function PointOfSalePage() {
                       setSelectedCustomerId("");
                     }}
                     placeholder="Find existing customer"
-                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--brand-green)]"
                   />
                   {customerMatches.length > 0 && !selectedCustomerId && (
                     <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-y-auto rounded-xl border hairline bg-[var(--paper)] p-1 shadow-xl">
@@ -777,7 +777,7 @@ export default function PointOfSalePage() {
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="Customer Full Name *"
                     required
-                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                    className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--brand-green)]"
                   />
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -789,7 +789,7 @@ export default function PointOfSalePage() {
                       placeholder="+254..."
                       maxLength={13}
                       required
-                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs font-mono outline-none focus:border-[var(--deep-green)]"
+                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs font-mono outline-none focus:border-[var(--brand-green)]"
                     />
                   </div>
                   <div className="relative">
@@ -799,7 +799,7 @@ export default function PointOfSalePage() {
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       placeholder="Email (Optional)"
                       type="email"
-                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper)] pl-9 pr-3 text-xs outline-none focus:border-[var(--brand-green)]"
                     />
                   </div>
                 </div>
@@ -810,7 +810,7 @@ export default function PointOfSalePage() {
               <div className="space-y-2 rounded-xl border hairline bg-[var(--paper)] p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Authorised Discount</span>
-                  <Percent size={14} className="text-[var(--deep-green)]" />
+                  <Percent size={14} className="text-[var(--brand-green)]" />
                 </div>
                 <div className="grid gap-2 min-[420px]:grid-cols-[105px_1fr]">
                   <select
@@ -828,14 +828,14 @@ export default function PointOfSalePage() {
                     value={discountValue}
                     onChange={(e) => setDiscountValue(e.target.value)}
                     placeholder="Discount value"
-                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
                   />
                 </div>
                 <input
                   value={discountReason}
                   onChange={(e) => setDiscountReason(e.target.value)}
                   placeholder="Reason required when discount is applied"
-                  className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                  className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
                 />
                 {discountAmount > 0 && (
                   <p className="text-[10px] text-[var(--muted)]">
@@ -852,7 +852,7 @@ export default function PointOfSalePage() {
                   <p className="mt-1 text-[10px] leading-4 text-[var(--muted)]">Pass-through delivery money: collected from the customer but excluded from business revenue.</p>
                 </div>
                 <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.05em]">
-                  <input type="checkbox" checked={deliveryEnabled} onChange={(event) => setDeliveryEnabled(event.target.checked)} className="size-4 accent-[var(--deep-green)]" />
+                  <input type="checkbox" checked={deliveryEnabled} onChange={(event) => setDeliveryEnabled(event.target.checked)} className="size-4 accent-[var(--brand-green)]" />
                   Add delivery
                 </label>
               </div>
@@ -864,7 +864,7 @@ export default function PointOfSalePage() {
                       value={deliveryLocation}
                       onChange={(event) => setDeliveryLocation(event.target.value)}
                       placeholder="Delivery destination e.g. Kisumu"
-                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                      className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
                     />
                     <datalist id="pos-delivery-destinations">
                       <option value="Nairobi" />
@@ -882,7 +882,7 @@ export default function PointOfSalePage() {
                     value={deliveryFee}
                     onChange={(event) => setDeliveryFee(event.target.value)}
                     placeholder="Amount KES"
-                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--deep-green)]"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
                   />
                 </div>
               )}
@@ -897,7 +897,7 @@ export default function PointOfSalePage() {
                   onClick={() => setPaymentMethod("mpesa")}
                   className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
                     paymentMethod === "mpesa"
-                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
+                      ? "border-[var(--brand-green)] bg-[var(--brand-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
@@ -908,7 +908,7 @@ export default function PointOfSalePage() {
                   onClick={() => setPaymentMethod("paystack")}
                   className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
                     paymentMethod === "paystack"
-                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
+                      ? "border-[var(--brand-green)] bg-[var(--brand-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
@@ -919,7 +919,7 @@ export default function PointOfSalePage() {
                   onClick={() => setPaymentMethod("manual")}
                   className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
                     paymentMethod === "manual"
-                      ? "border-[var(--deep-green)] bg-[var(--deep-green)] text-soft-cream shadow-xs"
+                      ? "border-[var(--brand-green)] bg-[var(--brand-green)] text-soft-cream shadow-xs"
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
@@ -936,9 +936,9 @@ export default function PointOfSalePage() {
               </p>
               {paymentMethod === "manual" && (
                 <div className="grid gap-2 rounded-xl border hairline bg-[var(--paper-2)] p-3">
-                  <input value={manualPaymentName} onChange={(event) => setManualPaymentName(event.target.value)} placeholder="Paid by / payer name" className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--deep-green)]" />
-                  <input value={manualPaymentReference} onChange={(event) => setManualPaymentReference(event.target.value.toUpperCase())} placeholder="M-PESA code / payment reference" className="h-9 rounded-lg border hairline bg-white px-3 text-xs uppercase outline-none focus:border-[var(--deep-green)]" />
-                  <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => setManualAmountReceived(event.target.value)} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--deep-green)]" />
+                  <input value={manualPaymentName} onChange={(event) => setManualPaymentName(event.target.value)} placeholder="Paid by / payer name" className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
+                  <input value={manualPaymentReference} onChange={(event) => setManualPaymentReference(event.target.value.toUpperCase())} placeholder="M-PESA code / payment reference" className="h-9 rounded-lg border hairline bg-white px-3 text-xs uppercase outline-none focus:border-[var(--brand-green)]" />
+                  <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => setManualAmountReceived(event.target.value)} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
                 </div>
               )}
             </div>
@@ -959,7 +959,7 @@ export default function PointOfSalePage() {
               )}
               <div className={`flex items-baseline justify-between ${discountAmount > 0 || deliveryPayable > 0 ? "" : "border-t hairline pt-3"}`}>
                 <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Money In</span>
-                <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--deep-green)]">
+                <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--brand-green)]">
                   {formatMoney(total)}
                 </span>
               </div>
@@ -968,7 +968,7 @@ export default function PointOfSalePage() {
                 type="button"
                 onClick={() => void completeSale()}
                 disabled={processing || cart.length === 0}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--deep-green)] text-xs font-bold uppercase tracking-wider text-soft-cream shadow-md transition-all hover:bg-[var(--deep-green)]/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-green)] text-xs font-bold uppercase tracking-wider text-soft-cream shadow-md transition-all hover:bg-[var(--brand-green)]/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {processing ? (
                   <span className="inline-flex items-center gap-2">

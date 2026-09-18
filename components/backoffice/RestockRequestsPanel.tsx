@@ -77,7 +77,7 @@ export default function RestockRequestsPanel({
                 type="button"
                 disabled={savingId === request.id}
                 onClick={() => void resolve(request.id)}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
               >
                 <Check size={12} /> {savingId === request.id ? "Saving…" : "Resolve"}
               </button>

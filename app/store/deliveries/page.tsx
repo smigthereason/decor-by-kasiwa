@@ -72,7 +72,7 @@ export default function DeliveriesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search deliveries..."
-            className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+            className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
           />
         </div>
       </div>
@@ -110,14 +110,14 @@ export default function DeliveriesPage() {
                         value={notes[shipment.id] || ""}
                         onChange={(e) => setNotes((current) => ({ ...current, [shipment.id]: e.target.value }))}
                         placeholder="e.g. Received by customer at front desk"
-                        className="mt-2 w-full rounded-lg border hairline bg-[var(--paper)] px-4 py-3 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+                        className="mt-2 w-full rounded-lg border hairline bg-[var(--paper)] px-4 py-3 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
                       />
                       <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border hairline bg-[var(--paper-2)] p-3 text-xs leading-5">
                         <input
                           type="checkbox"
                           checked={Boolean(confirmed[shipment.id])}
                           onChange={(e) => setConfirmed((current) => ({ ...current, [shipment.id]: e.target.checked }))}
-                          className="mt-1 size-4 accent-[var(--deep-green)]"
+                          className="mt-1 size-4 accent-[var(--brand-green)]"
                         />
                         <span>I confirm this order reached the intended destination shown above.</span>
                       </label>
@@ -125,7 +125,7 @@ export default function DeliveriesPage() {
                         type="button"
                         disabled={savingId === shipment.id || !confirmed[shipment.id]}
                         onClick={() => void confirmDelivery(shipment.id)}
-                        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-45"
+                        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <PackageCheck size={14} /> {savingId === shipment.id ? "Confirming…" : "Confirm delivered"}
                       </button>

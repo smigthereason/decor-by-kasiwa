@@ -219,7 +219,7 @@ export default function ProductDetailClient({
                       className="absolute inset-x-4 bottom-20 flex items-center gap-3 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper)]/95 px-4 py-3 shadow-lg backdrop-blur"
                       role="status"
                     >
-                      <ShoppingBag size={20} strokeWidth={1.5} className="shrink-0 text-[var(--deep-green)]" />
+                      <ShoppingBag size={20} strokeWidth={1.5} className="shrink-0 text-[var(--brand-green)]" />
                       <p className="min-w-0 flex-1 text-sm text-[var(--muted)]">
                         <strong className="font-semibold text-[var(--ink)]">Great choice!</strong> Added to your cart.
                       </p>
@@ -249,7 +249,7 @@ export default function ProductDetailClient({
             ) : (
               <div className="grid aspect-square place-items-center border-b hairline bg-white px-8 text-center">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--deep-green)]">Decor by Kasiwa</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--brand-green)]">Decor by Kasiwa</p>
                   <p className="mt-3 text-sm text-[var(--muted)]">Product imagery will be added soon.</p>
                 </div>
               </div>
@@ -299,7 +299,7 @@ export default function ProductDetailClient({
               <div className="mt-3">
                 <p className="text-[2rem] font-semibold leading-none tracking-[-0.03em]">{formatMoney(displayPrice)}</p>
                 {quantityPricingMessage && (
-                  <p className="mt-2 text-xs font-medium text-[var(--deep-green)]">{quantityPricingMessage}</p>
+                  <p className="mt-2 text-xs font-medium text-[var(--brand-green)]">{quantityPricingMessage}</p>
                 )}
               </div>
 
@@ -307,13 +307,13 @@ export default function ProductDetailClient({
                 <ProductRatingStars rating={rating} size={20} />
                 <span className="text-sm font-semibold">{rating.toFixed(1)}</span>
                 {typeof reviewCount === "number" && (
-                  <span className="text-sm font-medium text-[var(--deep-green)] underline underline-offset-4">
+                  <span className="text-sm font-medium text-[var(--brand-green)] underline underline-offset-4">
                     {reviewCount} {reviewCount === 1 ? "Review" : "Reviews"}
                   </span>
                 )}
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm font-semibold text-[var(--deep-green)]">
+              <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm font-semibold text-[var(--brand-green)]">
                 <a href="#product-details" className="focus-ring underline decoration-1 underline-offset-4">Product Details</a>
                 <a href="#delivery-returns" className="focus-ring underline decoration-1 underline-offset-4">Easy Returns</a>
               </div>
@@ -330,7 +330,7 @@ export default function ProductDetailClient({
                         onClick={() => selectSize(item)}
                         className={`focus-ring min-w-14 rounded-full border px-4 py-3 text-sm transition-colors ${
                           size === item
-                            ? "border-[var(--deep-green)] bg-[var(--deep-green)] !text-soft-cream"
+                            ? "border-[var(--brand-green)] bg-[var(--brand-green)] !text-soft-cream"
                             : "border-[var(--ink)]/20 bg-[var(--paper)]"
                         }`}
                         aria-pressed={size === item}
@@ -369,7 +369,7 @@ export default function ProductDetailClient({
                   type="button"
                   onClick={handleAdd}
                   disabled={soldOut || purchasingUnavailable}
-                  className="focus-ring inline-flex min-h-14 min-w-0 flex-1 items-center justify-center rounded-full bg-[var(--deep-green)] px-4 text-sm font-semibold !text-soft-cream transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="focus-ring inline-flex min-h-14 min-w-0 flex-1 items-center justify-center rounded-full bg-[var(--brand-green)] px-4 text-sm font-semibold !text-soft-cream transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {catalogueError ? "Catalogue unavailable" : !catalogueReady ? "Preparing cart…" : soldOut ? "Out of stock" : added ? "Added to cart" : "Add to Cart"}
                 </button>
@@ -384,7 +384,7 @@ export default function ProductDetailClient({
                 type="button"
                 onClick={handleBuyNow}
                 disabled={buyingNow || soldOut || purchasingUnavailable}
-                className="focus-ring mt-3 inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-full border border-[var(--deep-green)] px-5 text-sm font-semibold text-[var(--deep-green)] disabled:opacity-50"
+                className="focus-ring mt-3 inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-full border border-[var(--brand-green)] px-5 text-sm font-semibold text-[var(--brand-green)] disabled:opacity-50"
               >
                 <Zap size={16} /> {buyingNow ? "Redirecting..." : "Buy Now"}
               </button>
@@ -455,7 +455,7 @@ export default function ProductDetailClient({
                         type="button"
                         key={image}
                         onClick={() => selectImage(image)}
-                        className="group relative aspect-[4/5] w-20 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-2)] transition-all duration-300 hover:border-[var(--deep-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deep-green)]/30 lg:w-24"
+                        className="group relative aspect-[4/5] w-20 flex-shrink-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-2)] transition-all duration-300 hover:border-[var(--brand-green)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-green)]/30 lg:w-24"
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: (index + 1) * 0.08, duration: 0.4 }}
@@ -483,18 +483,18 @@ export default function ProductDetailClient({
                 transition={{ duration: 0.6 }}
               >
                 <div className="absolute inset-0 opacity-5 pointer-events-none">
-                  <div className="absolute top-10 right-10 w-48 h-48 rounded-full border-4 border-[var(--deep-green)]" />
-                  <div className="absolute bottom-10 left-10 w-36 h-36 rounded-full border-4 border-[var(--deep-green)]" />
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full border-4 border-[var(--deep-green)]" />
+                  <div className="absolute top-10 right-10 w-48 h-48 rounded-full border-4 border-[var(--brand-green)]" />
+                  <div className="absolute bottom-10 left-10 w-36 h-36 rounded-full border-4 border-[var(--brand-green)]" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full border-4 border-[var(--brand-green)]" />
                 </div>
 
                 <div className="relative text-center space-y-4 max-w-sm z-10">
-                  <span className="inline-block px-4 py-1.5 bg-[var(--deep-green)]/10 rounded-full text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--deep-green)]">
+                  <span className="inline-block px-4 py-1.5 bg-[var(--brand-green)]/10 rounded-full text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--brand-green)]">
                     Decor by Kasiwa
                   </span>
 
                   <div className="space-y-2">
-                    <p className="text-3xl font-light text-[var(--deep-green)]">📸</p>
+                    <p className="text-3xl font-light text-[var(--brand-green)]">📸</p>
                     <p className="text-sm text-[var(--muted)] font-medium leading-relaxed">
                       Product imagery will be added soon.
                     </p>
@@ -529,7 +529,7 @@ export default function ProductDetailClient({
                 <div>
                   <p className="text-xl font-medium">{formatMoney(displayPrice)}</p>
                   {quantityPricingMessage && (
-                    <p className="mt-1 text-[10px] font-medium text-[var(--deep-green)]">
+                    <p className="mt-1 text-[10px] font-medium text-[var(--brand-green)]">
                       {quantityPricingMessage}
                     </p>
                   )}
@@ -570,7 +570,7 @@ export default function ProductDetailClient({
                           onClick={() => selectColour(item)}
                           className={`focus-ring inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[10px] uppercase tracking-[0.08em] transition-colors ${
                             colour === item
-                              ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
+                              ? "border-[var(--ink)] bg-[var(--brand-green)] text-[var(--paper)]"
                               : "hairline"
                           }`}
                           aria-pressed={colour === item}
@@ -602,7 +602,7 @@ export default function ProductDetailClient({
                         onClick={() => selectSize(item)}
                         className={`focus-ring min-w-12 rounded-full border px-4 py-2 text-[10px] uppercase tracking-[0.08em] transition-colors ${
                           size === item
-                            ? "border-[var(--ink)] bg-[var(--deep-green)] text-[var(--paper)]"
+                            ? "border-[var(--ink)] bg-[var(--brand-green)] text-[var(--paper)]"
                             : "hairline"
                         }`}
                         aria-pressed={size === item}
@@ -643,7 +643,7 @@ export default function ProductDetailClient({
                     type="button"
                     onClick={handleAdd}
                     disabled={soldOut || purchasingUnavailable}
-                    className="focus-ring inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="focus-ring inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {catalogueError ? (
                       <>Catalogue unavailable</>
@@ -671,7 +671,7 @@ export default function ProductDetailClient({
                   type="button"
                   onClick={handleBuyNow}
                   disabled={buyingNow || soldOut || purchasingUnavailable}
-                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-2 border-[var(--ink)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink)] transition-all hover:bg-[var(--deep-green)] hover:text-[var(--paper)] disabled:opacity-50"
+                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-2 border-[var(--ink)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--ink)] transition-all hover:bg-[var(--brand-green)] hover:text-[var(--paper)] disabled:opacity-50"
                 >
                   {buyingNow ? (
                     <>

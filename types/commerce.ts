@@ -28,6 +28,8 @@ export type StoreProduct = {
   categoryParent?: CatalogTag;
 
   price: number;
+  wholesalePrice?: number;
+  wholesaleMinQuantity?: number;
   currency: "KES";
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;

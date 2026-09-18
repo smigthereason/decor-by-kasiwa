@@ -32,7 +32,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-xs font-semibold">{order.orderNumber}</p>
-                  <span className="rounded-full bg-[var(--paper-2)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]">
+                  <span className="rounded-full bg-[var(--paper-2)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-green)]">
                     {channelLabel(order)}
                   </span>
                 </div>
@@ -44,7 +44,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
 
               <Link
                 href={orderHref(order, mode)}
-                className="group inline-grid size-9 shrink-0 place-items-center rounded-full border border-[var(--ink)]/10 transition-colors hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                className="group inline-grid size-9 shrink-0 place-items-center rounded-full border border-[var(--ink)]/10 transition-colors hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                 aria-label={`Open ${order.orderNumber}`}
               >
                 <ArrowUpRight
@@ -119,7 +119,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
                 </td>
 
                 <td className="px-4 py-4">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--deep-green)]">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-green)]">
                     {order.salesChannel === "POS" && <Store size={11} />}
                     {channelLabel(order)}
                   </span>
@@ -166,7 +166,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
                 <td className="py-4 pl-4 text-right">
                   <Link
                     href={orderHref(order, mode)}
-                    className="group inline-grid size-9 place-items-center rounded-full border border-[var(--ink)]/10 transition-colors hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                    className="group inline-grid size-9 place-items-center rounded-full border border-[var(--ink)]/10 transition-colors hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                     aria-label={`Open ${order.orderNumber}`}
                   >
                     <ArrowUpRight

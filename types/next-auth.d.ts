@@ -1,10 +1,5 @@
-import type {
-  DefaultSession,
-} from "next-auth";
-
-import type {
-  CustomerRole,
-} from "@/lib/auth/sanity-users";
+import type { DefaultSession } from "next-auth";
+import type { CustomerRole } from "@/lib/auth/sanity-users";
 
 declare module "next-auth" {
   interface Session {
@@ -12,6 +7,10 @@ declare module "next-auth" {
       id: string;
       role: CustomerRole;
     } & DefaultSession["user"];
+  }
+
+  interface User {
+    role?: CustomerRole;
   }
 }
 

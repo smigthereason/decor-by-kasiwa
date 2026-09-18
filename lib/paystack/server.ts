@@ -37,6 +37,8 @@ type RawCheckoutProduct = {
   name?: string;
   slug?: string;
   price?: number;
+  wholesalePrice?: number;
+  wholesaleMinQuantity?: number;
   initialStock?: number;
   available?: boolean;
   ecommerceEnabled?: boolean;
@@ -279,6 +281,8 @@ async function fetchCheckoutProducts(productIds: string[]) {
       name,
       "slug": slug.current,
       price,
+      wholesalePrice,
+      wholesaleMinQuantity,
       initialStock,
       available,
       ecommerceEnabled,

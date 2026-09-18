@@ -58,10 +58,39 @@ export const product = defineType({
     }),
     defineField({
       name: "price",
-      title: "Price (KES)",
+      title: "Retail price (KES)",
+      description: "Standard per-item price used below the wholesale quantity threshold.",
       type: "number",
       group: "core",
       validation: (rule) => rule.required().min(1),
+    }),
+    defineField({
+      name: "wholesalePrice",
+      title: "Wholesale price (KES)",
+      description: "Optional per-item price used when the customer reaches the wholesale quantity threshold.",
+      type: "number",
+      group: "core",
+      validation: (rule) => rule.min(1).custom((value, context) => {
+        const threshold = Number(context.document?.wholesaleMinQuantity || 0);
+        const retail = Number(context.document?.price || 0);
+        if (value == null && !threshold) return true;
+        if (value == null) return "Wholesale price is required when a wholesale quantity is set.";
+        if (retail > 0 && Number(value) >= retail) return "Wholesale price must be lower than the retail price.";
+        return true;
+      }),
+    }),
+    defineField({
+      name: "wholesaleMinQuantity",
+      title: "Wholesale quantity threshold",
+      description: "Minimum quantity required before the wholesale price applies. Example: 5 means 1–4 use retail price and 5+ use wholesale price.",
+      type: "number",
+      group: "core",
+      validation: (rule) => rule.integer().min(2).custom((value, context) => {
+        const wholesalePrice = Number(context.document?.wholesalePrice || 0);
+        if (value == null && !wholesalePrice) return true;
+        if (value == null) return "Wholesale quantity is required when a wholesale price is set.";
+        return true;
+      }),
     }),
     defineField({
       name: "procurementCost",

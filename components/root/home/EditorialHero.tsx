@@ -114,7 +114,7 @@ export default function EditorialHero() {
 
   return (
     <section
-      className="relative isolate w-full overflow-hidden bg-[var(--deep-green)]"
+      className="relative isolate w-full overflow-hidden bg-[var(--brand-green)]"
       aria-roledescription="carousel"
       aria-label="Decor by Kasiwa featured interiors"
       onMouseEnter={() => setPaused(true)}

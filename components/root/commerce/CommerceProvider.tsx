@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { signOut, useSession } from "next-auth/react";
+import { endTrackedStaffActivitySession } from "@/components/backoffice/StaffActivityTracker";
 
 import type {
   DemoUser,
@@ -819,9 +820,12 @@ export function CommerceProvider({
   /* ---------------------------------------------------------------------- */
 
   function logout() {
-    void signOut({
-      callbackUrl: "/",
-    });
+    void (async () => {
+      await endTrackedStaffActivitySession();
+      await signOut({
+        callbackUrl: "/",
+      });
+    })();
   }
 
   const value =

@@ -19,7 +19,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
         </div>
 
         <div className="border-b hairline pb-6 text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--deep-green)]">Decor by Kasiwa</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--brand-green)]">Decor by Kasiwa</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Sales Receipt</h1>
           <p className="mt-2 text-xs text-[var(--muted)]">{receipt.receiptNumber || `RCT-${receipt.orderNumber}`}</p>
         </div>

@@ -85,7 +85,7 @@ export default function RestockAlertsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search product to report..."
-              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             />
           </div>
 
@@ -128,7 +128,7 @@ export default function RestockAlertsPage() {
                 <select
                   value={reason}
                   onChange={(e) => setReason(e.target.value as RestockReason)}
-                  className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+                  className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
                 >
                   {reasons.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
@@ -141,14 +141,14 @@ export default function RestockAlertsPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add context for the manager..."
-                className="mt-2 w-full rounded-lg border hairline bg-[var(--paper)] px-4 py-3 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+                className="mt-2 w-full rounded-lg border hairline bg-[var(--paper)] px-4 py-3 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
               />
 
               <button
                 type="button"
                 disabled={saving}
                 onClick={() => void submit()}
-                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--deep-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"
               >
                 <AlertTriangle size={14} /> {saving ? "Sending…" : "Alert manager / admin"}
               </button>

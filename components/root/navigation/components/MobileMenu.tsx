@@ -18,7 +18,7 @@ interface MobileMenuProps {
 
 function MobileMenuHeader({ onClose }: { onClose: () => void }) {
   return (
-    <div className="sticky top-0 z-20 flex items-center justify-between bg-[var(--deep-green)] pb-4 pt-1">
+    <div className="sticky top-0 z-20 flex items-center justify-between bg-[var(--brand-green)] pb-4 pt-1">
       <span className="text-[12px] font-semibold tracking-[-0.03em] text-soft-cream sm:text-sm">
         DECOR BY KASIWA
       </span>
@@ -76,7 +76,7 @@ export function MobileMenu({ isOpen, onClose, navigation, search, setSearch, onS
       {isOpen && (
         <motion.div
           id="site-menu"
-          className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--deep-green)] text-[var(--paper)] shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
+          className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--brand-green)] text-[var(--paper)] shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
           initial={{ x: "-100%" }}
           animate={{ x: 0 }}
           exit={{ x: "-100%" }}

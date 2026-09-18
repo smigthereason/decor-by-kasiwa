@@ -3,7 +3,7 @@ import { ArrowRight, ArrowUpRight } from "lucide-react";
 
 export default function SiteFooter() {
   return (
-    <footer className="w-full bg-[var(--deep-green)] text-[var(--paper)]">
+    <footer className="w-full bg-[var(--brand-green)] text-[var(--paper)]">
       {/* MAIN FOOTER CONTENT */}
       <div className="grid w-full gap-10 border-b border-soft-cream/10 px-4 py-12 md:grid-cols-[1.4fr_1fr] md:px-8 md:py-16 lg:px-12">
         {/* LEFT: CTA SECTION */}

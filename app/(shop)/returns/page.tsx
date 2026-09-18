@@ -81,7 +81,7 @@ export default function ReturnsPage() {
             </p>
             <Link
               href="/contact"
-              className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
+              className="focus-ring group inline-flex items-center gap-2 self-start rounded-full bg-[var(--brand-green)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3"
             >
               <span>Contact the studio</span>
               <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />

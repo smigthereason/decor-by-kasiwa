@@ -114,7 +114,7 @@ export default function CheckoutPage() {
     return (
       <div className="grid min-h-[60vh] place-items-center bg-[var(--paper)]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--deep-green)]/10" />
+          <div className="mx-auto mb-4 h-2 w-24 animate-pulse rounded-full bg-[var(--brand-green)]/10" />
           <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">
             Preparing checkout…
           </p>
@@ -139,7 +139,7 @@ export default function CheckoutPage() {
         </p>
         <Link
           href="/shop"
-          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--deep-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
+          className="group mt-8 inline-flex items-center gap-2 self-start rounded-full bg-[var(--brand-green)] px-6 py-3.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:gap-3 hover:shadow-lg"
         >
           <span>Return to collection</span>
           <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
@@ -281,9 +281,9 @@ export default function CheckoutPage() {
                         className={[
                           "grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-semibold transition-all sm:size-8",
                           active
-                            ? "bg-[var(--deep-green)] text-[var(--paper)] ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--paper)]"
+                            ? "bg-[var(--brand-green)] text-[var(--paper)] ring-2 ring-[var(--ink)] ring-offset-2 ring-offset-[var(--paper)]"
                             : complete
-                            ? "bg-[var(--deep-green)] text-[var(--paper)]"
+                            ? "bg-[var(--brand-green)] text-[var(--paper)]"
                             : "border hairline text-[var(--muted)]",
                         ].join(" ")}
                       >
@@ -299,7 +299,7 @@ export default function CheckoutPage() {
                       </span>
                     </button>
                     {idx < steps.length - 1 && (
-                      <div className="mx-2 h-px flex-1 bg-[var(--deep-green)]/10 sm:mx-4" />
+                      <div className="mx-2 h-px flex-1 bg-[var(--brand-green)]/10 sm:mx-4" />
                     )}
                   </div>
                 );
@@ -471,7 +471,7 @@ export default function CheckoutPage() {
                           className={[
                             "flex w-full items-center justify-between rounded-lg border p-4 sm:p-5 text-left transition-all",
                             selected
-                              ? "border-[var(--ink)] bg-[var(--deep-green)]/[0.03] shadow-sm"
+                              ? "border-[var(--ink)] bg-[var(--brand-green)]/[0.03] shadow-sm"
                               : "border-[var(--ink)]/10 hover:border-[var(--ink)]/30 hover:bg-[var(--paper-2)]",
                           ].join(" ")}
                         >
@@ -480,7 +480,7 @@ export default function CheckoutPage() {
                               className={[
                                 "grid size-9 sm:size-10 place-items-center rounded-full transition-colors",
                                 selected
-                                  ? "bg-[var(--deep-green)] text-[var(--paper)]"
+                                  ? "bg-[var(--brand-green)] text-[var(--paper)]"
                                   : "bg-[var(--paper-2)] text-[var(--muted)]",
                               ].join(" ")}
                             >
@@ -495,7 +495,7 @@ export default function CheckoutPage() {
                             className={[
                               "grid size-5 place-items-center rounded-full border-2 transition-all shrink-0",
                               selected
-                                ? "border-[var(--ink)] bg-[var(--deep-green)]"
+                                ? "border-[var(--ink)] bg-[var(--brand-green)]"
                                 : "border-[var(--ink)]/20",
                             ].join(" ")}
                           >
@@ -511,7 +511,7 @@ export default function CheckoutPage() {
                       <ShieldCheck
                         size={18}
                         strokeWidth={1.5}
-                        className="mt-0.5 shrink-0 text-[var(--deep-green)]"
+                        className="mt-0.5 shrink-0 text-[var(--brand-green)]"
                       />
                       <div>
                         <p className="text-sm font-semibold">Pay securely with Paystack</p>
@@ -530,7 +530,7 @@ export default function CheckoutPage() {
                   <button
                     type="submit"
                     disabled={initializingPayment}
-                    className="focus-ring group mt-8 sm:mt-10 inline-flex min-h-12 sm:min-h-14 w-full items-center justify-center gap-3 rounded-full bg-[var(--deep-green)] px-6 sm:px-8 text-xs font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="focus-ring group mt-8 sm:mt-10 inline-flex min-h-12 sm:min-h-14 w-full items-center justify-center gap-3 rounded-full bg-[var(--brand-green)] px-6 sm:px-8 text-xs font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {initializingPayment ? (
                       <LoaderCircle size={14} className="animate-spin text-soft-cream/80" />
@@ -570,7 +570,7 @@ export default function CheckoutPage() {
                   <button
                     type="button"
                     onClick={() => continueTo(step + 1)}
-                    className="focus-ring group inline-flex min-h-11 sm:min-h-12 items-center gap-2 sm:gap-3 rounded-full bg-[var(--deep-green)] px-5 sm:px-8 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg"
+                    className="focus-ring group inline-flex min-h-11 sm:min-h-12 items-center gap-2 sm:gap-3 rounded-full bg-[var(--brand-green)] px-5 sm:px-8 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg"
                   >
                     <span className="hidden sm:inline">Continue to {steps[step].label}</span>
                     <span className="sm:hidden">Continue</span>
@@ -590,7 +590,7 @@ export default function CheckoutPage() {
                 <p className="kicker text-[var(--muted)]">Order Summary</p>
                 <h2 className="mt-2 text-xl sm:text-2xl font-medium tracking-[-0.02em]">Your Selection</h2>
               </div>
-              <span className="rounded-full bg-[var(--deep-green)]/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
+              <span className="rounded-full bg-[var(--brand-green)]/[0.05] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)]">
                 {cart.length} {cart.length === 1 ? "Item" : "Items"}
               </span>
             </div>
@@ -604,7 +604,7 @@ export default function CheckoutPage() {
                     className="flex items-start justify-between gap-3 sm:gap-4 py-4 sm:py-5"
                   >
                     <div className="flex gap-3 sm:gap-4">
-                      <div className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-lg bg-[var(--deep-green)]/[0.03] text-xs font-medium text-[var(--muted)]">
+                      <div className="grid size-10 sm:size-12 shrink-0 place-items-center rounded-lg bg-[var(--brand-green)]/[0.03] text-xs font-medium text-[var(--muted)]">
                         {String(index + 1).padStart(2, "0")}
                       </div>
                       <div>
@@ -638,7 +638,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* TOTAL */}
-            <div className="mt-5 sm:mt-6 flex items-baseline justify-between rounded-lg bg-[var(--deep-green)] px-5 sm:px-6 py-4 sm:py-5 text-[var(--paper)]">
+            <div className="mt-5 sm:mt-6 flex items-baseline justify-between rounded-lg bg-[var(--brand-green)] px-5 sm:px-6 py-4 sm:py-5 text-[var(--paper)]">
               <span className="text-xs font-medium uppercase tracking-[0.08em] opacity-80">Total</span>
               <span className="text-2xl sm:text-3xl font-medium tracking-[-0.03em]">
                 {formatMoney(subtotal + (selectedDeliveryOption?.fee || 0))}
@@ -662,7 +662,7 @@ export default function CheckoutPage() {
             </div>
 
             {/* FOOTNOTE */}
-            <div className="mt-5 sm:mt-6 rounded-lg bg-[var(--deep-green)]/[0.03] p-4 text-xs leading-relaxed text-[var(--muted)]">
+            <div className="mt-5 sm:mt-6 rounded-lg bg-[var(--brand-green)]/[0.03] p-4 text-xs leading-relaxed text-[var(--muted)]">
               <p className="font-semibold text-[var(--ink)] uppercase tracking-[0.06em] text-[10px]">
                 Fulfilment Note
               </p>
@@ -691,7 +691,7 @@ function StepHeading({
   return (
     <div>
       <div className="flex items-center gap-3">
-        <span className="grid size-7 sm:size-8 place-items-center rounded-full bg-[var(--deep-green)] text-[10px] font-semibold text-[var(--paper)]">
+        <span className="grid size-7 sm:size-8 place-items-center rounded-full bg-[var(--brand-green)] text-[10px] font-semibold text-[var(--paper)]">
           {index}
         </span>
         <p className="kicker text-[var(--muted)]">{eyebrow}</p>

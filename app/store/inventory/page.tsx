@@ -47,14 +47,14 @@ export default function StoreInventoryPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search product, SKU or category..."
-              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             />
           </div>
           <div className="relative min-w-52">
             <select
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--deep-green)] focus:ring-2 focus:ring-[var(--deep-green)]/10"
+              className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10"
             >
               {locations.map((item) => <option key={item}>{item}</option>)}
             </select>
@@ -76,7 +76,7 @@ export default function StoreInventoryPage() {
                     </div>
                     <Link
                       href={`/shop/${item.slug || ""}`}
-                      className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                      className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline transition hover:border-[var(--brand-green)] hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                       aria-label={`Open ${item.name} in shop`}
                     >
                       <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -121,7 +121,7 @@ export default function StoreInventoryPage() {
                       <td className="px-4 py-4 text-right">
                         <Link
                           href={`/shop/${item.slug || ""}`}
-                          className="group inline-grid size-9 place-items-center rounded-full border hairline transition hover:border-[var(--deep-green)] hover:bg-[var(--deep-green)] hover:!text-soft-cream"
+                          className="group inline-grid size-9 place-items-center rounded-full border hairline transition hover:border-[var(--brand-green)] hover:bg-[var(--brand-green)] hover:!text-soft-cream"
                           aria-label={`Open ${item.name} in shop`}
                         >
                           <ArrowUpRight size={14} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />

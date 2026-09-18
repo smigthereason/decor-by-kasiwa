@@ -24,7 +24,7 @@ export default function ContactPage() {
           </p>
           <Link
             href="/consultation"
-            className="relative z-10 mt-7 inline-flex items-center gap-2 rounded-full bg-[var(--deep-green)] px-5 py-3 text-[10px] uppercase tracking-[0.08em] !text-[var(--paper)]"
+            className="relative z-10 mt-7 inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 py-3 text-[10px] uppercase tracking-[0.08em] !text-[var(--paper)]"
           >
             Book consultation <ArrowRight size={13} />
           </Link>

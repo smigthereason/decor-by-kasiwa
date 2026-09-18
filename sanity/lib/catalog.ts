@@ -31,6 +31,8 @@ type SanityProductRecord = {
   sku?: string;
 
   price?: number;
+  wholesalePrice?: number;
+  wholesaleMinQuantity?: number;
   procurementCost?: number;
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;
@@ -124,6 +126,8 @@ const productProjection = `{
   "slug": slug.current,
   sku,
   price,
+  wholesalePrice,
+  wholesaleMinQuantity,
   procurementCost,
   ecommerceEnabled,
   posEnabled,
@@ -347,6 +351,16 @@ function mapProduct(
       "number"
         ? record.price
         : 0,
+
+    wholesalePrice:
+      typeof record.wholesalePrice === "number" && record.wholesalePrice > 0
+        ? record.wholesalePrice
+        : undefined,
+
+    wholesaleMinQuantity:
+      typeof record.wholesaleMinQuantity === "number" && record.wholesaleMinQuantity >= 2
+        ? Math.floor(record.wholesaleMinQuantity)
+        : undefined,
 
     currency:
       "KES",
