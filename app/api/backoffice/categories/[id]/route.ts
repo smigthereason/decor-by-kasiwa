@@ -71,3 +71,47 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to update category." }, { status: 400 });
   }
 }
+
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const staff = await getApiStaff(["ADMIN"]);
+  if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
+
+  try {
+    const { id } = await params;
+    const category = await serverClient.fetch<{ _id: string; title?: string } | null>(
+      `*[_type == "category" && _id == $id][0]{_id,title}`,
+      { id },
+      { cache: "no-store" },
+    );
+    if (!category) return NextResponse.json({ message: "Category not found." }, { status: 404 });
+
+    const usage = await serverClient.fetch<{ productCount: number; childCount: number; referenceCount: number }>(
+      `{
+        "productCount": count(*[_type == "product" && (primaryCategory._ref == $id || $id in categories[]._ref)]),
+        "childCount": count(*[_type == "category" && parent._ref == $id]),
+        "referenceCount": count(*[_id != $id && references($id)])
+      }`,
+      { id },
+      { cache: "no-store" },
+    );
+
+    if (usage.referenceCount > 0) {
+      const reasons = [
+        usage.productCount > 0 ? `${usage.productCount} product${usage.productCount === 1 ? "" : "s"}` : null,
+        usage.childCount > 0 ? `${usage.childCount} subcategor${usage.childCount === 1 ? "y" : "ies"}` : null,
+      ].filter(Boolean);
+      const detail = reasons.length ? ` It is still used by ${reasons.join(" and ")}.` : " It is still referenced by other content.";
+      return NextResponse.json(
+        { message: `This category cannot be deleted yet.${detail} Reassign or remove those references first.` },
+        { status: 409 },
+      );
+    }
+
+    await serverClient.delete(id);
+    return NextResponse.json({ ok: true, message: `Category “${category.title || "Category"}” deleted.` });
+  } catch (cause) {
+    console.error("Category delete failed:", cause);
+    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to delete category." }, { status: 400 });
+  }
+}
