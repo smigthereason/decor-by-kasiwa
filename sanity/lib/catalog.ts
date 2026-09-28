@@ -31,6 +31,7 @@ type SanityProductRecord = {
   sku?: string;
 
   price?: number;
+  compareAtPrice?: number;
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   procurementCost?: number;
@@ -126,6 +127,7 @@ const productProjection = `{
   "slug": slug.current,
   sku,
   price,
+  compareAtPrice,
   wholesalePrice,
   wholesaleMinQuantity,
   procurementCost,
@@ -351,6 +353,11 @@ function mapProduct(
       "number"
         ? record.price
         : 0,
+
+    compareAtPrice:
+      typeof record.compareAtPrice === "number" && record.compareAtPrice > 0
+        ? record.compareAtPrice
+        : undefined,
 
     wholesalePrice:
       typeof record.wholesalePrice === "number" && record.wholesalePrice > 0

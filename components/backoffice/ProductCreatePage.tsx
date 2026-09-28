@@ -264,7 +264,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Product name *" className="sm:col-span-2"><input name="name" defaultValue={product?.name || ""} required /></Field>
               <Field label="Retail price (KES) *"><input name="price" type="number" min="1" step="0.01" defaultValue={product?.price ?? ""} required /></Field>
-              <Field label="Compare-at price"><input name="compareAtPrice" type="number" min="0" step="0.01" defaultValue={product?.compareAtPrice ?? ""} /></Field>
+              <Field label="Compare-at price" hint="Original price shown crossed out during a sale"><input name="compareAtPrice" type="number" min="0" step="0.01" defaultValue={product?.compareAtPrice ?? ""} /></Field>
               <Field label="Wholesale price (KES)" hint="Optional discounted unit price"><input name="wholesalePrice" type="number" min="1" step="0.01" defaultValue={product?.wholesalePrice ?? ""} /></Field>
               <Field label="Wholesale quantity" hint="Minimum units, e.g. 5"><input name="wholesaleMinQuantity" type="number" min="2" step="1" defaultValue={product?.wholesaleMinQuantity ?? ""} /></Field>
               <p className="sm:col-span-2 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">When both wholesale fields are set, quantities below the threshold use the retail price. At the threshold and above, the wholesale unit price applies automatically in cart, checkout and POS.</p>
@@ -324,6 +324,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
           </Card>
 
           <Card title="Visibility">
+            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">To run a sale: enter the discounted selling price in <strong className="text-[var(--ink)]">Retail price</strong>, enter the normal/original price in <strong className="text-[var(--ink)]">Compare-at price</strong>, then enable <strong className="text-[var(--ink)]">On sale</strong>. The storefront will calculate the percentage discount automatically and feature eligible products in the Sale carousel.</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <VisibilityToggle label="Available in shop" checked={visibility.available} onChange={(checked)=>setVisibility((current)=>({...current,available:checked}))}/>
               <VisibilityToggle label="Featured" checked={visibility.featured} onChange={(checked)=>setVisibility((current)=>({...current,featured:checked}))}/>

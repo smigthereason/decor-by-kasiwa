@@ -840,6 +840,10 @@ export default function ShopLanding({
   const newArrivals = availableProducts.filter((product) => product.newArrival);
   const newArrivalRail = (newArrivals.length ? newArrivals : [...availableProducts].reverse()).slice(0, 10);
 
+  const saleRail = availableProducts
+    .filter((product) => product.onSale && typeof product.compareAtPrice === "number" && product.compareAtPrice > product.price)
+    .slice(0, 12);
+
   const heroEyebrow = settings?.homeHeroEyebrow?.trim() || "Beautiful spaces decor";
   const configuredHeroTitle = settings?.homeHeroTitle?.trim();
   const heroTitle = (configuredHeroTitle || "Beautiful spaces don't have to cost a fortune.")
@@ -894,7 +898,15 @@ export default function ShopLanding({
         <AutoCategoryCarousel items={categoryCarouselItems} />
       </section>
 
-      {/* 2. Best Sellers - HORIZONTAL CAROUSEL */}
+      {/* 2. Sale - HORIZONTAL CAROUSEL */}
+      {saleRail.length > 0 && (
+        <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
+          <SectionHeading eyebrow="Limited-time offers" title="Sale" href="/shop?collection=offers" />
+          <HorizontalProductCarousel products={saleRail} />
+        </section>
+      )}
+
+      {/* 3. Best Sellers - HORIZONTAL CAROUSEL */}
       {bestSellerRail.length > 0 && (
         <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
           <SectionHeading eyebrow="Popular right now" title="Best sellers" href="/shop?collection=best-sellers" />
@@ -902,7 +914,7 @@ export default function ShopLanding({
         </section>
       )}
 
-      {/* 3. New Arrivals - HORIZONTAL CAROUSEL */}
+      {/* 4. New Arrivals - HORIZONTAL CAROUSEL */}
       {newArrivalRail.length > 0 && (
         <section className="border-b hairline px-4 py-5 sm:px-6 sm:py-9 lg:px-10 lg:py-12">
           <SectionHeading eyebrow="Fresh for the home" title="New arrivals" href="/shop?collection=new-arrivals" />
@@ -910,7 +922,7 @@ export default function ShopLanding({
         </section>
       )}
 
-      {/* 4. Shop the Look - FULL WIDTH LAYOUT (NOT A CAROUSEL) */}
+      {/* 5. Shop the Look - FULL WIDTH LAYOUT (NOT A CAROUSEL) */}
       {featuredLook && (
         <section className="relative border-t hairline w-full border-b hairline ">
           <div className="px-4 pt-5 sm:px-6 sm:pt-9 lg:px-10 lg:pt-12">

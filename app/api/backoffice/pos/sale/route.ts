@@ -4,7 +4,6 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import {
   createPosManualSale,
   createPosMpesaSale,
-  createPosPaystackSale,
   type PosSaleInput,
 } from "@/lib/pos/server";
 
@@ -16,8 +15,8 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as PosSaleInput;
-    if (!["mpesa", "paystack", "manual"].includes(body.paymentMethod)) {
-      return NextResponse.json({ message: "Select M-PESA, Paystack, or Manual Payment." }, { status: 400 });
+    if (!["mpesa", "manual"].includes(body.paymentMethod)) {
+      return NextResponse.json({ message: "Select Direct M-PESA or Manual Payment." }, { status: 400 });
     }
 
     const seller = {
@@ -27,12 +26,9 @@ export async function POST(request: Request) {
       role: staff.role,
     };
 
-    const origin = new URL(request.url).origin;
     const result = body.paymentMethod === "mpesa"
       ? await createPosMpesaSale(body, seller)
-      : body.paymentMethod === "manual"
-        ? await createPosManualSale(body, seller)
-        : await createPosPaystackSale(body, seller, origin);
+      : await createPosManualSale(body, seller);
 
     return NextResponse.json(result);
   } catch (cause) {

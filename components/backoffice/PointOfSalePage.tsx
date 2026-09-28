@@ -22,7 +22,6 @@ import {
   Sparkles,
   RefreshCw,
   AlertCircle,
-  CreditCard,
   HandCoins,
   Percent,
   ReceiptText,
@@ -44,7 +43,7 @@ type PosLine = {
   unitPrice: number;
 };
 
-type PaymentMethod = "mpesa" | "paystack" | "manual";
+type PaymentMethod = "mpesa" | "manual";
 
 type SaleResponse = {
   message?: string;
@@ -58,7 +57,6 @@ type SaleResponse = {
   deliveryFee?: number;
   deliveryLocation?: string;
   displayText?: string;
-  authorizationUrl?: string;
   testMode?: boolean;
 };
 
@@ -102,6 +100,9 @@ export default function PointOfSalePage() {
   const [discountReason, setDiscountReason] = useState("");
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [deliveryAddressLine, setDeliveryAddressLine] = useState("");
+  const [deliveryRecipientName, setDeliveryRecipientName] = useState("");
+  const [deliveryRecipientPhone, setDeliveryRecipientPhone] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
   const [manualPaymentName, setManualPaymentName] = useState("");
   const [manualPaymentReference, setManualPaymentReference] = useState("");
@@ -202,6 +203,9 @@ export default function PointOfSalePage() {
           setDiscountReason("");
           setDeliveryEnabled(false);
           setDeliveryLocation("");
+          setDeliveryAddressLine("");
+          setDeliveryRecipientName("");
+          setDeliveryRecipientPhone("");
           setDeliveryFee("");
           return;
         }
@@ -380,6 +384,9 @@ export default function PointOfSalePage() {
           requestId,
           paymentMethod,
           deliveryLocation: deliveryEnabled ? deliveryLocation.trim() : undefined,
+          deliveryAddressLine: deliveryEnabled ? deliveryAddressLine.trim() : undefined,
+          deliveryRecipientName: deliveryEnabled ? deliveryRecipientName.trim() : undefined,
+          deliveryRecipientPhone: deliveryEnabled ? deliveryRecipientPhone.trim() : undefined,
           deliveryFee: deliveryEnabled ? deliveryPayable : 0,
           customerId: selectedCustomerId || undefined,
           customerName,
@@ -407,17 +414,14 @@ export default function PointOfSalePage() {
         setMessage(payload.displayText || "Manual payment recorded for reconciliation.");
         if (payload.orderId) setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
         setCart([]); setProcessing(false); setSelectedCustomerId(""); setCustomerSearch(""); setCustomerName(""); setCustomerEmail(""); setCustomerPhone("+254");
-        setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryFee("");
+        setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryAddressLine(""); setDeliveryRecipientName(""); setDeliveryRecipientPhone(""); setDeliveryFee("");
         setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived("");
         return;
       }
 
       if (!payload.reference) throw new Error("Payment started without a payment reference.");
-      if (payload.authorizationUrl) {
-        window.open(payload.authorizationUrl, "dbk-paystack-pos", "popup=yes,width=520,height=760");
-      }
-      const prefix = payload.testMode ? "Paystack test mode: " : "";
-      setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the payment."}`);
+      const prefix = payload.testMode ? "Daraja sandbox: " : "";
+      setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the M-PESA payment."}`);
       setPaymentReference(payload.reference);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "POS sale failed.");
@@ -454,7 +458,7 @@ export default function PointOfSalePage() {
           {lastReceipt && (
             <Link
               href={`${basePath}/pos/receipt/${encodeURIComponent(lastReceipt.orderId)}`}
-              className="hidden h-10 items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-bold uppercase tracking-wider text-soft-cream md:inline-flex"
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--brand-green)] px-3 text-[10px] font-bold uppercase tracking-wider text-soft-cream sm:px-4"
             >
               <ReceiptText size={14} /> {lastReceipt.receiptNumber || "Receipt"}
             </Link>
@@ -857,13 +861,13 @@ export default function PointOfSalePage() {
                 </label>
               </div>
               {deliveryEnabled && (
-                <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+                <div className="grid gap-2 sm:grid-cols-2">
                   <div>
                     <input
                       list="pos-delivery-destinations"
                       value={deliveryLocation}
                       onChange={(event) => setDeliveryLocation(event.target.value)}
-                      placeholder="Delivery destination e.g. Kisumu"
+                      placeholder="Town / delivery area e.g. Nairobi"
                       className="h-9 w-full rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
                     />
                     <datalist id="pos-delivery-destinations">
@@ -876,13 +880,31 @@ export default function PointOfSalePage() {
                     </datalist>
                   </div>
                   <input
+                    value={deliveryAddressLine}
+                    onChange={(event) => setDeliveryAddressLine(event.target.value)}
+                    placeholder="Address / estate / landmark"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
+                  />
+                  <input
+                    value={deliveryRecipientName}
+                    onChange={(event) => setDeliveryRecipientName(event.target.value)}
+                    placeholder={`Recipient name · defaults to ${customerName || "customer"}`}
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
+                  />
+                  <input
+                    value={deliveryRecipientPhone}
+                    onChange={(event) => setDeliveryRecipientPhone(event.target.value)}
+                    placeholder={`Recipient phone · defaults to ${customerPhone || "+254..."}`}
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
+                  />
+                  <input
                     type="number"
                     min="0"
                     step="1"
                     value={deliveryFee}
                     onChange={(event) => setDeliveryFee(event.target.value)}
-                    placeholder="Amount KES"
-                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)]"
+                    placeholder="Delivery amount KES"
+                    className="h-9 rounded-lg border hairline bg-[var(--paper-2)] px-3 text-xs outline-none focus:border-[var(--brand-green)] sm:col-span-2"
                   />
                 </div>
               )}
@@ -891,7 +913,7 @@ export default function PointOfSalePage() {
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment Method</span>
-              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("mpesa")}
@@ -901,18 +923,7 @@ export default function PointOfSalePage() {
                       : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
                   }`}
                 >
-                  <Smartphone size={14} /> M-PESA
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("paystack")}
-                  className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-all ${
-                    paymentMethod === "paystack"
-                      ? "border-[var(--brand-green)] bg-[var(--brand-green)] text-soft-cream shadow-xs"
-                      : "border-hairline bg-[var(--paper)] hover:bg-[var(--paper-2)]"
-                  }`}
-                >
-                  <CreditCard size={14} /> Paystack
+                  <Smartphone size={14} /> Direct M-PESA
                 </button>
                 <button
                   type="button"
@@ -929,10 +940,8 @@ export default function PointOfSalePage() {
 
               <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
                 {paymentMethod === "mpesa"
-                  ? <>Send an M-PESA STK payment prompt to the customer&apos;s phone through Paystack.</>
-                  : paymentMethod === "paystack"
-                    ? <>Open a secure Paystack card payment window. The sale is recorded only after verification succeeds.</>
-                    : <>Record a payment the customer already made outside this system. The payer, reference and amount are retained for reconciliation.</>}
+                  ? <>Send a direct Safaricom Daraja STK Push to the customer&apos;s phone. The sale, stock deduction and receipt are finalized only after M-PESA confirms payment.</>
+                  : <>Record a payment the customer already made outside this system. The payer, reference and amount are retained for reconciliation.</>}
               </p>
               {paymentMethod === "manual" && (
                 <div className="grid gap-2 rounded-xl border hairline bg-[var(--paper-2)] p-3">
@@ -977,10 +986,6 @@ export default function PointOfSalePage() {
                 ) : paymentMethod === "mpesa" ? (
                   <span className="inline-flex items-center gap-2">
                     <Smartphone size={16} /> Send M-PESA Prompt
-                  </span>
-                ) : paymentMethod === "paystack" ? (
-                  <span className="inline-flex items-center gap-2">
-                    <CreditCard size={16} /> Open Paystack Payment
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">

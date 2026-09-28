@@ -28,6 +28,7 @@ export type StoreProduct = {
   categoryParent?: CatalogTag;
 
   price: number;
+  compareAtPrice?: number;
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   currency: "KES";

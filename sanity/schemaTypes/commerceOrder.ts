@@ -326,6 +326,10 @@ export const commerceOrder = defineType({
       type: "string",
     }),
     defineField({ name: "providerReceiptNumber", title: "Provider / M-PESA Receipt Reference", type: "string" }),
+    defineField({ name: "mpesaMerchantRequestId", title: "M-PESA Merchant Request ID", type: "string", readOnly: true }),
+    defineField({ name: "mpesaCheckoutRequestId", title: "M-PESA Checkout Request ID", type: "string", readOnly: true }),
+    defineField({ name: "mpesaResultCode", title: "M-PESA Result Code", type: "number", readOnly: true }),
+    defineField({ name: "mpesaResultDescription", title: "M-PESA Result Description", type: "string", readOnly: true }),
     defineField({ name: "lastRefundAt", title: "Last Refund At", type: "datetime" }),
     defineField({ name: "returnStatus", title: "Return Status", type: "string", options: { list: [
       { title: "None", value: "none" }, { title: "Partially Returned", value: "partial" }, { title: "Returned", value: "returned" },
