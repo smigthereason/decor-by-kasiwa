@@ -121,6 +121,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
           </div>
           <div className="mt-5 border-t hairline pt-4 text-sm">
             <div className="flex justify-between"><span>Subtotal</span><span>{formatKes(order.subtotal)}</span></div>
+            {Number(order.discountAmount || 0) > 0 && <div className="mt-2 flex justify-between text-[var(--brand-green)]"><span>Discount</span><span>-{formatKes(Number(order.discountAmount || 0))}</span></div>}
             <div className="mt-2 flex justify-between"><span>Delivery</span><span>{formatKes(order.deliveryFee)}</span></div>
             <div className="mt-3 flex justify-between text-base font-semibold"><span>Total</span><span>{formatKes(order.total)}</span></div>
           </div>
@@ -152,7 +153,12 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
                   {order.soldAt ? ` · ${formatDateTime(order.soldAt)}` : ""}.
                 </p>
                 <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
-                  Payment channel: {order.paymentChannel === "external" ? "Manual Payment" : order.paymentChannel || "POS"}.{order.currentFulfilmentStage ? ` Current fulfilment stage: ${order.currentFulfilmentStage.toLowerCase()}.` : ""}
+                  Payment channel: {order.paymentChannel === "external" ? "Manual Payment" : order.paymentChannel || "POS"}.
+                  {order.paymentStatus === "paid" && order.currentFulfilmentStage
+                    ? ` Current fulfilment stage: ${order.currentFulfilmentStage.toLowerCase()}.`
+                    : order.paymentStatus !== "paid"
+                      ? " Fulfilment has not started because payment was not completed."
+                      : ""}
                 </p>
               </div>
             )}

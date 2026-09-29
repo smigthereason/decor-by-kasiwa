@@ -459,8 +459,11 @@ function calculateDiscount(
     throw new Error("Select a valid discount type.");
   }
 
+  // POS payments and the shop's thermal receipts operate in whole Kenya shillings.
+  // Rounding here keeps the amount shown to the cashier identical to the amount
+  // sent to Daraja, including percentage discounts that would otherwise create cents.
   return {
-    discountAmount: Math.round(discountAmount * 100) / 100,
+    discountAmount: Math.round(discountAmount),
     discountType: input.type,
     discountValue: value,
     discountReason: reason,
@@ -918,7 +921,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     salesChannel: "POS",
     fulfilmentType: delivery.fulfilmentType,
     fulfilmentStages: workflow.fulfilmentStages,
-    ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
+    // Do not start fulfilment until the payment provider confirms payment.
     paymentReference: reference,
     paymentProvider: "paystack",
     paymentChannel: channel,
@@ -1007,7 +1010,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
     salesChannel: "POS",
     fulfilmentType: delivery.fulfilmentType,
     fulfilmentStages: workflow.fulfilmentStages,
-    ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
+    // A pending/failed STK request must never enter the fulfilment queue.
     paymentReference: reference,
     paymentProvider: "daraja",
     paymentChannel: "mobile_money",
@@ -1105,7 +1108,7 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
   } catch (cause) {
     const reason = cause instanceof Error ? cause.message : "M-PESA STK initiation failed.";
     await Promise.all([
-      serverClient.patch(order._id).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, mpesaResultDescription: reason, updatedAt: new Date().toISOString() }).commit(),
+      serverClient.patch(order._id).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, mpesaResultDescription: reason, updatedAt: new Date().toISOString() }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
       serverClient.patch(paymentTransactionId(order.paymentReference || order.orderNumber)).set({ status: "failed", failureReason: reason, updatedAt: new Date().toISOString() }).commit(),
     ]);
     throw cause;
@@ -1137,7 +1140,7 @@ export async function createPosPaystackSale(input: PosSaleInput, seller: PosSell
   } catch (cause) {
     const reason = cause instanceof Error ? cause.message : "Paystack initialization failed.";
     await Promise.all([
-      serverClient.patch(order._id).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, updatedAt: new Date().toISOString() }).commit(),
+      serverClient.patch(order._id).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, updatedAt: new Date().toISOString() }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
       serverClient.patch(paymentTransactionId(order.paymentReference || order.orderNumber)).set({ status: "failed", failureReason: reason, updatedAt: new Date().toISOString() }).commit(),
     ]);
     throw cause;
@@ -1147,7 +1150,7 @@ export async function createPosPaystackSale(input: PosSaleInput, seller: PosSell
 async function failPosPayment(order: PosOrder, reason: string) {
   const now = new Date().toISOString();
   await Promise.all([
-    serverClient.patch(order._id).ifRevisionId(order._rev).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, updatedAt: now }).commit(),
+    serverClient.patch(order._id).ifRevisionId(order._rev).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, updatedAt: now }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
     serverClient.patch(paymentTransactionId(order.paymentReference || order.orderNumber)).set({ status: "failed", failureReason: reason, updatedAt: now }).commit(),
   ]);
 }
@@ -1181,11 +1184,13 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   seller.role = storedSeller?.role || "STORE_STAFF";
   seller.email = storedSeller?.email || "";
 
+  const firstFulfilmentStage = order.fulfilmentStages?.[0];
   addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
   transaction.patch(order._id, (patch) =>
     patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
-      status: order.currentFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+      status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+      ...(firstFulfilmentStage ? { currentFulfilmentStage: firstFulfilmentStage } : {}),
       paymentChannel: payment.channel || order.paymentChannel || "paystack",
       paystackTransactionId: String(payment.id),
       providerReceiptNumber: String(payment.id),
@@ -1312,12 +1317,14 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
   };
 
   const paidAt = payment.paidAt || now;
+  const firstFulfilmentStage = order.fulfilmentStages?.[0];
   const transaction = serverClient.transaction();
   addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
   transaction.patch(order._id, (patch) =>
     patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
-      status: order.currentFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+      status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+      ...(firstFulfilmentStage ? { currentFulfilmentStage: firstFulfilmentStage } : {}),
       paymentProvider: "daraja",
       paymentChannel: "mobile_money",
       mpesaMerchantRequestId: payment.merchantRequestId || order.mpesaMerchantRequestId || "",
@@ -1388,7 +1395,7 @@ async function failDarajaPayment(order: PosOrder, resultCode: number, resultDesc
       mpesaResultDescription: resultDescription,
       failureReason: resultDescription,
       updatedAt: now,
-    }).commit(),
+    }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
     serverClient.patch(paymentTransactionId(reference)).set({
       status: "failed",
       failureReason: resultDescription,
