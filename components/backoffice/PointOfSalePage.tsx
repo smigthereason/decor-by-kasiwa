@@ -694,7 +694,7 @@ export default function PointOfSalePage() {
 
           <div className={salePanelExpanded ? "grid min-h-0 flex-1 grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)] lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "flex min-h-0 flex-1 flex-col"}>
           {/* Cart Item Stream */}
-          <div className={`overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 flex-1 border-r hairline" : "min-h-[120px] max-h-[34%] shrink-0"}`}>
+          <div className={`overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 flex-1 border-r hairline" : "min-h-[110px] max-h-[30%] shrink-0"}`}>
             {cart.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-[var(--muted)] py-12">
                 <div className="grid size-12 place-items-center rounded-2xl bg-[var(--paper-2)] mb-3">
@@ -755,9 +755,24 @@ export default function PointOfSalePage() {
           </div>
 
           {/* Checkout Drawer Section */}
-          <div className={`min-h-0 flex-1 overflow-y-auto border-t hairline bg-[var(--paper-2)] p-4 pb-28 sm:p-6 sm:pb-32 space-y-4 [scrollbar-width:thin] ${salePanelExpanded ? "lg:border-t-0" : ""}`}>
+          <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain border-t hairline bg-[var(--paper-2)] p-4 sm:p-5 [scrollbar-width:thin] ${salePanelExpanded ? "lg:border-t-0" : ""}`}>
+            <div className="mx-auto flex w-full max-w-[460px] flex-col gap-3">
+              <div className="flex items-start justify-between gap-3 pb-1">
+                <div>
+                  <p className="text-xs font-semibold text-[var(--ink)]">Checkout details</p>
+                  <p className="mt-0.5 text-[10px] leading-4 text-[var(--muted)]">Complete the sale details, then review the payment before submitting.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("pos-payment-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border hairline bg-[var(--paper)] px-3 text-[10px] font-semibold text-[var(--ink)] transition hover:border-[var(--brand-green)] hover:text-[var(--brand-green)]"
+                >
+                  <ReceiptText size={13} /> Review payment
+                </button>
+              </div>
+
             {/* Customer Inputs */}
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-2xl border hairline bg-[var(--paper)] p-3.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Customer Information</span>
               <div className="grid gap-2">
                 <div className="relative">
@@ -940,7 +955,7 @@ export default function PointOfSalePage() {
             </div>
 
             {/* Payment Method Selector */}
-            <div className="space-y-2">
+            <div id="pos-payment-section" className="scroll-mt-4 space-y-3 rounded-2xl border hairline bg-[var(--paper)] p-3.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment Method</span>
               <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 <button
@@ -967,7 +982,7 @@ export default function PointOfSalePage() {
                 </button>
               </div>
 
-              <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
+              <p className="rounded-lg border hairline bg-[var(--paper-2)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
                 {paymentMethod === "mpesa"
                   ? <>Send a direct Safaricom Daraja STK Push to the customer&apos;s phone. The sale, stock deduction and receipt are finalized only after M-PESA confirms payment.</>
                   : <>Record a payment the customer already made outside this system. The reference is checked against Decor by Kasiwa records for duplicates, but it is <strong>not independently verified with Safaricom</strong>. Use Direct M-PESA for automatic verification.</>}
@@ -991,7 +1006,16 @@ export default function PointOfSalePage() {
             </div>
 
             {/* Total Summary & Checkout Button */}
-            <div className="sticky bottom-0 z-20 -mx-4 space-y-3 border-t hairline bg-[var(--paper-2)] px-4 pb-2 pt-3 shadow-[0_-12px_24px_rgba(0,0,0,0.04)] sm:-mx-6 sm:px-6">
+            <div className="space-y-3 rounded-2xl border hairline bg-[var(--paper)] p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Payment summary</p>
+                  <p className="mt-0.5 text-[10px] text-[var(--muted)]">Review the amount before completing the sale.</p>
+                </div>
+                <span className="rounded-full bg-[var(--brand-green)]/10 px-2.5 py-1 text-[10px] font-semibold text-[var(--brand-green)]">
+                  {paymentMethod === "mpesa" ? "Direct M-PESA" : "Manual"}
+                </span>
+              </div>
               {discountAmount > 0 && (
                 <div className="grid gap-1 border-t hairline pt-3 text-[10px] text-[var(--muted)]">
                   <div className="flex justify-between"><span>Subtotal</span><span>{formatMoney(subtotal)}</span></div>
@@ -1004,12 +1028,18 @@ export default function PointOfSalePage() {
                   <div className="flex justify-between"><span>Delivery payable · {deliveryLocation || "Destination"}</span><span>{formatMoney(deliveryPayable)}</span></div>
                 </div>
               )}
-              <div className={`flex items-baseline justify-between ${discountAmount > 0 || deliveryPayable > 0 ? "" : "border-t hairline pt-3"}`}>
-                <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Money In</span>
-                <span className="text-2xl font-extrabold tracking-tight tabular-nums text-[var(--brand-green)]">
+              <div className="flex items-baseline justify-between border-t hairline pt-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Total to collect</span>
+                <span className="text-xl font-extrabold tracking-tight tabular-nums text-[var(--brand-green)]">
                   {formatMoney(total)}
                 </span>
               </div>
+
+              <p className="rounded-lg bg-[var(--paper-2)] px-3 py-2 text-[10px] leading-4 text-[var(--muted)]">
+                {paymentMethod === "mpesa"
+                  ? <>The M-PESA prompt will be sent to <strong className="text-[var(--ink)]">{customerPhone || "the customer phone"}</strong>. The sale completes only after Safaricom confirms payment.</>
+                  : <>Record the sale only after you have confirmed the external payment details above.</>}
+              </p>
 
               <button
                 type="button"
@@ -1031,6 +1061,7 @@ export default function PointOfSalePage() {
                   </span>
                 )}
               </button>
+            </div>
             </div>
           </div>
           </div>
