@@ -366,8 +366,8 @@ export default function PointOfSalePage() {
         setMessage("Enter or select the delivery destination.");
         return;
       }
-      if (!Number.isFinite(deliveryPayable) || deliveryPayable <= 0) {
-        setMessage("Enter a valid delivery payable amount.");
+      if (!Number.isFinite(deliveryPayable) || deliveryPayable < 0) {
+        setMessage("Enter a valid delivery payable amount (0 is allowed for free delivery).");
         return;
       }
     }

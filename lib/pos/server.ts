@@ -7,6 +7,7 @@ import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
 import {
   callbackMetadata,
@@ -468,19 +469,24 @@ function calculateDiscount(
 function deliveryPayable(input: PosSaleInput) {
   const amount = Number(input.deliveryFee || 0);
   const location = cleanText(input.deliveryLocation);
-  if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid delivery payable amount.");
-  if (amount > 0 && !location) throw new Error("Enter the delivery destination for the payable.");
+  const addressLineInput = cleanText(input.deliveryAddressLine);
+  const recipientNameInput = cleanText(input.deliveryRecipientName);
+  const recipientPhoneInput = cleanText(input.deliveryRecipientPhone);
+  const hasDeliveryDetails = Boolean(location || addressLineInput || recipientNameInput || recipientPhoneInput);
 
-  const recipientName = cleanText(input.deliveryRecipientName) || cleanText(input.customerName) || "Customer";
-  const recipientPhoneRaw = cleanText(input.deliveryRecipientPhone) || cleanText(input.customerPhone);
-  const recipientPhone = amount > 0 && recipientPhoneRaw ? normalizeKenyanPhone(recipientPhoneRaw) : "";
-  const addressLine = cleanText(input.deliveryAddressLine) || location;
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Enter a valid delivery payable amount.");
+  if (hasDeliveryDetails && !location) throw new Error("Enter the delivery destination for this order.");
+
+  const recipientName = recipientNameInput || cleanText(input.customerName) || "Customer";
+  const recipientPhoneRaw = recipientPhoneInput || cleanText(input.customerPhone);
+  const recipientPhone = hasDeliveryDetails && recipientPhoneRaw ? normalizeKenyanPhone(recipientPhoneRaw) : "";
+  const addressLine = addressLineInput || location;
 
   return {
     deliveryFee: Math.round(amount * 100) / 100,
-    deliveryLocation: amount > 0 ? location : "In-store purchase",
-    fulfilmentType: amount > 0 ? "DELIVERY" as const : "IN_STORE" as const,
-    deliveryAddress: amount > 0
+    deliveryLocation: hasDeliveryDetails ? location : "In-store purchase",
+    fulfilmentType: hasDeliveryDetails ? "DELIVERY" as const : "IN_STORE" as const,
+    deliveryAddress: hasDeliveryDetails
       ? {
           fullName: recipientName,
           phone: recipientPhone,
@@ -789,16 +795,17 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   const paymentStatus = balanceDue > 0 ? "partially_paid" : "paid";
   const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const now = new Date().toISOString();
+  const orderNumber = await createShortOrderNumber("POS", reference, new Date(now));
   const orderId = orderIdFor(reference);
-  const receiptNumber = receiptNumberFor(reference);
+  const receiptNumber = receiptNumberFor(orderNumber);
   const transaction = serverClient.transaction();
 
-  addSaleInventoryMutations(transaction, products, lines, orderId, reference, seller, now);
+  addSaleInventoryMutations(transaction, products, lines, orderId, orderNumber, seller, now);
 
   transaction.create({
     _id: orderId,
     _type: "commerceOrder",
-    orderNumber: reference,
+    orderNumber,
     customerName: customer.name,
     customerEmail: customer.email || undefined,
     customerPhone: customer.phone,
@@ -840,11 +847,11 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   });
 
   addPaymentRecordToTransaction({
-    transaction, reference, orderId, orderNumber: reference, customerName: customer.name, customerPhone: customer.phone,
+    transaction, reference, orderId, orderNumber, customerName: customer.name, customerPhone: customer.phone,
     provider: "manual", channel: "external", providerReceiptNumber: externalReference, status: paymentStatus, amount: requestedPayment, seller, now,
   });
   addAuditToTransaction({
-    transaction, key: `pos-sale|${reference}`, eventType: "POS_MANUAL_PAYMENT_RECORDED", entityId: orderId, entityLabel: reference, seller,
+    transaction, key: `pos-sale|${reference}`, eventType: "POS_MANUAL_PAYMENT_RECORDED", entityId: orderId, entityLabel: orderNumber, seller,
     detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} manual/external sale · payer ${payerName} · reference ${externalReference} · recorded KES ${amountPaid.toLocaleString("en-KE")} · expected KES ${total.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
     now,
   });
@@ -871,13 +878,14 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
   const total = productRevenue + delivery.deliveryFee;
   if (total <= 0) throw new Error("Paystack payment total must be greater than zero.");
   const now = new Date().toISOString();
+  const orderNumber = await createShortOrderNumber("POS", reference, new Date(now));
   const orderId = orderIdFor(reference);
   const transaction = serverClient.transaction();
 
   transaction.create({
     _id: orderId,
     _type: "commerceOrder",
-    orderNumber: reference,
+    orderNumber,
     customerName: customer.name,
     customerEmail: customer.email || undefined,
     customerPhone: customer.phone,
@@ -895,7 +903,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     amountPaid: 0,
     balanceDue: total,
     refundedAmount: 0,
-    receiptNumber: receiptNumberFor(reference),
+    receiptNumber: receiptNumberFor(orderNumber),
     currency: CURRENCY,
     salesChannel: "POS",
     fulfilmentType: delivery.fulfilmentType,
@@ -918,7 +926,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     transaction,
     reference,
     orderId,
-    orderNumber: reference,
+    orderNumber,
     customerName: customer.name,
     customerPhone: customer.phone,
     provider: "paystack",
@@ -933,7 +941,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     key: `pos-payment-init|${reference}`,
     eventType: "POS_PAYMENT_INITIATED",
     entityId: orderId,
-    entityLabel: reference,
+    entityLabel: orderNumber,
     seller,
     detail: `Paystack ${channel === "mobile_money" ? "M-PESA" : "card"} payment initiated for KES ${total.toLocaleString("en-KE")} · product revenue KES ${productRevenue.toLocaleString("en-KE")} · delivery payable KES ${delivery.deliveryFee.toLocaleString("en-KE")}.`,
     now,
@@ -959,13 +967,14 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
   if (!Number.isInteger(total)) throw new Error("Direct M-PESA requires a whole-KES total. Adjust the sale or delivery amount so the final total has no cents.");
 
   const now = new Date().toISOString();
+  const orderNumber = await createShortOrderNumber("POS", reference, new Date(now));
   const orderId = orderIdFor(reference);
   const transaction = serverClient.transaction();
 
   transaction.create({
     _id: orderId,
     _type: "commerceOrder",
-    orderNumber: reference,
+    orderNumber,
     customerName: customer.name,
     customerEmail: customer.email || undefined,
     customerPhone: customer.phone,
@@ -983,7 +992,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
     amountPaid: 0,
     balanceDue: total,
     refundedAmount: 0,
-    receiptNumber: receiptNumberFor(reference),
+    receiptNumber: receiptNumberFor(orderNumber),
     currency: CURRENCY,
     salesChannel: "POS",
     fulfilmentType: delivery.fulfilmentType,
@@ -1007,7 +1016,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
     transaction,
     reference,
     orderId,
-    orderNumber: reference,
+    orderNumber,
     customerName: customer.name,
     customerPhone: customer.phone,
     provider: "daraja",
@@ -1022,7 +1031,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
     key: `pos-daraja-order|${reference}`,
     eventType: "POS_MPESA_PAYMENT_STARTED",
     entityId: orderId,
-    entityLabel: reference,
+    entityLabel: orderNumber,
     seller,
     detail: `Direct Safaricom Daraja M-PESA payment prepared for KES ${total.toLocaleString("en-KE")} · product revenue KES ${productRevenue.toLocaleString("en-KE")} · delivery payable KES ${delivery.deliveryFee.toLocaleString("en-KE")}.`,
     now,
@@ -1529,7 +1538,10 @@ export async function getPosReceipt(orderId: string) {
       customerEmail?: string;
       subtotal?: number;
       discountAmount?: number;
+      discountType?: "percent" | "fixed";
+      discountValue?: number;
       discountReason?: string;
+      discountAuthorizedByName?: string;
       deliveryFee?: number;
       deliveryLocation?: string;
       deliveryAddress?: {
@@ -1572,7 +1584,7 @@ export async function getPosReceipt(orderId: string) {
   }>(
     `{
       "receipt": *[_type == "commerceOrder" && _id == $orderId][0]{
-        _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountAmount,discountReason,
+        _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountType,discountValue,discountAmount,discountReason,discountAuthorizedByName,
         deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
         refundedAmount,paymentStatus,paymentProvider,paymentChannel,paymentReference,providerReceiptNumber,
         mpesaMerchantRequestId,mpesaCheckoutRequestId,mpesaResultCode,mpesaResultDescription,

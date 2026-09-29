@@ -8,6 +8,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { getDeliveryZoneById } from "@/lib/shipping-server";
 import { sendOrderConfirmationEmail } from "@/lib/order-email";
+import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -180,10 +181,6 @@ function safeReferenceForDocumentId(reference: string) {
 
 function createReference() {
   return `DBK-${Date.now()}-${randomBytes(5).toString("hex")}`;
-}
-
-function createOrderNumber(reference: string) {
-  return reference;
 }
 
 function createLineKey(productId: string, finish: string | undefined, size: string | undefined, variantId: string | undefined, index: number) {
@@ -469,7 +466,7 @@ export async function initializePaystackCheckout({
   const reference = createReference();
   const documentReference = safeReferenceForDocumentId(reference);
   const orderId = `commerceOrder.paystack.${documentReference}`;
-  const orderNumber = createOrderNumber(reference);
+  const orderNumber = await createShortOrderNumber("COM", reference);
   const now = new Date().toISOString();
   const paymentChannel = paymentChannelFor(paymentMethod);
   const normalizedCustomerNote = normalizeText(customerNote || "");
