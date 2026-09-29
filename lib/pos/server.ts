@@ -53,6 +53,7 @@ export type PosSaleInput = {
   manualPaymentName?: string;
   manualPaymentReference?: string;
   manualAmountReceived?: number;
+  manualPaymentConfirmed?: boolean;
   deliveryLocation?: string;
   deliveryAddressLine?: string;
   deliveryRecipientName?: string;
@@ -773,13 +774,19 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   if (!payerName) throw new Error("Enter the name of the person who made the external payment.");
   if (externalReference.length < 5) throw new Error("Enter the M-PESA code or external payment reference.");
   if (!Number.isFinite(requestedPayment) || requestedPayment <= 0) throw new Error("Enter the amount received outside the system.");
+  if (input.manualPaymentConfirmed !== true) {
+    throw new Error("Confirm that the external payment was independently checked before recording it.");
+  }
 
   const duplicateReference = await serverClient.fetch<{ _id: string } | null>(
-    `*[_type == "paymentTransaction" && provider == "manual" && providerReceiptNumber == $reference][0]{_id}`,
+    `*[
+      (_type == "paymentTransaction" && providerReceiptNumber == $reference) ||
+      (_type == "commerceOrder" && (providerReceiptNumber == $reference || manualPaymentReference == $reference))
+    ][0]{_id}`,
     { reference: externalReference },
     { cache: "no-store" },
   );
-  if (duplicateReference) throw new Error("That external payment reference has already been recorded. Check Sales Operations before recording it again.");
+  if (duplicateReference) throw new Error("That payment reference already exists in Decor by Kasiwa. Check Sales Operations before recording it again.");
 
   const reference = referenceFor(input.requestId);
   const existing = await fetchPosOrder(reference);
@@ -860,7 +867,10 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   const created = await fetchPosOrder(reference);
   if (!created) throw new Error("POS manual payment sale completed but could not be reloaded.");
   await linkCustomerToCompletedSale(created, customer);
-  return { ...summary(created), displayText: `Manual payment ${externalReference} recorded for reconciliation.` };
+  return {
+    ...summary(created),
+    displayText: `Manual payment ${externalReference} recorded for reconciliation. The reference was checked for duplicates in Decor by Kasiwa but was not independently verified with Safaricom.`,
+  };
 }
 
 async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller, channel: "mobile_money" | "card") {

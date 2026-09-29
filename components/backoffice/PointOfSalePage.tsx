@@ -22,6 +22,7 @@ import {
   Sparkles,
   RefreshCw,
   AlertCircle,
+  CheckCircle2,
   HandCoins,
   Percent,
   ReceiptText,
@@ -58,6 +59,13 @@ type SaleResponse = {
   deliveryLocation?: string;
   displayText?: string;
   testMode?: boolean;
+};
+
+type SaleCompletion = {
+  kind: "mpesa" | "manual";
+  orderId: string;
+  orderNumber?: string;
+  receiptNumber?: string;
 };
 
 type CustomerMatch = {
@@ -107,10 +115,12 @@ export default function PointOfSalePage() {
   const [manualPaymentName, setManualPaymentName] = useState("");
   const [manualPaymentReference, setManualPaymentReference] = useState("");
   const [manualAmountReceived, setManualAmountReceived] = useState("");
+  const [manualPaymentConfirmed, setManualPaymentConfirmed] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = useState<{ orderId: string; receiptNumber?: string } | null>(null);
+  const [saleCompletion, setSaleCompletion] = useState<SaleCompletion | null>(null);
   const [salePanelExpanded, setSalePanelExpanded] = useState(false);
 
   useEffect(() => {
@@ -190,6 +200,12 @@ export default function PointOfSalePage() {
           setMessage(`Payment confirmed. Sale ${payload.order?.orderNumber || paymentReference} recorded.`);
           if (payload.order?.orderId) {
             setLastReceipt({ orderId: payload.order.orderId, receiptNumber: payload.order.receiptNumber });
+            setSaleCompletion({
+              kind: "mpesa",
+              orderId: payload.order.orderId,
+              orderNumber: payload.order.orderNumber,
+              receiptNumber: payload.order.receiptNumber,
+            });
           }
           setPaymentReference(null);
           setCart([]);
@@ -359,6 +375,10 @@ export default function PointOfSalePage() {
         setMessage("Enter the amount received outside the system.");
         return;
       }
+      if (!manualPaymentConfirmed) {
+        setMessage("Confirm that you independently checked the external payment before recording it.");
+        return;
+      }
     }
 
     if (deliveryEnabled) {
@@ -395,6 +415,7 @@ export default function PointOfSalePage() {
           manualPaymentName: paymentMethod === "manual" ? manualPaymentName.trim() : undefined,
           manualPaymentReference: paymentMethod === "manual" ? manualPaymentReference.trim() : undefined,
           manualAmountReceived: paymentMethod === "manual" ? Number(manualAmountReceived) : undefined,
+          manualPaymentConfirmed: paymentMethod === "manual" ? manualPaymentConfirmed : undefined,
           discount: manager && discountNumeric > 0
             ? { type: discountType, value: discountNumeric, reason: discountReason }
             : undefined,
@@ -412,10 +433,18 @@ export default function PointOfSalePage() {
 
       if (paymentMethod === "manual") {
         setMessage(payload.displayText || "Manual payment recorded for reconciliation.");
-        if (payload.orderId) setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
+        if (payload.orderId) {
+          setLastReceipt({ orderId: payload.orderId, receiptNumber: payload.receiptNumber });
+          setSaleCompletion({
+            kind: "manual",
+            orderId: payload.orderId,
+            orderNumber: payload.orderNumber,
+            receiptNumber: payload.receiptNumber,
+          });
+        }
         setCart([]); setProcessing(false); setSelectedCustomerId(""); setCustomerSearch(""); setCustomerName(""); setCustomerEmail(""); setCustomerPhone("+254");
         setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryAddressLine(""); setDeliveryRecipientName(""); setDeliveryRecipientPhone(""); setDeliveryFee("");
-        setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived("");
+        setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived(""); setManualPaymentConfirmed(false);
         return;
       }
 
@@ -639,7 +668,7 @@ export default function PointOfSalePage() {
           id="pos-cart-panel"
           className={salePanelExpanded
             ? "fixed inset-0 z-[90] flex h-[100dvh] w-screen flex-col overflow-hidden bg-[var(--paper)] shadow-2xl"
-            : "hidden shrink-0 flex-col border-l hairline bg-[var(--paper)] lg:flex lg:w-[380px] xl:w-[420px]"}
+            : "hidden min-h-0 shrink-0 flex-col overflow-hidden border-l hairline bg-[var(--paper)] lg:flex lg:w-[440px] xl:w-[500px]"}
         >
           {/* Order Header */}
           <div className="flex items-center justify-between border-b hairline p-4 sm:px-6">
@@ -663,9 +692,9 @@ export default function PointOfSalePage() {
             </div>
           </div>
 
-          <div className={salePanelExpanded ? "grid min-h-0 flex-1 grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)] lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "contents"}>
+          <div className={salePanelExpanded ? "grid min-h-0 flex-1 grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)] lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "flex min-h-0 flex-1 flex-col"}>
           {/* Cart Item Stream */}
-          <div className={`flex-1 overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 border-r hairline" : ""}`}>
+          <div className={`overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 flex-1 border-r hairline" : "min-h-[120px] max-h-[34%] shrink-0"}`}>
             {cart.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-[var(--muted)] py-12">
                 <div className="grid size-12 place-items-center rounded-2xl bg-[var(--paper-2)] mb-3">
@@ -726,7 +755,7 @@ export default function PointOfSalePage() {
           </div>
 
           {/* Checkout Drawer Section */}
-          <div className={`border-t hairline bg-[var(--paper-2)] p-4 sm:p-6 space-y-4 ${salePanelExpanded ? "min-h-0 overflow-y-auto lg:border-t-0" : ""}`}>
+          <div className={`min-h-0 flex-1 overflow-y-auto border-t hairline bg-[var(--paper-2)] p-4 pb-28 sm:p-6 sm:pb-32 space-y-4 [scrollbar-width:thin] ${salePanelExpanded ? "lg:border-t-0" : ""}`}>
             {/* Customer Inputs */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Customer Information</span>
@@ -941,19 +970,28 @@ export default function PointOfSalePage() {
               <p className="rounded-lg border hairline bg-[var(--paper)] p-2.5 text-[11px] leading-normal text-[var(--muted)]">
                 {paymentMethod === "mpesa"
                   ? <>Send a direct Safaricom Daraja STK Push to the customer&apos;s phone. The sale, stock deduction and receipt are finalized only after M-PESA confirms payment.</>
-                  : <>Record a payment the customer already made outside this system. The payer, reference and amount are retained for reconciliation.</>}
+                  : <>Record a payment the customer already made outside this system. The reference is checked against Decor by Kasiwa records for duplicates, but it is <strong>not independently verified with Safaricom</strong>. Use Direct M-PESA for automatic verification.</>}
               </p>
               {paymentMethod === "manual" && (
                 <div className="grid gap-2 rounded-xl border hairline bg-[var(--paper-2)] p-3">
                   <input value={manualPaymentName} onChange={(event) => setManualPaymentName(event.target.value)} placeholder="Paid by / payer name" className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
                   <input value={manualPaymentReference} onChange={(event) => setManualPaymentReference(event.target.value.toUpperCase())} placeholder="M-PESA code / payment reference" className="h-9 rounded-lg border hairline bg-white px-3 text-xs uppercase outline-none focus:border-[var(--brand-green)]" />
                   <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => setManualAmountReceived(event.target.value)} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
+                  <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">
+                    <input
+                      type="checkbox"
+                      checked={manualPaymentConfirmed}
+                      onChange={(event) => setManualPaymentConfirmed(event.target.checked)}
+                      className="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]"
+                    />
+                    <span>I have independently confirmed that the funds were received. Manual M-PESA/reference entries are not verified with Safaricom by this screen.</span>
+                  </label>
                 </div>
               )}
             </div>
 
             {/* Total Summary & Checkout Button */}
-            <div className="space-y-3 pt-2">
+            <div className="sticky bottom-0 z-20 -mx-4 space-y-3 border-t hairline bg-[var(--paper-2)] px-4 pb-2 pt-3 shadow-[0_-12px_24px_rgba(0,0,0,0.04)] sm:-mx-6 sm:px-6">
               {discountAmount > 0 && (
                 <div className="grid gap-1 border-t hairline pt-3 text-[10px] text-[var(--muted)]">
                   <div className="flex justify-between"><span>Subtotal</span><span>{formatMoney(subtotal)}</span></div>
@@ -998,6 +1036,51 @@ export default function PointOfSalePage() {
           </div>
         </aside>
       </div>
+
+      {saleCompletion && (
+        <div className="fixed inset-0 z-[120] grid place-items-center bg-black/45 p-4" role="presentation">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-sale-complete-title"
+            className="w-full max-w-md rounded-3xl border hairline bg-[var(--paper)] p-6 text-center shadow-2xl sm:p-8"
+          >
+            <div className="mx-auto grid size-14 place-items-center rounded-full bg-[var(--brand-green)]/10 text-[var(--brand-green)]">
+              <CheckCircle2 size={30} strokeWidth={2.2} />
+            </div>
+            <h3 id="pos-sale-complete-title" className="mt-4 text-xl font-semibold">
+              {saleCompletion.kind === "mpesa" ? "Payment received" : "Manual payment recorded"}
+            </h3>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              {saleCompletion.kind === "mpesa"
+                ? "Safaricom M-PESA has confirmed the payment and the sale is complete."
+                : "The external payment has been recorded for reconciliation. It has not been independently verified with Safaricom."}
+            </p>
+            {saleCompletion.orderNumber && (
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--ink)]">
+                {saleCompletion.orderNumber}
+              </p>
+            )}
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <Link
+                href={`${basePath}/pos/receipt/${encodeURIComponent(saleCompletion.orderId)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-xs font-semibold text-soft-cream"
+              >
+                <ReceiptText size={15} /> View / Print receipt
+              </Link>
+              <button
+                type="button"
+                onClick={() => setSaleCompletion(null)}
+                className="min-h-11 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold hover:bg-[var(--paper-2)]"
+              >
+                Continue selling
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
