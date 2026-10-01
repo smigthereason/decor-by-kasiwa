@@ -133,7 +133,9 @@ export default function ProductDetailClient({
     window.location.href = "/shop";
   }
 
-  const related = relatedProducts;
+  const pairings = product.pairings || [];
+  const merchandisedSamples = product.merchandisedSamples || [];
+  const related = relatedProducts.filter((item) => !pairings.some((paired) => paired.id === item.id));
 
   return (
     <>
@@ -666,7 +668,7 @@ export default function ProductDetailClient({
               </div>
 
               {/* ACTION BUTTONS */}
-              <div className="mt-4 grid gap-2">
+              <div className="mt-4 grid grid-cols-[minmax(0,1fr)_52px] gap-2">
                 <button
                   type="button"
                   onClick={handleBuyNow}
@@ -687,10 +689,12 @@ export default function ProductDetailClient({
                 <button
                   type="button"
                   onClick={() => toggleWishlist(product.id)}
-                  className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-full border hairline px-5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                  className={`focus-ring inline-grid min-h-12 place-items-center rounded-full border transition-colors ${wishlisted ? "border-[var(--brand-green)] bg-[var(--brand-green)] !text-soft-cream" : "hairline bg-[var(--paper)] hover:border-[var(--brand-green)] hover:text-[var(--brand-green)]"}`}
+                  aria-label={wishlisted ? "Remove from saved items" : "Save for later"}
+                  aria-pressed={wishlisted}
+                  title={wishlisted ? "Saved" : "Save for later"}
                 >
-                  <Heart size={14} fill={wishlisted ? "currentColor" : "none"} />
-                  {wishlisted ? "Saved" : "Save for later"}
+                  <Heart size={18} fill={wishlisted ? "currentColor" : "none"} />
                 </button>
               </div>
 
@@ -749,6 +753,32 @@ export default function ProductDetailClient({
             />
           </div>
         </div>
+      )}
+
+      {pairings.length > 0 && (
+        <section className="w-full border-t hairline bg-[var(--paper)]">
+          <div className="px-4 py-10 md:px-8 lg:px-12">
+            <p className="kicker text-[var(--brand-green)]">Curated pairing</p>
+            <h2 className="mt-3 text-[clamp(2rem,4vw,3.5rem)] font-medium tracking-[-0.05em]">Pair it with.</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--muted)]">Complementary pieces selected by Decor by Kasiwa for this product.</p>
+            <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {pairings.map((item) => <ProductCard key={item.id} product={item} />)}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {merchandisedSamples.length > 0 && (
+        <section className="w-full border-t hairline bg-[var(--paper-2)]">
+          <div className="px-4 py-10 md:px-8 lg:px-12">
+            <p className="kicker text-[var(--muted)]">Merchandising</p>
+            <h2 className="mt-3 text-[clamp(2rem,4vw,3.5rem)] font-medium tracking-[-0.05em]">Merchandised samples.</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--muted)]">A curated sample of pieces the team recommends merchandising alongside this item.</p>
+            <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {merchandisedSamples.map((item) => <ProductCard key={item.id} product={item} />)}
+            </div>
+          </div>
+        </section>
       )}
 
       {related.length > 0 && (

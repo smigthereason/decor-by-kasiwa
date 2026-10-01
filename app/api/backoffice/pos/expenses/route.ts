@@ -6,7 +6,7 @@ import { createExpense, listExpenses, type ExpenseInput } from "@/lib/pos/operat
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     return NextResponse.json({ expenses: await listExpenses() });
@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     const body = (await request.json()) as ExpenseInput;

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   ChevronDown,
@@ -31,7 +31,7 @@ import {
 
 import { formatMoney } from "@/lib/money";
 import type { ProductVariant, StoreProduct } from "@/types/commerce";
-import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { getQuantityUnitPrice, getWholesaleTier } from "@/lib/product-pricing";
 
 type PosLine = {
   key: string;
@@ -93,6 +93,7 @@ export default function PointOfSalePage() {
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<PosLine[]>([]);
@@ -123,26 +124,29 @@ export default function PointOfSalePage() {
   const [saleCompletion, setSaleCompletion] = useState<SaleCompletion | null>(null);
   const [salePanelExpanded, setSalePanelExpanded] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/catalog?channel=pos", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Could not load the live catalogue.");
-        return response.json() as Promise<{ products?: StoreProduct[] }>;
-      })
-      .then((payload) => {
-        if (!cancelled) setProducts(Array.isArray(payload.products) ? payload.products : []);
-      })
-      .catch((cause) => {
-        if (!cancelled) setMessage(cause instanceof Error ? cause.message : "Could not load products.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+  const loadProducts = useCallback(async (background = false) => {
+    if (background) setCatalogRefreshing(true);
+    try {
+      const response = await fetch(`/api/catalog?channel=pos&t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
       });
-    return () => {
-      cancelled = true;
-    };
+      if (!response.ok) throw new Error("Could not load the live catalogue.");
+      const payload = (await response.json()) as { products?: StoreProduct[] };
+      setProducts(Array.isArray(payload.products) ? payload.products : []);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Could not load products.");
+    } finally {
+      setLoading(false);
+      if (background) setCatalogRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadProducts();
+    const timer = window.setInterval(() => void loadProducts(true), 20_000);
+    return () => window.clearInterval(timer);
+  }, [loadProducts]);
 
   useEffect(() => {
     const term = customerSearch.trim();
@@ -267,7 +271,7 @@ export default function PointOfSalePage() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return products
-      .filter((product) => product.available !== false && (product.stockQuantity === null || product.stockQuantity === undefined || product.stockQuantity > 0))
+      .filter((product) => product.available !== false)
       .filter((product) => !term || [product.name, product.sku, product.category].some((value) => value?.toLowerCase().includes(term)));
   }, [products, search]);
 
@@ -295,6 +299,11 @@ export default function PointOfSalePage() {
 
   function addProduct(product: StoreProduct) {
     const variant = selectedVariant(product);
+    const available = variant?.stockQuantity ?? product.stockQuantity;
+    if (typeof available === "number" && available <= 0) {
+      setMessage(`${product.name} is currently out of stock.`);
+      return;
+    }
     const key = `${product.id}|${variant?.id || "default"}`;
     const unitPrice = getQuantityUnitPrice(product, 1, variant?.price);
     setCart((current) => {
@@ -316,7 +325,11 @@ export default function PointOfSalePage() {
       }
       return current.map((line, currentIndex) => {
         if (currentIndex !== index) return line;
-        const nextQuantity = line.quantity + 1;
+        const maxStock = variant?.stockQuantity ?? product.stockQuantity;
+        const requestedQuantity = line.quantity + 1;
+        const nextQuantity = typeof maxStock === "number"
+          ? Math.min(requestedQuantity, Math.max(1, maxStock))
+          : requestedQuantity;
         return {
           ...line,
           quantity: nextQuantity,
@@ -330,16 +343,36 @@ export default function PointOfSalePage() {
     setCart((current) => current
       .map((line) => {
         if (line.key !== key) return line;
-        const nextQuantity = Math.max(0, line.quantity + delta);
         const product = products.find((item) => item.id === line.productId);
-        const variantPrice = product?.variants?.find((variant) => variant.id === line.variantId)?.price;
+        const variant = product?.variants?.find((item) => item.id === line.variantId);
+        const maxStock = variant?.stockQuantity ?? product?.stockQuantity;
+        let nextQuantity = Math.max(0, line.quantity + delta);
+        if (nextQuantity > 0 && typeof maxStock === "number") nextQuantity = Math.min(nextQuantity, Math.max(1, maxStock));
         return {
           ...line,
           quantity: nextQuantity,
-          unitPrice: product ? getQuantityUnitPrice(product, nextQuantity, variantPrice) : line.unitPrice,
+          unitPrice: product ? getQuantityUnitPrice(product, nextQuantity, variant?.price) : line.unitPrice,
         };
       })
       .filter((line) => line.quantity > 0));
+  }
+
+  function setLineQuantity(key: string, requestedQuantity: number) {
+    if (!Number.isFinite(requestedQuantity)) return;
+    setCart((current) => current.map((line) => {
+      if (line.key !== key) return line;
+      const product = products.find((item) => item.id === line.productId);
+      if (!product) return line;
+      const variant = product.variants?.find((item) => item.id === line.variantId);
+      const maxStock = variant?.stockQuantity ?? product.stockQuantity;
+      let nextQuantity = Math.max(1, Math.floor(requestedQuantity));
+      if (typeof maxStock === "number" && maxStock >= 0) nextQuantity = Math.min(nextQuantity, maxStock || 1);
+      return {
+        ...line,
+        quantity: nextQuantity,
+        unitPrice: getQuantityUnitPrice(product, nextQuantity, variant?.price),
+      };
+    }));
   }
 
   function updateCustomerPhone(value: string) {
@@ -542,6 +575,16 @@ export default function PointOfSalePage() {
               {!search.trim() && products.length !== filtered.length && (
                 <span className="text-[10px]">of {products.length} POS-enabled</span>
               )}
+              <button
+                type="button"
+                onClick={() => void loadProducts(true)}
+                disabled={catalogRefreshing}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border hairline bg-[var(--paper)] px-3 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink)] transition hover:border-[var(--brand-green)] disabled:opacity-50"
+                title="Refresh products added in another tab or device"
+              >
+                <RefreshCw size={13} className={catalogRefreshing ? "animate-spin" : ""} />
+                {catalogRefreshing ? "Refreshing" : "Refresh products"}
+              </button>
             </div>
           </div>
 
@@ -652,9 +695,10 @@ export default function PointOfSalePage() {
                         <button
                           type="button"
                           onClick={() => addProduct(product)}
-                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--brand-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95"
+                          disabled={(variant?.stockQuantity ?? product.stockQuantity) === 0}
+                          className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--brand-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Plus size={12} strokeWidth={2.5} /> Add
+                          <Plus size={12} strokeWidth={2.5} /> {(variant?.stockQuantity ?? product.stockQuantity) === 0 ? "Out" : "Add"}
                         </button>
                       </div>
                     </article>
@@ -717,6 +761,13 @@ export default function PointOfSalePage() {
                       <p className="mt-0.5 text-[10px] text-[var(--muted)]">
                         {[line.colour, line.size].filter(Boolean).join(" · ") || "Standard"}
                       </p>
+                      {(() => {
+                        const product = products.find((item) => item.id === line.productId);
+                        const tier = product ? getWholesaleTier(product) : null;
+                        return tier && line.quantity >= tier.wholesaleMinQuantity
+                          ? <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-green)]">Wholesale price applied · {formatMoney(line.unitPrice)} each</p>
+                          : null;
+                      })()}
                     </div>
                     <button
                       type="button"
@@ -739,7 +790,14 @@ export default function PointOfSalePage() {
                       >
                         <Minus size={11} />
                       </button>
-                      <span className="w-8 text-center text-xs font-semibold tabular-nums">{line.quantity}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={line.quantity}
+                        onChange={(event) => setLineQuantity(line.key, Number(event.target.value))}
+                        className="h-7 w-12 border-x hairline bg-transparent text-center text-xs font-semibold tabular-nums outline-none focus:bg-white"
+                        aria-label={`Quantity for ${line.name}`}
+                      />
                       <button
                         type="button"
                         onClick={() => changeQuantity(line.key, 1)}

@@ -66,6 +66,10 @@ type SanityProductRecord = {
   newArrival?: boolean;
   bestSeller?: boolean;
   onSale?: boolean;
+  saleStartAt?: string;
+  saleEndAt?: string;
+  pairingIds?: string[];
+  merchandisedSampleIds?: string[];
 
   heroImage?: ImageSource;
   gallery?: ImageSource[];
@@ -157,6 +161,10 @@ const productProjection = `{
   newArrival,
   bestSeller,
   onSale,
+  saleStartAt,
+  saleEndAt,
+  "pairingIds": pairings[]._ref,
+  "merchandisedSampleIds": merchandisedSamples[]._ref,
   heroImage,
   gallery,
 
@@ -281,6 +289,19 @@ function stockLabel(
 }
 
 /* -------------------------------------------------------------------------- */
+/* SALE SCHEDULING                                                            */
+/* -------------------------------------------------------------------------- */
+
+function saleIsActive(record: SanityProductRecord, now = Date.now()) {
+  if (record.onSale !== true) return false;
+  const start = record.saleStartAt ? new Date(record.saleStartAt).getTime() : Number.NEGATIVE_INFINITY;
+  const end = record.saleEndAt ? new Date(record.saleEndAt).getTime() : Number.POSITIVE_INFINITY;
+  if (!Number.isFinite(start) && record.saleStartAt) return false;
+  if (!Number.isFinite(end) && record.saleEndAt) return false;
+  return now >= start && now <= end;
+}
+
+/* -------------------------------------------------------------------------- */
 /* PRODUCT MAPPER                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -315,6 +336,15 @@ function mapProduct(
     record.description?.trim() ||
     "Product details are being prepared. Contact Decor by Kasiwa for more information about this piece.";
 
+  const saleActive = saleIsActive(record);
+  const configuredRetail = typeof record.price === "number" ? record.price : 0;
+  const configuredCompareAt = typeof record.compareAtPrice === "number" && record.compareAtPrice > configuredRetail
+    ? record.compareAtPrice
+    : undefined;
+  const effectivePrice = record.onSale === true && !saleActive && configuredCompareAt
+    ? configuredCompareAt
+    : configuredRetail;
+
   return {
     id: record._id,
 
@@ -348,16 +378,9 @@ function mapProduct(
           ?.parent,
       ) || undefined,
 
-    price:
-      typeof record.price ===
-      "number"
-        ? record.price
-        : 0,
+    price: effectivePrice,
 
-    compareAtPrice:
-      typeof record.compareAtPrice === "number" && record.compareAtPrice > 0
-        ? record.compareAtPrice
-        : undefined,
+    compareAtPrice: saleActive ? configuredCompareAt : undefined,
 
     wholesalePrice:
       typeof record.wholesalePrice === "number" && record.wholesalePrice > 0
@@ -465,8 +488,9 @@ function mapProduct(
     bestSeller:
       record.bestSeller,
 
-    onSale:
-      record.onSale,
+    onSale: saleActive,
+    saleStartAt: record.saleStartAt,
+    saleEndAt: record.saleEndAt,
 
     available:
       record.available !==
@@ -1219,8 +1243,10 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
         available != false &&
         ${channel === "pos" ? "posEnabled != false" : "ecommerceEnabled != false"}
       ]
-      | order(name asc)
+      | order(_createdAt desc, name asc)
       ${productProjection}`,
+      {},
+      { cache: "no-store" },
     );
 
   return records.map(
@@ -1255,11 +1281,35 @@ export async function getStoreProductBySlug(
       {
         slug,
       },
+      { cache: "no-store" },
     );
 
-  return record
-    ? mapProduct(record)
-    : null;
+  if (!record) return null;
+
+  const product = mapProduct(record);
+  const pairingIds = (record.pairingIds || []).filter((id) => id && id !== record._id);
+  const merchandisedSampleIds = (record.merchandisedSampleIds || []).filter((id) => id && id !== record._id);
+  const requestedIds = Array.from(new Set([...pairingIds, ...merchandisedSampleIds]));
+
+  if (requestedIds.length) {
+    const curated = await client.fetch<SanityProductRecord[]>(
+      `*[
+        _type == "product" &&
+        _id in $ids &&
+        defined(price) &&
+        price > 0 &&
+        available != false &&
+        ecommerceEnabled != false
+      ] ${productProjection}`,
+      { ids: requestedIds },
+      { cache: "no-store" },
+    );
+    const mapped = new Map(curated.map((item) => [item._id, mapProduct(item)]));
+    product.pairings = pairingIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
+    product.merchandisedSamples = merchandisedSampleIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
+  }
+
+  return product;
 }
 
 export async function getRelatedStoreProducts(

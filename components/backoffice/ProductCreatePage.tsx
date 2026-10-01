@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { ArrowLeft, ImagePlus, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 
 type Option = { _id: string; title: string; slug?: string };
-type OptionsPayload = { categories: Option[]; collections: Option[]; spaces: Option[]; styles: Option[] };
+type OptionsPayload = { categories: Option[]; collections: Option[]; spaces: Option[]; styles: Option[]; products: Option[] };
 type ExistingGalleryImage = { _key: string; assetRef: string; url?: string };
 type VariantDraft = {
   _key?: string;
@@ -35,6 +35,10 @@ type EditorProduct = {
   collections?: string[];
   spaces?: string[];
   styles?: string[];
+  pairings?: string[];
+  merchandisedSamples?: string[];
+  saleStartAt?: string;
+  saleEndAt?: string;
   heroImage?: { assetRef?: string; url?: string } | null;
   gallery?: ExistingGalleryImage[];
   shortDescription?: string;
@@ -67,6 +71,14 @@ type EditorProduct = {
 
 const blankVariant = (): VariantDraft => ({ title: "", colour: "", size: "", sku: "", price: "", stockQuantity: "" });
 
+function toLocalDateTimeInput(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 const MAX_BACKOFFICE_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 async function readApiResponse<T extends Record<string, unknown>>(response: Response): Promise<T & { message?: string }> {
@@ -97,7 +109,7 @@ async function readApiResponse<T extends Record<string, unknown>>(response: Resp
 export default function ProductCreatePage({ productId }: { productId?: string }) {
   const router = useRouter();
   const isEditing = Boolean(productId);
-  const [options, setOptions] = useState<OptionsPayload>({ categories: [], collections: [], spaces: [], styles: [] });
+  const [options, setOptions] = useState<OptionsPayload>({ categories: [], collections: [], spaces: [], styles: [], products: [] });
   const [product, setProduct] = useState<EditorProduct | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(isEditing);
@@ -107,7 +119,14 @@ export default function ProductCreatePage({ productId }: { productId?: string })
   const [existingGallery, setExistingGallery] = useState<ExistingGalleryImage[]>([]);
   const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
   const [visibility, setVisibility] = useState({ available: true, featured: false, newArrival: false, bestSeller: false, onSale: false });
-  const [selected, setSelected] = useState({ categories: [] as string[], collections: [] as string[], spaces: [] as string[], styles: [] as string[] });
+  const [selected, setSelected] = useState({
+    categories: [] as string[],
+    collections: [] as string[],
+    spaces: [] as string[],
+    styles: [] as string[],
+    pairings: [] as string[],
+    merchandisedSamples: [] as string[],
+  });
 
   useEffect(() => {
     void fetch("/api/backoffice/products", { cache: "no-store" })
@@ -133,6 +152,8 @@ export default function ProductCreatePage({ productId }: { productId?: string })
           collections: next.collections || [],
           spaces: next.spaces || [],
           styles: next.styles || [],
+          pairings: next.pairings || [],
+          merchandisedSamples: next.merchandisedSamples || [],
         });
         setSalesChannels({ ecommerce: next.ecommerceEnabled !== false, pos: next.posEnabled !== false });
         setVisibility({
@@ -176,6 +197,16 @@ export default function ProductCreatePage({ productId }: { productId?: string })
     form.set("collections", JSON.stringify(selected.collections));
     form.set("spaces", JSON.stringify(selected.spaces));
     form.set("styles", JSON.stringify(selected.styles));
+    form.set("pairings", JSON.stringify(selected.pairings.filter((id) => id !== productId)));
+    form.set("merchandisedSamples", JSON.stringify(selected.merchandisedSamples.filter((id) => id !== productId)));
+    for (const field of ["saleStartAt", "saleEndAt"] as const) {
+      const value = form.get(field);
+      if (!visibility.onSale) {
+        form.set(field, "");
+      } else if (typeof value === "string" && value.trim()) {
+        form.set(field, new Date(value).toISOString());
+      }
+    }
     form.set("galleryExisting", JSON.stringify(existingGallery.map((image) => ({ key: image._key, assetRef: image.assetRef }))));
 
     if (!salesChannels.ecommerce && !salesChannels.pos) {
@@ -313,6 +344,10 @@ export default function ProductCreatePage({ productId }: { productId?: string })
             <OptionGroup title="Collections" items={options.collections} selected={selected.collections} onToggle={(id)=>toggle("collections",id)} />
             <OptionGroup title="Shop by Space" items={options.spaces} selected={selected.spaces} onToggle={(id)=>toggle("spaces",id)} />
             <OptionGroup title="Shop by Style" items={options.styles} selected={selected.styles} onToggle={(id)=>toggle("styles",id)} />
+            <OptionGroup title="Pair it with" items={options.products.filter((item) => item._id !== productId)} selected={selected.pairings} onToggle={(id)=>toggle("pairings",id)} />
+            <p className="-mt-3 mb-5 text-[10px] leading-4 text-[var(--muted)]">Curate complementary products, for example flowers that should be suggested with a vase.</p>
+            <OptionGroup title="Merchandised samples" items={options.products.filter((item) => item._id !== productId)} selected={selected.merchandisedSamples} onToggle={(id)=>toggle("merchandisedSamples",id)} />
+            <p className="-mt-3 text-[10px] leading-4 text-[var(--muted)]">Choose products that demonstrate a styled or merchandised arrangement alongside this item.</p>
           </Card>
 
           <Card title="Sales channels">
@@ -332,6 +367,12 @@ export default function ProductCreatePage({ productId }: { productId?: string })
               <VisibilityToggle label="Best seller" checked={visibility.bestSeller} onChange={(checked)=>setVisibility((current)=>({...current,bestSeller:checked}))}/>
               <VisibilityToggle label="On sale" checked={visibility.onSale} onChange={(checked)=>setVisibility((current)=>({...current,onSale:checked}))}/>
             </div>
+            {visibility.onSale && (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <Field label="Sale starts" hint="Optional"><input name="saleStartAt" type="datetime-local" defaultValue={toLocalDateTimeInput(product?.saleStartAt)} /></Field>
+                <Field label="Sale ends" hint="Optional"><input name="saleEndAt" type="datetime-local" defaultValue={toLocalDateTimeInput(product?.saleEndAt)} /></Field>
+              </div>
+            )}
           </Card>
 
           <Card title="Social proof (optional)">

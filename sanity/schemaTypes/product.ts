@@ -147,6 +147,24 @@ export const product = defineType({
       of: [{ type: "reference", to: [{ type: "collection" }] }],
     }),
     defineField({
+      name: "pairings",
+      title: "Pair it with",
+      description: "Curate complementary products for this item, for example flowers that pair with a vase.",
+      type: "array",
+      group: "merchandising",
+      of: [{ type: "reference", to: [{ type: "product" }] }],
+      validation: (rule) => rule.unique(),
+    }),
+    defineField({
+      name: "merchandisedSamples",
+      title: "Merchandised samples",
+      description: "Choose products that demonstrate how this item can be merchandised or styled in-store.",
+      type: "array",
+      group: "merchandising",
+      of: [{ type: "reference", to: [{ type: "product" }] }],
+      validation: (rule) => rule.unique(),
+    }),
+    defineField({
       name: "spaces",
       title: "Shop by Space",
       type: "array",
@@ -213,6 +231,27 @@ export const product = defineType({
     defineField({ name: "newArrival", title: "New arrival", type: "boolean", group: "visibility", initialValue: false }),
     defineField({ name: "bestSeller", title: "Best seller", type: "boolean", group: "visibility", initialValue: false }),
     defineField({ name: "onSale", title: "On sale", type: "boolean", group: "visibility", initialValue: false }),
+    defineField({
+      name: "saleStartAt",
+      title: "Sale starts",
+      description: "Optional. When supplied, sale pricing becomes active from this date/time.",
+      type: "datetime",
+      group: "visibility",
+      hidden: ({ document }) => document?.onSale !== true,
+    }),
+    defineField({
+      name: "saleEndAt",
+      title: "Sale ends",
+      description: "Optional. After this date/time the product automatically returns to its normal compare-at price.",
+      type: "datetime",
+      group: "visibility",
+      hidden: ({ document }) => document?.onSale !== true,
+      validation: (rule) => rule.custom((value, context) => {
+        const start = context.document?.saleStartAt;
+        if (!value || !start) return true;
+        return new Date(String(value)).getTime() > new Date(String(start)).getTime() || "Sale end must be after sale start.";
+      }),
+    }),
     defineField({ name: "available", title: "Available", type: "boolean", group: "visibility", initialValue: true }),
   ],
   orderings: [

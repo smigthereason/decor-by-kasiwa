@@ -68,13 +68,13 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
             color: #000 !important;
             font-size: 10px !important;
           }
-          .pos-receipt-paper header { padding-bottom: 3mm !important; }
-          .pos-receipt-paper section { padding-top: 2.5mm !important; padding-bottom: 2.5mm !important; }
-          .pos-receipt-paper footer { margin-top: 3mm !important; padding-top: 2.5mm !important; }
+          .pos-receipt-paper header { padding-bottom: 2mm !important; }
+          .pos-receipt-paper section { padding-top: 1.6mm !important; padding-bottom: 1.6mm !important; }
+          .pos-receipt-paper footer { margin-top: 2mm !important; padding-top: 1.5mm !important; }
           .pos-receipt-paper .receipt-logo { width: 28mm !important; }
-          .pos-receipt-paper .receipt-title { margin-top: 1.5mm !important; font-size: 14px !important; }
+          .pos-receipt-paper .receipt-title { margin-top: 1mm !important; font-size: 14px !important; }
           .pos-receipt-paper .receipt-items { font-size: 9px !important; }
-          .pos-receipt-paper .receipt-payment-box { margin-top: 2.5mm !important; padding: 2.5mm !important; border-radius: 0 !important; }
+          .pos-receipt-paper .receipt-payment-box { margin-top: 1.5mm !important; padding: 1.8mm !important; border-radius: 0 !important; }
           .pos-receipt-paper .receipt-muted { color: #333 !important; }
         }
       `}</style>
@@ -85,7 +85,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           {printable ? <PrintReceiptButton /> : <span className="rounded-full bg-amber-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-amber-800">Payment not confirmed</span>}
         </div>
 
-        <header className="border-b-2 border-[var(--ink)]/15 pb-5 text-center">
+        <header className="border-b-2 border-[var(--ink)]/15 pb-4 text-center">
           <Image
             src="/logo.png"
             alt="Decor by Kasiwa"
@@ -103,7 +103,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           </div>
         </header>
 
-        <section className="grid gap-3 border-b hairline py-4 text-[11px] sm:grid-cols-2 print:grid-cols-1">
+        <section className="grid gap-2 border-b hairline py-3 text-[11px] sm:grid-cols-2 print:grid-cols-1">
           <div>
             <p className="receipt-muted text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Customer</p>
             <p className="mt-1 font-semibold">{receipt.customerName || "Walk-in customer"}</p>
@@ -120,7 +120,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
         </section>
 
         {hasCapturedDelivery && (
-          <section className="border-b hairline py-4 text-[11px]">
+          <section className="border-b hairline py-3 text-[11px]">
             <p className="receipt-muted text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Delivery details</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 print:grid-cols-1">
               <div>
@@ -142,7 +142,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           </div>
           <div className="divide-y hairline">
             {(receipt.lineItems || []).map((line) => (
-              <div key={line._key} className="grid grid-cols-[1fr_34px_76px] items-start gap-2 py-2.5 text-[10px] sm:grid-cols-[1fr_54px_92px]">
+              <div key={line._key} className="grid grid-cols-[1fr_34px_76px] items-start gap-2 py-1.5 text-[10px] sm:grid-cols-[1fr_54px_92px]">
                 <div className="min-w-0">
                   <p className="font-semibold">{line.name}</p>
                   <p className="receipt-muted mt-0.5 text-[8px] text-[var(--muted)]">{[line.finish, line.size].filter(Boolean).join(" · ") || line.category || "Standard"}</p>
@@ -155,7 +155,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           </div>
         </section>
 
-        <section className="border-t-2 border-[var(--ink)]/15 pt-4 text-[11px]">
+        <section className="border-t-2 border-[var(--ink)]/15 pt-3 text-[11px]">
           <div className="ml-auto max-w-sm space-y-0.5">
             <div className="flex justify-between gap-4 py-0.5"><span>Subtotal</span><span>{formatMoney(Number(receipt.subtotal || 0))}</span></div>
             {Number(receipt.discountAmount || 0) > 0 && (
@@ -177,14 +177,14 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           </div>
         </section>
 
-        <section className="receipt-payment-box mt-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[10px] leading-4 print:bg-white">
+        <section className="receipt-payment-box mt-3 rounded-xl border hairline bg-[var(--paper-2)] p-2.5 text-[10px] leading-4 print:bg-white">
           <p><strong>Payment:</strong> {paymentLabel(receipt.paymentProvider, receipt.paymentChannel)} · <span className="capitalize">{receipt.paymentStatus || "—"}</span></p>
           <p className="mt-1 break-all"><strong>Reference:</strong> {transactionReference || "—"}</p>
           {receipt.paymentProvider === "daraja" && receipt.providerReceiptNumber && <p className="mt-1"><strong>M-PESA receipt:</strong> {receipt.providerReceiptNumber}</p>}
           {receipt.manualPaymentName && <p className="mt-1"><strong>Payer:</strong> {receipt.manualPaymentName}</p>}
         </section>
 
-        <footer className="mt-5 border-t hairline pt-4 text-center">
+        <footer className="mt-3 border-t hairline pt-3 text-center">
           <p className="text-[11px] font-semibold">Thank you for shopping with {receipt.businessName}.</p>
           <p className="receipt-muted mt-1 text-[8px] leading-3 text-[var(--muted)]">Please retain this receipt for payment, order and delivery reference.</p>
         </footer>

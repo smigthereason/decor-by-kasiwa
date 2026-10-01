@@ -12,7 +12,10 @@ export async function GET(request: Request) {
       if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
     }
     const products = await getStoreProducts(channel);
-    return NextResponse.json({ products });
+    return NextResponse.json(
+      { products },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (error) {
     console.error("Catalogue API failed:", error);
     return NextResponse.json({ products: [] }, { status: 500 });

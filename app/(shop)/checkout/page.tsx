@@ -157,13 +157,20 @@ export default function CheckoutPage() {
       }
     }
     if (step === 2 && nextStep > 2) {
-      const required = [address.fullName, address.phone, address.address1, address.city, address.region, address.country];
+      const pickup = selectedDeliveryOption?.id === "shop-pickup";
+      const required = pickup
+        ? [address.fullName, address.phone]
+        : [address.fullName, address.phone, address.address1, address.city, address.region, address.country];
       if (required.some((value) => !value.trim())) {
         setError("Please complete all required delivery details.");
         return false;
       }
       if (!deliveryOptionId || !selectedDeliveryOption) {
         setError("Please select a valid shipping / delivery option.");
+        return false;
+      }
+      if (selectedDeliveryOption.quoteRequired) {
+        setError("International delivery is TBA. Please contact Decor by Kasiwa for a delivery quote before payment.");
         return false;
       }
     }
@@ -426,7 +433,7 @@ export default function CheckoutPage() {
                           {deliveryOptions.length === 0 && <option value="">{deliveryLoading ? "Loading delivery options…" : "No delivery options available"}</option>}
                           {deliveryOptions.map((option) => (
                             <option key={option.id} value={option.id}>
-                              {option.label} — {formatMoney(option.fee)}
+                              {option.label} — {option.quoteRequired ? "TBA" : option.fee === 0 ? "FREE" : formatMoney(option.fee)}
                             </option>
                           ))}
                         </select>
@@ -632,7 +639,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between gap-4 text-sm">
                 <span className="text-[var(--muted)]">Delivery</span>
                 <span className="text-right font-medium">
-                  {selectedDeliveryOption ? `${selectedDeliveryOption.label} · ${formatMoney(selectedDeliveryOption.fee)}` : "Select a delivery option"}
+                  {selectedDeliveryOption ? `${selectedDeliveryOption.label} · ${selectedDeliveryOption.quoteRequired ? "TBA" : selectedDeliveryOption.fee === 0 ? "FREE" : formatMoney(selectedDeliveryOption.fee)}` : "Select a delivery option"}
                 </span>
               </div>
             </div>

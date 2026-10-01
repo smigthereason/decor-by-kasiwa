@@ -15,7 +15,8 @@ export async function getConfiguredDeliveryZones(): Promise<DeliveryZone[]> {
   );
 
   const normalized = normalizeDeliveryZones(zones);
-  return normalized.length ? normalized : DEFAULT_DELIVERY_ZONES;
+  const legacySingleRate = normalized.length === 1 && normalized[0]?.id === "within-nairobi" && normalized[0]?.fee === 300;
+  return normalized.length && !legacySingleRate ? normalized : DEFAULT_DELIVERY_ZONES;
 }
 
 export async function getActiveDeliveryZones(): Promise<DeliveryZone[]> {

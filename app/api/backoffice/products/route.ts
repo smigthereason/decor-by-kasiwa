@@ -88,14 +88,15 @@ export async function GET() {
   const staff = await getApiStaff(["ADMIN"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
-  const [categories, collections, spaces, styles] = await Promise.all([
+  const [categories, collections, spaces, styles, products] = await Promise.all([
     serverClient.fetch<ReferenceOption[]>(`*[_type == "category"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "collection"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "shopSpace"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "shopStyle"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
+    serverClient.fetch<ReferenceOption[]>(`*[_type == "product"] | order(name asc){_id,"title":name,"slug":slug.current}`, {}, { cache: "no-store" }),
   ]);
 
-  return NextResponse.json({ categories, collections, spaces, styles });
+  return NextResponse.json({ categories, collections, spaces, styles, products });
 }
 
 export async function POST(request: Request) {
@@ -165,6 +166,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
     }
     const compareAtPrice = numberValue(form.get("compareAtPrice"));
+    const saleStartAt = clean(form.get("saleStartAt"));
+    const saleEndAt = clean(form.get("saleEndAt"));
+    if (saleStartAt && saleEndAt && new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime()) {
+      return NextResponse.json({ message: "Sale end must be after sale start." }, { status: 400 });
+    }
     const rating = numberValue(form.get("rating"));
     const reviewCount = Math.max(0, Math.floor(numberValue(form.get("reviewCount"))));
 
@@ -185,6 +191,8 @@ export async function POST(request: Request) {
       primaryCategory: { _type: "reference", _ref: primaryCategory },
       categories: references(jsonArray(form.get("categories")).filter((id) => id !== primaryCategory)),
       collections: references(jsonArray(form.get("collections"))),
+      pairings: references(jsonArray(form.get("pairings")).filter((id) => id !== productId)),
+      merchandisedSamples: references(jsonArray(form.get("merchandisedSamples")).filter((id) => id !== productId)),
       spaces: references(jsonArray(form.get("spaces"))),
       styles: references(jsonArray(form.get("styles"))),
       ...(heroImage ? { heroImage } : {}),
@@ -201,6 +209,8 @@ export async function POST(request: Request) {
       newArrival: booleanValue(form.get("newArrival")),
       bestSeller: booleanValue(form.get("bestSeller")),
       onSale: booleanValue(form.get("onSale")),
+      ...(saleStartAt ? { saleStartAt } : {}),
+      ...(saleEndAt ? { saleEndAt } : {}),
       available: booleanValue(form.get("available"), true),
     };
 

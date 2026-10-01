@@ -6,7 +6,7 @@ import { getSalesReport } from "@/lib/pos/operations";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   const params = new URL(request.url).searchParams;
   const raw = params.get("period");

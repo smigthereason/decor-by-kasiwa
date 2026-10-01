@@ -66,6 +66,10 @@ export type StoreProduct = {
   newArrival?: boolean;
   bestSeller?: boolean;
   onSale?: boolean;
+  saleStartAt?: string;
+  saleEndAt?: string;
+  pairings?: StoreProduct[];
+  merchandisedSamples?: StoreProduct[];
 
   available?: boolean;
 };

@@ -102,6 +102,8 @@ export async function GET(
       wholesaleMinQuantity,
       procurementCost,
       compareAtPrice,
+      saleStartAt,
+      saleEndAt,
       rating,
       reviewCount,
       "primaryCategory": primaryCategory._ref,
@@ -109,6 +111,8 @@ export async function GET(
       "collections": collections[]._ref,
       "spaces": spaces[]._ref,
       "styles": styles[]._ref,
+      "pairings": pairings[]._ref,
+      "merchandisedSamples": merchandisedSamples[]._ref,
       "heroImage": select(defined(heroImage.asset) => {"assetRef": heroImage.asset._ref, "url": heroImage.asset->url}, null),
       "gallery": gallery[]{_key, "assetRef": asset._ref, "url": asset->url},
       shortDescription,
@@ -162,8 +166,8 @@ export async function PATCH(
       for (const key of [
         "name", "shortDescription", "description", "onHand", "initialStock", "reserved", "incoming", "reorderPoint",
         "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice",
-        "rating", "reviewCount", "location", "available", "featured", "newArrival", "bestSeller", "onSale",
-        "primaryCategory", "categories", "collections", "spaces", "styles", "colours", "materials", "dimensions",
+        "rating", "reviewCount", "location", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
+        "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
         "careInstructions", "variants", "galleryExisting",
       ]) {
         if (form.has(key)) body[key] = form.get(key);
@@ -249,6 +253,16 @@ export async function PATCH(
     const procurementCost = numericValue(body.procurementCost ?? body.unitCost);
     if (procurementCost !== undefined) productPatch.procurementCost = Math.max(0, procurementCost);
 
+    if (body.saleStartAt !== undefined || body.saleEndAt !== undefined) {
+      const start = cleanString(body.saleStartAt);
+      const end = cleanString(body.saleEndAt);
+      if (start && end && new Date(end).getTime() <= new Date(start).getTime()) {
+        return NextResponse.json({ message: "Sale end must be after sale start." }, { status: 400 });
+      }
+      if (start) productPatch.saleStartAt = start; else productUnset.push("saleStartAt");
+      if (end) productPatch.saleEndAt = end; else productUnset.push("saleEndAt");
+    }
+
     if (body.compareAtPrice !== undefined) {
       const value = numericValue(body.compareAtPrice);
       if (value !== undefined && value > 0) productPatch.compareAtPrice = value;
@@ -277,6 +291,8 @@ export async function PATCH(
     if (body.collections !== undefined) productPatch.collections = references(jsonArray(body.collections));
     if (body.spaces !== undefined) productPatch.spaces = references(jsonArray(body.spaces));
     if (body.styles !== undefined) productPatch.styles = references(jsonArray(body.styles));
+    if (body.pairings !== undefined) productPatch.pairings = references(jsonArray(body.pairings).filter((id) => id !== productId));
+    if (body.merchandisedSamples !== undefined) productPatch.merchandisedSamples = references(jsonArray(body.merchandisedSamples).filter((id) => id !== productId));
     if (body.colours !== undefined) productPatch.colours = textList(body.colours);
     if (body.materials !== undefined) productPatch.materials = textList(body.materials);
     if (body.dimensions !== undefined) productPatch.dimensions = cleanString(body.dimensions);

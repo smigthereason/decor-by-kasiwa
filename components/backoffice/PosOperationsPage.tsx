@@ -40,6 +40,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const { data: session } = useSession();
   const role = session?.user?.role;
   const manager = role === "ADMIN" || role === "STORE";
+  const salesStaff = role === "STORE_STAFF";
   const [tab, setTab] = useState<Tab>("history");
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [cashiers, setCashiers] = useState<string[]>([]);
@@ -93,9 +94,17 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     finally { setLoading(false); }
   }, [appliedHistory, appliedReportFrom, appliedReportTo, period, tab]);
 
-  useEffect(() => { void load(tab); }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (salesStaff && tab !== "expenses") {
+      setTab("expenses");
+      return;
+    }
+    void load(tab);
+  }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo, salesStaff]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tabs = useMemo(() => [
+  const tabs = useMemo(() => salesStaff ? [
+    { id: "expenses" as const, label: "Expenditure", icon: WalletCards },
+  ] : [
     { id: "history" as const, label: "Sales History", icon: ClipboardList },
     { id: "reports" as const, label: "Reports", icon: ReceiptText },
     { id: "receivables" as const, label: "Receivables", icon: HandCoins },
@@ -104,7 +113,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
       { id: "reconciliation" as const, label: "Reconciliation", icon: CreditCard },
       { id: "audit" as const, label: "Audit Trail", icon: FileClock },
     ] : []),
-  ], [manager]);
+  ], [manager, salesStaff]);
 
   async function recordReceivable(order: HistoryOrder) {
     const raw = window.prompt(`Outstanding balance is ${formatMoney(order.balanceDue)}. Enter cash amount received:`, String(order.balanceDue));
@@ -288,7 +297,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
 
         {tab === "receivables" && <div className="grid gap-3">{receivables.map((order) => <div key={order.id} className="flex flex-col gap-4 rounded-2xl border hairline bg-[var(--paper)] p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{order.customerName}</p><p className="mt-1 text-xs text-[var(--muted)]">{order.customerPhone} · {order.orderNumber}</p></div><div className="sm:text-right"><p className="text-[10px] uppercase text-[var(--muted)]">Outstanding</p><p className="mt-1 text-xl font-semibold text-amber-700">{formatMoney(order.balanceDue)}</p><p className="mt-2 text-[10px] text-[var(--muted)]">Historical outstanding balance. New POS sales are cashless.</p></div></div>)}{receivables.length === 0 && <p className="rounded-2xl border hairline bg-[var(--paper)] p-10 text-center text-sm text-[var(--muted)]">No outstanding receivables.</p>}</div>}
 
-        {tab === "expenses" && manager && <div className="grid gap-6 lg:grid-cols-[380px_1fr]"><form onSubmit={submitExpense} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><h2 className="text-lg font-semibold">Record expenditure</h2><div className="mt-4 grid gap-3"><select value={expenseForm.expenseType} onChange={(e)=>setExpenseForm({...expenseForm,expenseType:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="EXPENSE">Business expense</option><option value="PETTY_CASH">Petty cash</option><option value="STAFF_PAYMENT">Staff payment</option><option value="SALARY">Salary</option></select><input value={expenseForm.staffName} onChange={(e)=>setExpenseForm({...expenseForm,staffName:e.target.value})} placeholder="Staff / payee name" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><textarea value={expenseForm.description} onChange={(e)=>setExpenseForm({...expenseForm,description:e.target.value})} placeholder="Description" required className="min-h-24 rounded-lg border hairline p-3 text-sm"/><input type="number" min="0.01" step="0.01" value={expenseForm.amount} onChange={(e)=>setExpenseForm({...expenseForm,amount:e.target.value})} placeholder="Amount (KES)" required className="min-h-11 rounded-lg border hairline px-3 text-sm"/><select value={expenseForm.paymentMethod} onChange={(e)=>setExpenseForm({...expenseForm,paymentMethod:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="cash">Cash</option><option value="mpesa">M-PESA</option><option value="paystack">Bank / Paystack</option><option value="other">Other</option></select><input value={expenseForm.transactionReference} onChange={(e)=>setExpenseForm({...expenseForm,transactionReference:e.target.value})} placeholder="Transaction reference (optional)" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><button className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream">Save expenditure</button></div></form><SimpleTable headers={["Date","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} /></div>}
+        {tab === "expenses" && (manager || salesStaff) && <div className="grid gap-6 lg:grid-cols-[380px_1fr]"><form onSubmit={submitExpense} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><h2 className="text-lg font-semibold">Record expenditure</h2><div className="mt-4 grid gap-3"><select value={expenseForm.expenseType} onChange={(e)=>setExpenseForm({...expenseForm,expenseType:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="EXPENSE">Business expense</option><option value="PETTY_CASH">Petty cash</option><option value="STAFF_PAYMENT">Staff payment</option><option value="SALARY">Salary</option></select><input value={expenseForm.staffName} onChange={(e)=>setExpenseForm({...expenseForm,staffName:e.target.value})} placeholder="Staff / payee name" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><textarea value={expenseForm.description} onChange={(e)=>setExpenseForm({...expenseForm,description:e.target.value})} placeholder="Description" required className="min-h-24 rounded-lg border hairline p-3 text-sm"/><input type="number" min="0.01" step="0.01" value={expenseForm.amount} onChange={(e)=>setExpenseForm({...expenseForm,amount:e.target.value})} placeholder="Amount (KES)" required className="min-h-11 rounded-lg border hairline px-3 text-sm"/><select value={expenseForm.paymentMethod} onChange={(e)=>setExpenseForm({...expenseForm,paymentMethod:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="cash">Cash</option><option value="mpesa">M-PESA</option><option value="paystack">Bank / Paystack</option><option value="other">Other</option></select><input value={expenseForm.transactionReference} onChange={(e)=>setExpenseForm({...expenseForm,transactionReference:e.target.value})} placeholder="Transaction reference (optional)" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><button className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream">Save expenditure</button></div></form><SimpleTable headers={["Date","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} /></div>}
 
         {tab === "reconciliation" && manager && <SimpleTable headers={["Reference","Order","Provider","Channel","Status","Amount","Provider transaction","Processed by"]} rows={payments.map((p)=>[p.reference,p.orderNumber||"—",p.provider||"—",p.channel||"—",p.status,formatMoney(p.amount),p.providerReceiptNumber||p.providerTransactionId||"—",p.processedByName||"—"])} />}
         {tab === "audit" && manager && <SimpleTable headers={["Time","Event","Entity","Actor","Role","Detail"]} rows={audit.map((a)=>[new Date(a.createdAt).toLocaleString("en-KE"),a.eventType.replaceAll("_"," "),a.entityLabel||"—",a.actorName||"System",a.actorRole||"—",a.detail||"—"])} />}

@@ -62,6 +62,7 @@ const adminNavigation: NavigationItem[] = [
   { label: "Point of Sale", href: "/admin/pos", icon: ShoppingCart },
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
+  { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
   { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Shop the Look", href: "/admin/shop-looks", icon: Layers3 },
   { label: "Customers", href: "/admin/customers", icon: ContactRound },

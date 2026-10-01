@@ -7,7 +7,7 @@ import { recordOutstandingCashPayment } from "@/lib/pos/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     return NextResponse.json({ receivables: await listReceivables() });
@@ -17,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     const body = await request.json() as { orderId?: string; amount?: number };

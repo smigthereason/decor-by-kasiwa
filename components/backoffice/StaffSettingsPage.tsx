@@ -242,13 +242,16 @@ export default function StaffSettingsPage({ manageDelivery = false }: { manageDe
                       <SettingField label="Checkout description">
                         <input value={zone.description || ""} onChange={(event) => updateDeliveryZone(index, { description: event.target.value })} placeholder="Optional customer-facing note" />
                       </SettingField>
-                      <label className="flex min-h-11 items-center gap-3 rounded-lg border hairline bg-[var(--paper)] px-4 text-xs font-medium"><input type="checkbox" checked={zone.active} onChange={(event) => updateDeliveryZone(index, { active: event.target.checked })} className="size-4 accent-[var(--brand-green)]"/>Available at checkout</label>
+                      <div className="flex flex-col gap-2">
+                        <label className="flex min-h-11 items-center gap-3 rounded-lg border hairline bg-[var(--paper)] px-4 text-xs font-medium"><input type="checkbox" checked={zone.quoteRequired === true} onChange={(event) => updateDeliveryZone(index, { quoteRequired: event.target.checked, fee: event.target.checked ? 0 : zone.fee })} className="size-4 accent-[var(--brand-green)]"/>Price TBA / quote required</label>
+                        <label className="flex min-h-11 items-center gap-3 rounded-lg border hairline bg-[var(--paper)] px-4 text-xs font-medium"><input type="checkbox" checked={zone.active} onChange={(event) => updateDeliveryZone(index, { active: event.target.checked })} className="size-4 accent-[var(--brand-green)]"/>Available at checkout</label>
+                      </div>
                     </div>
                   </div>
                 ))}
 
                 <div className="flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between">
-                  <p role="status" className="text-xs text-[var(--muted)]">{deliveryMessage || "Sample rate: Within Nairobi — KES 300. Edit it or add more zones such as CBD, South B, Kiambu, or upcountry."}</p>
+                  <p role="status" className="text-xs text-[var(--muted)]">{deliveryMessage || "Recommended rates: Shop pickup FREE · CBD KES 100 · Outside CBD KES 150 · Long distance KES 350 · Neighbouring countries KES 1,000 · International TBA."}</p>
                   <button type="submit" disabled={deliverySaving || deliveryZones.length === 0} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">{deliverySaving?<LoaderCircle size={14} className="animate-spin"/>:<Check size={14}/>}Save delivery rates</button>
                 </div>
               </form>

@@ -1,5 +1,5 @@
 import InventoryManagementPage from "@/components/backoffice/InventoryManagementPage";
 
-export default function StoreInventoryPage() {
+export default function AdminInventoryPage() {
   return <InventoryManagementPage />;
 }

@@ -65,15 +65,12 @@ export const siteSettings = defineType({
       type: "array",
       group: "delivery",
       initialValue: [
-        {
-          _key: "within-nairobi",
-          _type: "object",
-          id: "within-nairobi",
-          label: "Within Nairobi",
-          description: "Standard delivery within Nairobi.",
-          fee: 300,
-          active: true,
-        },
+        { _key: "shop-pickup", _type: "object", id: "shop-pickup", label: "Shop pickup", description: "Collect from the Decor by Kasiwa shop.", fee: 0, active: true },
+        { _key: "within-cbd", _type: "object", id: "within-cbd", label: "Within CBD", description: "Delivery within Nairobi CBD.", fee: 100, active: true },
+        { _key: "outside-cbd-matatu", _type: "object", id: "outside-cbd-matatu", label: "Outside CBD via Matatu", fee: 150, active: true },
+        { _key: "long-distance-matatu", _type: "object", id: "long-distance-matatu", label: "Long Distance Matatu", fee: 350, active: true },
+        { _key: "neighbouring-countries", _type: "object", id: "neighbouring-countries", label: "Neighbouring Countries", fee: 1000, active: true },
+        { _key: "international", _type: "object", id: "international", label: "International", description: "Delivery charge is confirmed separately before payment.", fee: 0, active: true, quoteRequired: true },
       ],
       of: [
         {
@@ -83,6 +80,7 @@ export const siteSettings = defineType({
             defineField({ name: "label", title: "Display name", type: "string", validation: (rule) => rule.required() }),
             defineField({ name: "description", title: "Description", type: "string" }),
             defineField({ name: "fee", title: "Delivery fee (KES)", type: "number", validation: (rule) => rule.required().min(0) }),
+            defineField({ name: "quoteRequired", title: "Price to be confirmed / TBA", type: "boolean", initialValue: false }),
             defineField({ name: "active", title: "Available at checkout", type: "boolean", initialValue: true }),
           ],
           preview: {
