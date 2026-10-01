@@ -102,6 +102,7 @@ export async function GET(
       wholesaleMinQuantity,
       procurementCost,
       compareAtPrice,
+      salePrice,
       saleStartAt,
       saleEndAt,
       rating,
@@ -165,7 +166,7 @@ export async function PATCH(
       form = await request.formData();
       for (const key of [
         "name", "shortDescription", "description", "onHand", "initialStock", "reserved", "incoming", "reorderPoint",
-        "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice",
+        "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
         "rating", "reviewCount", "location", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
         "careInstructions", "variants", "galleryExisting",
@@ -252,6 +253,15 @@ export async function PATCH(
 
     const procurementCost = numericValue(body.procurementCost ?? body.unitCost);
     if (procurementCost !== undefined) productPatch.procurementCost = Math.max(0, procurementCost);
+
+    if (body.salePrice !== undefined) {
+      const value = numericValue(body.salePrice);
+      const retail = numericValue(body.retailPrice ?? body.price);
+      if (value !== undefined && value > 0 && retail !== undefined && value >= retail) {
+        return NextResponse.json({ message: "Sale price must be lower than the retail price." }, { status: 400 });
+      }
+      if (value !== undefined && value > 0) productPatch.salePrice = value; else productUnset.push("salePrice");
+    }
 
     if (body.saleStartAt !== undefined || body.saleEndAt !== undefined) {
       const start = cleanString(body.saleStartAt);

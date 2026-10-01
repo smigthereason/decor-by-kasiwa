@@ -166,6 +166,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
     }
     const compareAtPrice = numberValue(form.get("compareAtPrice"));
+    const salePrice = numberValue(form.get("salePrice"));
+    const retailPriceForSale = numberValue(form.get("retailPrice")) || numberValue(form.get("price"));
+    if (salePrice > 0 && retailPriceForSale > 0 && salePrice >= retailPriceForSale) {
+      return NextResponse.json({ message: "Sale price must be lower than the retail price." }, { status: 400 });
+    }
     const saleStartAt = clean(form.get("saleStartAt"));
     const saleEndAt = clean(form.get("saleEndAt"));
     if (saleStartAt && saleEndAt && new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime()) {
@@ -209,6 +214,7 @@ export async function POST(request: Request) {
       newArrival: booleanValue(form.get("newArrival")),
       bestSeller: booleanValue(form.get("bestSeller")),
       onSale: booleanValue(form.get("onSale")),
+      ...(salePrice > 0 ? { salePrice } : {}),
       ...(saleStartAt ? { saleStartAt } : {}),
       ...(saleEndAt ? { saleEndAt } : {}),
       available: booleanValue(form.get("available"), true),

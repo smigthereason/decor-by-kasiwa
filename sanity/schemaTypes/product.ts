@@ -232,6 +232,19 @@ export const product = defineType({
     defineField({ name: "bestSeller", title: "Best seller", type: "boolean", group: "visibility", initialValue: false }),
     defineField({ name: "onSale", title: "On sale", type: "boolean", group: "visibility", initialValue: false }),
     defineField({
+      name: "salePrice",
+      title: "Sale price",
+      description: "Price used only while the sale schedule is active. It must be lower than the retail price.",
+      type: "number",
+      group: "visibility",
+      hidden: ({ document }) => document?.onSale !== true,
+      validation: (rule) => rule.positive().custom((value, context) => {
+        const retail = Number(context.document?.price || 0);
+        if (!value || !retail) return true;
+        return Number(value) < retail || "Sale price must be lower than the retail price.";
+      }),
+    }),
+    defineField({
       name: "saleStartAt",
       title: "Sale starts",
       description: "Optional. When supplied, sale pricing becomes active from this date/time.",
@@ -242,7 +255,7 @@ export const product = defineType({
     defineField({
       name: "saleEndAt",
       title: "Sale ends",
-      description: "Optional. After this date/time the product automatically returns to its normal compare-at price.",
+      description: "Optional. After this date/time the product automatically returns to its normal retail price.",
       type: "datetime",
       group: "visibility",
       hidden: ({ document }) => document?.onSale !== true,

@@ -33,7 +33,7 @@ export default function InventoryManagementPage() {
   const { data: session } = useSession();
   const { data, loading, error, refresh } = useLiveOperations();
   const role = session?.user?.role;
-  const canManage = role === "ADMIN" || role === "STORE";
+  const canManage = role === "ADMIN" || role === "STORE" || role === "STORE_STAFF";
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("All");
   const [action, setAction] = useState<"RECEIVE" | "TRANSFER" | null>(null);

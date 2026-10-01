@@ -66,6 +66,7 @@ export type StoreProduct = {
   newArrival?: boolean;
   bestSeller?: boolean;
   onSale?: boolean;
+  salePrice?: number;
   saleStartAt?: string;
   saleEndAt?: string;
   pairings?: StoreProduct[];

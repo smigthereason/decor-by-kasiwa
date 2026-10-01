@@ -31,7 +31,7 @@ function movementNumber() {
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const movements = await serverClient.fetch(
@@ -46,7 +46,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   try {
@@ -90,7 +90,12 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
 
     const transaction = serverClient.transaction();
-    transaction.patch(productId, (patch) => patch.set({ initialStock: after }));
+    transaction.patch(productId, (patch) =>
+      patch.set({
+        initialStock: after,
+        ...(action === "RECEIVE" && after > 0 ? { available: true } : {}),
+      }),
+    );
     transaction.createIfNotExists({
       _id: inventoryId,
       _type: "inventoryRecord",

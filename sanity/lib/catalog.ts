@@ -66,6 +66,7 @@ type SanityProductRecord = {
   newArrival?: boolean;
   bestSeller?: boolean;
   onSale?: boolean;
+  salePrice?: number;
   saleStartAt?: string;
   saleEndAt?: string;
   pairingIds?: string[];
@@ -161,6 +162,7 @@ const productProjection = `{
   newArrival,
   bestSeller,
   onSale,
+  salePrice,
   saleStartAt,
   saleEndAt,
   "pairingIds": pairings[]._ref,
@@ -338,12 +340,11 @@ function mapProduct(
 
   const saleActive = saleIsActive(record);
   const configuredRetail = typeof record.price === "number" ? record.price : 0;
-  const configuredCompareAt = typeof record.compareAtPrice === "number" && record.compareAtPrice > configuredRetail
-    ? record.compareAtPrice
+  const configuredSale = typeof record.salePrice === "number" && record.salePrice > 0 && record.salePrice < configuredRetail
+    ? record.salePrice
     : undefined;
-  const effectivePrice = record.onSale === true && !saleActive && configuredCompareAt
-    ? configuredCompareAt
-    : configuredRetail;
+  const scheduledSaleActive = saleActive && configuredSale !== undefined;
+  const effectivePrice = scheduledSaleActive ? configuredSale : configuredRetail;
 
   return {
     id: record._id,
@@ -380,7 +381,7 @@ function mapProduct(
 
     price: effectivePrice,
 
-    compareAtPrice: saleActive ? configuredCompareAt : undefined,
+    compareAtPrice: scheduledSaleActive ? configuredRetail : undefined,
 
     wholesalePrice:
       typeof record.wholesalePrice === "number" && record.wholesalePrice > 0
@@ -488,7 +489,8 @@ function mapProduct(
     bestSeller:
       record.bestSeller,
 
-    onSale: saleActive,
+    onSale: scheduledSaleActive,
+    salePrice: configuredSale,
     saleStartAt: record.saleStartAt,
     saleEndAt: record.saleEndAt,
 
@@ -1240,7 +1242,6 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
         defined(slug.current) &&
         defined(price) &&
         price > 0 &&
-        available != false &&
         ${channel === "pos" ? "posEnabled != false" : "ecommerceEnabled != false"}
       ]
       | order(_createdAt desc, name asc)
@@ -1273,7 +1274,6 @@ export async function getStoreProductBySlug(
         slug.current == $slug &&
         defined(price) &&
         price > 0 &&
-        available != false &&
         ecommerceEnabled != false
       ][0]
       ${productProjection}`,
@@ -1298,7 +1298,6 @@ export async function getStoreProductBySlug(
         _id in $ids &&
         defined(price) &&
         price > 0 &&
-        available != false &&
         ecommerceEnabled != false
       ] ${productProjection}`,
       { ids: requestedIds },
@@ -1333,7 +1332,6 @@ export async function getRelatedStoreProducts(
             _id != $id &&
             defined(price) &&
             price > 0 &&
-            available != false &&
             ecommerceEnabled != false &&
             primaryCategory._ref == $categoryId
           ]
@@ -1369,7 +1367,6 @@ export async function getRelatedStoreProducts(
         _id != $id &&
         defined(price) &&
         price > 0 &&
-        available != false &&
         ecommerceEnabled != false
       ]
       | order(name asc)

@@ -37,6 +37,7 @@ type EditorProduct = {
   styles?: string[];
   pairings?: string[];
   merchandisedSamples?: string[];
+  salePrice?: number;
   saleStartAt?: string;
   saleEndAt?: string;
   heroImage?: { assetRef?: string; url?: string } | null;
@@ -369,6 +370,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
             </div>
             {visibility.onSale && (
               <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <Field label="Sale price" hint="Must be lower than retail price"><input name="salePrice" type="number" min="0" step="0.01" defaultValue={product?.salePrice ?? ""} /></Field>
                 <Field label="Sale starts" hint="Optional"><input name="saleStartAt" type="datetime-local" defaultValue={toLocalDateTimeInput(product?.saleStartAt)} /></Field>
                 <Field label="Sale ends" hint="Optional"><input name="saleEndAt" type="datetime-local" defaultValue={toLocalDateTimeInput(product?.saleEndAt)} /></Field>
               </div>

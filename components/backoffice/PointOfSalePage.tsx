@@ -795,8 +795,16 @@ export default function PointOfSalePage() {
                         min={1}
                         value={line.quantity}
                         onChange={(event) => setLineQuantity(line.key, Number(event.target.value))}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onKeyDown={(event) => {
+                          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+                            event.preventDefault();
+                            event.currentTarget.select();
+                          }
+                        }}
                         className="h-7 w-12 border-x hairline bg-transparent text-center text-xs font-semibold tabular-nums outline-none focus:bg-white"
                         aria-label={`Quantity for ${line.name}`}
+                        title="Type a quantity, or use Ctrl+A / Command+A to replace the current value"
                       />
                       <button
                         type="button"
