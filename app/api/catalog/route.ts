@@ -17,7 +17,10 @@ export async function GET(request: Request) {
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error) {
-    console.error("Catalogue API failed:", error);
+    console.error("Catalogue API failed", {
+      channel: new URL(request.url).searchParams.get("channel") === "pos" ? "pos" : "ecommerce",
+      error,
+    });
     return NextResponse.json({ products: [] }, { status: 500 });
   }
 }

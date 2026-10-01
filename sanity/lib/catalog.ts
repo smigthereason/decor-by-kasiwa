@@ -1,3 +1,5 @@
+import "server-only";
+
 import imageUrlBuilder from "@sanity/image-url";
 
 import type {
@@ -10,6 +12,7 @@ import type {
 } from "@/types/commerce";
 
 import { client } from "./client";
+import { serverClient } from "./serverClient";
 
 const imageBuilder = imageUrlBuilder(client);
 
@@ -580,7 +583,7 @@ function mapShopLook(record: SanityShopLookRecord): ShopLook {
 export async function getShopLooks(): Promise<ShopLook[]> {
   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return [];
 
-  const records = await client.fetch<SanityShopLookRecord[]>(
+  const records = await serverClient.fetch<SanityShopLookRecord[]>(
     `*[
       _type == "shopLook" &&
       defined(slug.current) &&
@@ -599,7 +602,7 @@ export async function getFeaturedShopLook(): Promise<ShopLook | null> {
 export async function getShopLookBySlug(slug: string): Promise<ShopLook | null> {
   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return null;
 
-  const record = await client.fetch<SanityShopLookRecord | null>(
+  const record = await serverClient.fetch<SanityShopLookRecord | null>(
     `*[
       _type == "shopLook" &&
       slug.current == $slug &&
@@ -1234,7 +1237,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
   }
 
   const records =
-    await client.fetch<
+    await serverClient.fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1266,7 +1269,7 @@ export async function getStoreProductBySlug(
   }
 
   const record =
-    await client.fetch<
+    await serverClient.fetch<
       SanityProductRecord | null
     >(
       `*[
@@ -1292,7 +1295,7 @@ export async function getStoreProductBySlug(
   const requestedIds = Array.from(new Set([...pairingIds, ...merchandisedSampleIds]));
 
   if (requestedIds.length) {
-    const curated = await client.fetch<SanityProductRecord[]>(
+    const curated = await serverClient.fetch<SanityProductRecord[]>(
       `*[
         _type == "product" &&
         _id in $ids &&
@@ -1324,7 +1327,7 @@ export async function getRelatedStoreProducts(
 
   const records =
     product.categoryId
-      ? await client.fetch<
+      ? await serverClient.fetch<
           SanityProductRecord[]
         >(
           `*[
@@ -1359,7 +1362,7 @@ export async function getRelatedStoreProducts(
   }
 
   const fallback =
-    await client.fetch<
+    await serverClient.fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1420,7 +1423,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
       collections,
     ] =
       await Promise.all([
-        client.fetch<
+        serverClient.fetch<
           SanityCategoryRecord[]
         >(
           `*[
@@ -1447,7 +1450,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        client.fetch<
+        serverClient.fetch<
           SanityReferenceLabel[]
         >(
           `*[
@@ -1464,7 +1467,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        client.fetch<
+        serverClient.fetch<
           SanityReferenceLabel[]
         >(
           `*[
@@ -1481,7 +1484,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        client.fetch<
+        serverClient.fetch<
           SanityReferenceLabel[]
         >(
           `*[
