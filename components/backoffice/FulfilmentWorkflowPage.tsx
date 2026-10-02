@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, PackageCheck, RefreshCcw, UserCheck } from "lucide-react";
+import { CheckCircle2, LoaderCircle, PackageCheck, RefreshCcw, Search, UserCheck, X } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 
 type Stage = "PRODUCTION" | "PACKAGING" | "DELIVERY";
@@ -48,6 +48,7 @@ export default function FulfilmentWorkflowPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [message, setMessage] = useState("");
+  const [orderSearch, setOrderSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,10 +129,18 @@ export default function FulfilmentWorkflowPage() {
   }
 
   const visibleStages = viewer?.manager ? order : order.filter((stage) => viewer?.stages?.includes(stage));
+  const normalizedOrderSearch = orderSearch.trim().toLowerCase();
   const grouped = useMemo(
-    () => visibleStages.map((stage) => ({ stage, jobs: jobs.filter((job) => job.currentFulfilmentStage === stage) })),
-    [jobs, visibleStages.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
+    () => visibleStages.map((stage) => ({
+      stage,
+      jobs: jobs.filter((job) =>
+        job.currentFulfilmentStage === stage &&
+        (!normalizedOrderSearch || job.orderNumber.toLowerCase().includes(normalizedOrderSearch)),
+      ),
+    })),
+    [jobs, normalizedOrderSearch, visibleStages.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const matchedJobs = grouped.reduce((total, group) => total + group.jobs.length, 0);
 
   return (
     <div className="min-h-full bg-[var(--paper-2)] p-4 sm:p-6 lg:p-8">
@@ -161,6 +170,38 @@ export default function FulfilmentWorkflowPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border hairline bg-white p-4 sm:p-5">
+          <label htmlFor="fulfilment-order-search" className="text-xs font-semibold">Find an order</label>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Search the active fulfilment queue by order number.</p>
+          <div className="relative mt-3">
+            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              id="fulfilment-order-search"
+              type="search"
+              value={orderSearch}
+              onChange={(event) => setOrderSearch(event.target.value)}
+              placeholder="Search e.g. DBK-COM-1234-2026"
+              autoComplete="off"
+              className="min-h-12 w-full rounded-xl border hairline bg-[var(--paper)] py-3 pl-11 pr-12 text-sm outline-none transition focus:border-[var(--brand-green)]"
+            />
+            {orderSearch && (
+              <button
+                type="button"
+                onClick={() => setOrderSearch("")}
+                aria-label="Clear order search"
+                className="absolute right-2 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-full text-[var(--muted)] hover:bg-white hover:text-[var(--ink)]"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+          {normalizedOrderSearch && (
+            <p className="mt-2 text-[11px] text-[var(--muted)]">
+              {matchedJobs === 0 ? "No active fulfilment order matches this order number." : `${matchedJobs} matching ${matchedJobs === 1 ? "order" : "orders"}`}
+            </p>
+          )}
         </div>
 
         {message && <p className="mt-5 break-words rounded-xl border hairline bg-white p-3 text-xs">{message}</p>}
