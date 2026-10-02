@@ -117,5 +117,72 @@ export default function StaffActivityTracker() {
     return () => document.removeEventListener("click", onClick, true);
   }, [pathname]);
 
+  useEffect(() => {
+    const nativeFetch = window.fetch.bind(window);
+
+    const report = (label: string, detail: string) => {
+      if (!sessionId.current) return;
+      void postActivity({
+        action: "CLIENT_ERROR",
+        sessionId: sessionId.current,
+        route: window.location.pathname,
+        label: label.slice(0, 160),
+        detail: detail.slice(0, 1000),
+      });
+    };
+
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await nativeFetch(input, init);
+      const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      let url: URL;
+      try { url = new URL(rawUrl, window.location.origin); } catch { return response; }
+      const sameOriginApi = url.origin === window.location.origin && url.pathname.startsWith("/api/");
+      const internalTelemetry = url.pathname === "/api/backoffice/activity" || url.pathname.startsWith("/api/backoffice/developer/");
+      if (!sameOriginApi || internalTelemetry) return response;
+
+      if (!response.ok) {
+        let developerDetail = "";
+        try {
+          const payload = await response.clone().json() as { message?: unknown; error?: unknown };
+          developerDetail = String(payload.message || payload.error || "");
+        } catch { /* response is not JSON */ }
+        report(
+          `${init?.method || "GET"} ${url.pathname} -> ${response.status}`,
+          `${init?.method || "GET"} ${url.pathname}${url.search} returned HTTP ${response.status}${developerDetail ? `: ${developerDetail}` : ""}`,
+        );
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) return response;
+      try {
+        const payload = await response.clone().json() as Record<string, unknown>;
+        if (!payload || typeof payload !== "object") return response;
+        if (response.ok && !("message" in payload)) return response;
+        const safePayload = response.ok
+          ? { ...payload, ...(typeof payload.message === "string" ? { message: "Success" } : {}) }
+          : { ...payload, message: `Error ${response.status}`, error: `Error ${response.status}` };
+        const headers = new Headers(response.headers);
+        headers.delete("content-length");
+        return new Response(JSON.stringify(safePayload), { status: response.status, statusText: response.statusText, headers });
+      } catch {
+        return response;
+      }
+    }) as typeof window.fetch;
+
+    const onError = (event: ErrorEvent) => report("Browser error", `${event.message} at ${event.filename || "unknown"}:${event.lineno || 0}:${event.colno || 0}`);
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? `${event.reason.name}: ${event.reason.message}` : String(event.reason || "Unhandled promise rejection");
+      report("Unhandled promise rejection", reason);
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandled);
+
+    return () => {
+      window.fetch = nativeFetch;
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    };
+  }, []);
+
   return null;
 }

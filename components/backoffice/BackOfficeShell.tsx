@@ -16,6 +16,7 @@ import {
   ContactRound,
   FolderTree,
   GitBranch,
+  MonitorCog,
   LayoutDashboard,
   Layers3,
   LogOut,
@@ -127,7 +128,7 @@ export default function BackOfficeShell({
   const { notifications } = useBackofficeNotifications();
 
   const fulfilmentOnly = ["PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"].includes(staffRole);
-  const navigation =
+  const baseNavigation =
     mode === "admin"
       ? adminNavigation
       : fulfilmentOnly
@@ -135,6 +136,10 @@ export default function BackOfficeShell({
         : staffRole === "STORE_STAFF"
           ? salesStaffNavigation
           : storeManagerNavigation;
+  const isDeveloper = staffEmail.trim().toLowerCase() === "victor.dmaina@gmail.com";
+  const navigation = mode === "admin" && isDeveloper
+    ? [...baseNavigation, { label: "Developer", href: "/admin/developer", icon: MonitorCog }]
+    : baseNavigation;
 
   const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";

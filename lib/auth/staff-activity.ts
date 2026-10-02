@@ -152,12 +152,14 @@ export async function recordStaffActivity({
   eventType,
   route,
   label,
+  detail,
 }: {
   sessionId: string;
   actor: StaffActor;
-  eventType: "STAFF_PAGE_VIEW" | "STAFF_INTERACTION";
+  eventType: "STAFF_PAGE_VIEW" | "STAFF_INTERACTION" | "CLIENT_ERROR";
   route?: string;
   label?: string;
+  detail?: string;
 }) {
   const sessionIdValue = await touchStaffSession({ sessionId, actor, route });
   const now = new Date().toISOString();
@@ -170,9 +172,11 @@ export async function recordStaffActivity({
     entityId: sessionIdValue,
     entityLabel: safeLabel || safeRoute,
     actor: { id: baseDocumentId(actor.id), name: actor.name, email: actor.email, role: actor.role },
-    detail: eventType === "STAFF_PAGE_VIEW"
-      ? `Viewed ${safeRoute}.`
-      : `${safeLabel || "Used a control"} on ${safeRoute}.`,
+    detail: eventType === "CLIENT_ERROR"
+      ? safeText(detail, 1000) || `Client error on ${safeRoute}.`
+      : eventType === "STAFF_PAGE_VIEW"
+        ? `Viewed ${safeRoute}.`
+        : `${safeLabel || "Used a control"} on ${safeRoute}.`,
     createdAt: now,
   });
 }

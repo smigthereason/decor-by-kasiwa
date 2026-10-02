@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 const allowed = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
 
 type ActivityInput = {
-  action?: "HEARTBEAT" | "PAGE_VIEW" | "INTERACTION" | "LOGOUT";
+  action?: "HEARTBEAT" | "PAGE_VIEW" | "INTERACTION" | "CLIENT_ERROR" | "LOGOUT";
   sessionId?: string;
   route?: string;
   label?: string;
+  detail?: string;
 };
 
 export async function POST(request: Request) {
@@ -34,6 +35,18 @@ export async function POST(request: Request) {
 
     if (body.action === "LOGOUT") {
       await endStaffSession({ sessionId, actor });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "CLIENT_ERROR") {
+      await recordStaffActivity({
+        sessionId,
+        actor,
+        eventType: "CLIENT_ERROR",
+        route: body.route,
+        label: body.label || "Client error",
+        detail: body.detail,
+      });
       return NextResponse.json({ ok: true });
     }
 
