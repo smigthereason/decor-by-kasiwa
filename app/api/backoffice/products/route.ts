@@ -168,6 +168,9 @@ export async function POST(request: Request) {
     const compareAtPrice = numberValue(form.get("compareAtPrice"));
     const salePrice = numberValue(form.get("salePrice"));
     const retailPriceForSale = numberValue(form.get("retailPrice")) || numberValue(form.get("price"));
+    if (compareAtPrice > 0 && retailPriceForSale > 0 && compareAtPrice <= retailPriceForSale) {
+      return NextResponse.json({ message: "Compare-at price must be higher than the retail price." }, { status: 400 });
+    }
     if (salePrice > 0 && retailPriceForSale > 0 && salePrice >= retailPriceForSale) {
       return NextResponse.json({ message: "Sale price must be lower than the retail price." }, { status: 400 });
     }

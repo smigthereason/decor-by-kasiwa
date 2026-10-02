@@ -24,7 +24,7 @@ import { useCommerce } from "@/components/root/commerce/CommerceProvider";
 import ProductCard from "@/components/root/shop/ProductCard";
 import { getProductRating } from "@/lib/product-rating";
 import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
-import { getQuantityPricingMessage, getQuantityUnitPrice } from "@/lib/product-pricing";
+import { getPriceComparison, getQuantityPricingMessage, getQuantityUnitPrice } from "@/lib/product-pricing";
 
 export default function ProductDetailClient({
   product,
@@ -57,6 +57,7 @@ export default function ProductDetailClient({
   const purchasingUnavailable = !catalogueReady || Boolean(catalogueError);
   const { rating, reviewCount } = getProductRating(product);
   const displayPrice = getQuantityUnitPrice(product, quantity, selectedVariant?.price);
+  const priceComparison = getPriceComparison(product, selectedVariant?.price);
   const quantityPricingMessage = getQuantityPricingMessage(product);
   const colourOptions = useMemo(
     () => Array.from(new Set([...(product.colours || []), ...variants.map((variant) => variant.colour).filter((value): value is string => Boolean(value))])),
@@ -299,7 +300,15 @@ export default function ProductDetailClient({
               </h1>
 
               <div className="mt-3">
-                <p className="text-[2rem] font-semibold leading-none tracking-[-0.03em]">{formatMoney(displayPrice)}</p>
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <p className="text-[2rem] font-semibold leading-none tracking-[-0.03em]">{formatMoney(displayPrice)}</p>
+                  {priceComparison.referencePrice && priceComparison.savingsPercent > 0 && (
+                    <>
+                      <span className="text-sm text-[var(--muted)] line-through">{formatMoney(priceComparison.referencePrice)}</span>
+                      <span className="text-xs font-semibold text-[var(--brand-green)]">Save {priceComparison.savingsPercent}%</span>
+                    </>
+                  )}
+                </div>
                 {quantityPricingMessage && (
                   <p className="mt-2 text-xs font-medium text-[var(--brand-green)]">{quantityPricingMessage}</p>
                 )}
@@ -529,7 +538,15 @@ export default function ProductDetailClient({
 
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-b hairline pb-5">
                 <div>
-                  <p className="text-xl font-medium">{formatMoney(displayPrice)}</p>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <p className="text-xl font-medium">{formatMoney(displayPrice)}</p>
+                    {priceComparison.referencePrice && priceComparison.savingsPercent > 0 && (
+                      <>
+                        <span className="text-xs text-[var(--muted)] line-through">{formatMoney(priceComparison.referencePrice)}</span>
+                        <span className="text-[10px] font-semibold text-[var(--brand-green)]">Save {priceComparison.savingsPercent}%</span>
+                      </>
+                    )}
+                  </div>
                   {quantityPricingMessage && (
                     <p className="mt-1 text-[10px] font-medium text-[var(--brand-green)]">
                       {quantityPricingMessage}

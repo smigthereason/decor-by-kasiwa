@@ -31,7 +31,7 @@ import {
 
 import { formatMoney } from "@/lib/money";
 import type { ProductVariant, StoreProduct } from "@/types/commerce";
-import { getQuantityUnitPrice, getWholesaleTier } from "@/lib/product-pricing";
+import { getPriceComparison, getQuantityUnitPrice, getWholesaleTier } from "@/lib/product-pricing";
 
 type PosLine = {
   key: string;
@@ -689,9 +689,20 @@ export default function PointOfSalePage() {
 
                       {/* Footer Actions */}
                       <div className="flex items-center justify-between border-t hairline bg-[var(--paper-2)]/50 p-2.5">
-                        <span className="text-xs font-bold tracking-tight">
-                          {formatMoney(variant?.price ?? product.price)}
-                        </span>
+                        <div>
+                          <span className="text-xs font-bold tracking-tight">
+                            {formatMoney(getQuantityUnitPrice(product, 1, variant?.price))}
+                          </span>
+                          {(() => {
+                            const comparison = getPriceComparison(product, variant?.price);
+                            return comparison.referencePrice && comparison.savingsPercent > 0 ? (
+                              <div className="mt-0.5 flex items-center gap-1.5">
+                                <span className="text-[9px] text-[var(--muted)] line-through">{formatMoney(comparison.referencePrice)}</span>
+                                <span className="text-[9px] font-semibold text-[var(--brand-green)]">Save {comparison.savingsPercent}%</span>
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
                         <button
                           type="button"
                           onClick={() => addProduct(product)}

@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/money";
 import { isProductSoldOut } from "@/lib/catalogue";
 import { getProductRating } from "@/lib/product-rating";
 import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
-import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { getPriceComparison, getQuantityUnitPrice } from "@/lib/product-pricing";
 
 function getColorHex(colourName: string): string {
   const colorMap: Record<string, string> = {
@@ -65,12 +65,7 @@ export default function ProductCard({
     ]),
   );
   const currentUnitPrice = getQuantityUnitPrice(product, 1);
-  const compareAtPrice = typeof product.compareAtPrice === "number" && product.compareAtPrice > currentUnitPrice
-    ? product.compareAtPrice
-    : undefined;
-  const salePercent = product.onSale && compareAtPrice
-    ? Math.max(1, Math.round((1 - currentUnitPrice / compareAtPrice) * 100))
-    : 0;
+  const { referencePrice, savingsPercent } = getPriceComparison(product);
 
   return (
     <Link
@@ -110,9 +105,9 @@ export default function ProductCard({
               <span className="rounded-full bg-[var(--paper)]/90 px-3 py-1 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--ink)] backdrop-blur-sm">
                 {product.category === "Decor" ? "Décor" : product.category}
               </span>
-              {salePercent > 0 && (
+              {savingsPercent > 0 && (
                 <span className="rounded-full bg-[var(--brand-green)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream shadow-sm">
-                  {salePercent}% off
+                  Save {savingsPercent}%
                 </span>
               )}
               {product.bestSeller && (
@@ -129,9 +124,9 @@ export default function ProductCard({
           </>
         )}
 
-        {homeCompact && (salePercent > 0 || product.bestSeller) && (
+        {homeCompact && (savingsPercent > 0 || product.bestSeller) && (
           <span className="absolute left-2 top-2 rounded-full bg-[var(--brand-green)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.06em] !text-soft-cream shadow-sm sm:left-3 sm:top-3 sm:px-2.5">
-            {salePercent > 0 ? `${salePercent}% off` : "Best seller"}
+            {savingsPercent > 0 ? `Save ${savingsPercent}%` : "Best seller"}
           </span>
         )}
 
@@ -172,10 +167,15 @@ export default function ProductCard({
             <span className={homeCompact ? "text-xs font-semibold text-[var(--ink)]" : "text-sm font-semibold text-[var(--ink)]"}>
               {formatMoney(currentUnitPrice)}
             </span>
-            {salePercent > 0 && compareAtPrice && (
-              <span className={homeCompact ? "text-[9px] text-[var(--muted)] line-through" : "text-[10px] text-[var(--muted)] line-through"}>
-                {formatMoney(compareAtPrice)}
-              </span>
+            {savingsPercent > 0 && referencePrice && (
+              <>
+                <span className={homeCompact ? "text-[9px] text-[var(--muted)] line-through" : "text-[10px] text-[var(--muted)] line-through"}>
+                  {formatMoney(referencePrice)}
+                </span>
+                <span className={homeCompact ? "text-[8px] font-semibold text-[var(--brand-green)]" : "text-[9px] font-semibold text-[var(--brand-green)]"}>
+                  Save {savingsPercent}%
+                </span>
+              </>
             )}
           </div>
 

@@ -384,7 +384,12 @@ function mapProduct(
 
     price: effectivePrice,
 
-    compareAtPrice: scheduledSaleActive ? configuredRetail : undefined,
+    retailPrice: configuredRetail,
+
+    compareAtPrice:
+      typeof record.compareAtPrice === "number" && record.compareAtPrice > configuredRetail
+        ? record.compareAtPrice
+        : undefined,
 
     wholesalePrice:
       typeof record.wholesalePrice === "number" && record.wholesalePrice > 0

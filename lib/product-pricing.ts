@@ -2,6 +2,12 @@ export type PriceableProduct = {
   slug?: string;
   name?: string;
   price?: number;
+  retailPrice?: number;
+  compareAtPrice?: number;
+  onSale?: boolean;
+  salePrice?: number;
+  saleStartAt?: string;
+  saleEndAt?: string;
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
 };
@@ -31,10 +37,41 @@ export function getWholesaleTier(product: PriceableProduct) {
   return null;
 }
 
+export function isSaleActive(product: PriceableProduct, now = Date.now()) {
+  if (product.onSale !== true) return false;
+  const start = product.saleStartAt ? new Date(product.saleStartAt).getTime() : Number.NEGATIVE_INFINITY;
+  const end = product.saleEndAt ? new Date(product.saleEndAt).getTime() : Number.POSITIVE_INFINITY;
+  if (!Number.isFinite(start) && product.saleStartAt) return false;
+  if (!Number.isFinite(end) && product.saleEndAt) return false;
+  return now >= start && now <= end;
+}
+
 export function getRetailUnitPrice(product: PriceableProduct, variantPrice?: number) {
-  return typeof variantPrice === "number" && variantPrice > 0
-    ? variantPrice
-    : Number(product.price || 0);
+  if (typeof variantPrice === "number" && variantPrice > 0) return variantPrice;
+  const configuredRetail = Number(product.retailPrice || 0);
+  return configuredRetail > 0 ? configuredRetail : Number(product.price || 0);
+}
+
+export function getActiveSaleUnitPrice(product: PriceableProduct, variantPrice?: number) {
+  const retailPrice = getRetailUnitPrice(product, variantPrice);
+  const salePrice = Number(product.salePrice || 0);
+  if (isSaleActive(product) && salePrice > 0 && salePrice < retailPrice) return salePrice;
+  return retailPrice;
+}
+
+export function getPriceComparison(product: PriceableProduct, variantPrice?: number) {
+  const retailPrice = getRetailUnitPrice(product, variantPrice);
+  const sellingPrice = getActiveSaleUnitPrice(product, variantPrice);
+  const configuredCompareAt = Number(product.compareAtPrice || 0);
+  const referencePrice = sellingPrice < retailPrice
+    ? retailPrice
+    : configuredCompareAt > retailPrice
+      ? configuredCompareAt
+      : undefined;
+  const savingsPercent = referencePrice && referencePrice > sellingPrice
+    ? Math.round(((referencePrice - sellingPrice) / referencePrice) * 100)
+    : 0;
+  return { sellingPrice, retailPrice, referencePrice, savingsPercent };
 }
 
 export function getQuantityUnitPrice(
@@ -42,11 +79,11 @@ export function getQuantityUnitPrice(
   quantity: number,
   variantPrice?: number,
 ) {
-  const retailPrice = getRetailUnitPrice(product, variantPrice);
+  const sellingPrice = getActiveSaleUnitPrice(product, variantPrice);
   const tier = getWholesaleTier(product);
 
-  if (tier && quantity >= tier.wholesaleMinQuantity) return tier.wholesalePrice;
-  return retailPrice;
+  if (tier && quantity >= tier.wholesaleMinQuantity) return Math.min(sellingPrice, tier.wholesalePrice);
+  return sellingPrice;
 }
 
 export function getQuantityLineTotal(
@@ -60,7 +97,7 @@ export function getQuantityLineTotal(
 export function getQuantityPricingMessage(product: PriceableProduct) {
   const tier = getWholesaleTier(product);
   if (!tier) return null;
-  const retailPrice = Number(product.price || 0);
-  if (!(retailPrice > 0)) return null;
+  const retailPrice = getActiveSaleUnitPrice(product);
+  if (!(retailPrice > 0) || tier.wholesalePrice >= retailPrice) return null;
   return `KES ${retailPrice.toLocaleString("en-KE")} each · Buy ${tier.wholesaleMinQuantity}+ for KES ${tier.wholesalePrice.toLocaleString("en-KE")} each`;
 }

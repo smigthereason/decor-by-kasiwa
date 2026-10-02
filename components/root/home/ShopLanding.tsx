@@ -841,7 +841,7 @@ export default function ShopLanding({
   const newArrivalRail = (newArrivals.length ? newArrivals : [...availableProducts].reverse()).slice(0, 10);
 
   const saleRail = availableProducts
-    .filter((product) => product.onSale && typeof product.compareAtPrice === "number" && product.compareAtPrice > product.price)
+    .filter((product) => product.onSale && typeof product.retailPrice === "number" && product.retailPrice > product.price)
     .slice(0, 12);
 
   const heroEyebrow = settings?.homeHeroEyebrow?.trim() || "Beautiful spaces decor";

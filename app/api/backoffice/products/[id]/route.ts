@@ -275,6 +275,10 @@ export async function PATCH(
 
     if (body.compareAtPrice !== undefined) {
       const value = numericValue(body.compareAtPrice);
+      const retail = numericValue(body.retailPrice ?? body.price);
+      if (value !== undefined && value > 0 && retail !== undefined && value <= retail) {
+        return NextResponse.json({ message: "Compare-at price must be higher than the retail price." }, { status: 400 });
+      }
       if (value !== undefined && value > 0) productPatch.compareAtPrice = value;
       else productUnset.push("compareAtPrice");
     }

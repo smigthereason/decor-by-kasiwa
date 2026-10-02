@@ -360,7 +360,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
           </Card>
 
           <Card title="Visibility">
-            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">To run a sale: enter the discounted selling price in <strong className="text-[var(--ink)]">Retail price</strong>, enter the normal/original price in <strong className="text-[var(--ink)]">Compare-at price</strong>, then enable <strong className="text-[var(--ink)]">On sale</strong>. The storefront will calculate the percentage discount automatically and feature eligible products in the Sale carousel.</p>
+            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">Pricing order: <strong className="text-[var(--ink)]">Compare-at price</strong> is the original/reference price and must be above <strong className="text-[var(--ink)]">Retail price</strong>. When <strong className="text-[var(--ink)]">On sale</strong> is enabled, <strong className="text-[var(--ink)]">Sale price</strong> must be below Retail price. The storefront and POS calculate and display the saving percentage automatically.</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <VisibilityToggle label="Available in shop" checked={visibility.available} onChange={(checked)=>setVisibility((current)=>({...current,available:checked}))}/>
               <VisibilityToggle label="Featured" checked={visibility.featured} onChange={(checked)=>setVisibility((current)=>({...current,featured:checked}))}/>

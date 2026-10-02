@@ -28,6 +28,7 @@ export type StoreProduct = {
   categoryParent?: CatalogTag;
 
   price: number;
+  retailPrice?: number;
   compareAtPrice?: number;
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
