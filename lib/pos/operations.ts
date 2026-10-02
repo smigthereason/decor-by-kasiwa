@@ -459,8 +459,8 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
 }
 
 export async function getAuditTrail(limit = 100) {
-  return serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string }>>(
-    `*[_type == "auditEvent"] | order(createdAt desc)[0...$limit]{"id":_id,eventNumber,eventType,entityLabel,actorName,actorRole,detail,createdAt}`,
+  return serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string; resolutionStatus?: "PENDING" | "RESOLVED"; resolvedAt?: string; resolvedBy?: string }>>(
+    `*[_type == "auditEvent"] | order(createdAt desc)[0...$limit]{"id":_id,eventNumber,eventType,entityLabel,actorName,actorRole,detail,createdAt,resolutionStatus,resolvedAt,resolvedBy}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
 }
@@ -469,8 +469,8 @@ export async function getDeveloperAuditTrail(days = 31) {
   const safeDays = Math.max(1, Math.min(93, Math.floor(days)));
   const since = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000).toISOString();
   const [events, total] = await Promise.all([
-    serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityType?: string; entityId?: string; entityLabel?: string; actorName?: string; actorEmail?: string; actorRole?: string; detail?: string; createdAt: string }>>(
-      `*[_type == "auditEvent" && createdAt >= $since] | order(createdAt desc){"id":_id,eventNumber,eventType,entityType,entityId,entityLabel,actorName,"actorEmail":coalesce(actorEmail,actor->email),actorRole,detail,createdAt}`,
+    serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityType?: string; entityId?: string; entityLabel?: string; actorName?: string; actorEmail?: string; actorRole?: string; detail?: string; createdAt: string; resolutionStatus?: "PENDING" | "RESOLVED"; resolvedAt?: string; resolvedBy?: string }>>(
+      `*[_type == "auditEvent" && createdAt >= $since] | order(createdAt desc){"id":_id,eventNumber,eventType,entityType,entityId,entityLabel,actorName,"actorEmail":coalesce(actorEmail,actor->email),actorRole,detail,createdAt,resolutionStatus,resolvedAt,resolvedBy}`,
       { since }, { cache: "no-store" },
     ),
     serverClient.fetch<number>(`count(*[_type == "auditEvent"])`, {}, { cache: "no-store" }),
