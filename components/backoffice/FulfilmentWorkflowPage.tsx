@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, LoaderCircle, PackageCheck, RefreshCcw, UserCheck } from "lucide-react";
 import { formatMoney } from "@/lib/money";
@@ -20,7 +21,7 @@ type Job = {
   currentFulfilmentStage: Stage;
   assignedStaffId?: string;
   assignedFulfilmentStaffName?: string;
-  items: Array<{ name: string; category?: string; quantity: number }>;
+  items: Array<{ name: string; category?: string; quantity: number; image?: string }>;
 };
 type Staff = { _id: string; name: string; email: string; role: string; permissions?: string[] };
 type Viewer = { role: string; customerId: string; stages: Stage[]; manager: boolean };
@@ -193,7 +194,23 @@ export default function FulfilmentWorkflowPage() {
                           </div>
                           <span className="shrink-0 text-xs font-semibold">{formatMoney(job.total)}</span>
                         </div>
-                        <div className="mt-3 break-words text-[11px] leading-5 text-[var(--muted)]">{job.items.map((item) => `${item.quantity}× ${item.name}`).join(" · ")}</div>
+                        <div className="mt-3 space-y-2">
+                          {job.items.map((item, itemIndex) => (
+                            <div key={`${job.id}-${itemIndex}-${item.name}`} className="flex items-center gap-3 rounded-lg border hairline bg-white p-2">
+                              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-[var(--paper-2)]">
+                                {item.image ? (
+                                  <Image src={item.image} alt={item.name} fill sizes="56px" className="object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-[9px] font-semibold uppercase text-[var(--muted)]">No image</div>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold leading-5">{item.quantity}× {item.name}</p>
+                                {item.category && <p className="mt-0.5 text-[10px] text-[var(--muted)]">{item.category}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                         {job.assignedFulfilmentStaffName && <p className="mt-2 break-words text-[10px] font-semibold uppercase tracking-wide">Assigned: {job.assignedFulfilmentStaffName}</p>}
 
                         {needsInitialAssignment ? (

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -111,11 +112,20 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
           <div className="mt-4 divide-y hairline">
             {order.lineItems.map((line) => (
               <div key={line.id} className="flex items-start justify-between gap-4 py-4">
-                <div>
-                  <p className="text-sm font-semibold">{line.name}</p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">{line.category}{line.finish ? ` · ${line.finish}` : ""}{line.size ? ` · ${line.size}` : ""} · Qty {line.quantity}</p>
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--paper-2)]">
+                    {line.image ? (
+                      <Image src={line.image} alt={line.name} fill sizes="64px" className="object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[9px] font-semibold uppercase text-[var(--muted)]">No image</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{line.name}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{line.category}{line.finish ? ` · ${line.finish}` : ""}{line.size ? ` · ${line.size}` : ""} · Qty {line.quantity}</p>
+                  </div>
                 </div>
-                <p className="text-sm font-semibold">{formatKes(line.unitPrice * line.quantity)}</p>
+                <p className="shrink-0 text-sm font-semibold">{formatKes(line.unitPrice * line.quantity)}</p>
               </div>
             ))}
           </div>

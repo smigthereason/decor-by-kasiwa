@@ -64,7 +64,7 @@ export async function mutateBackoffice(
 }
 
 
-export function useBackofficeNotifications(pollMs = 30000) {
+export function useBackofficeNotifications(pollMs = 60000) {
   const [notifications, setNotifications] = useState<BackofficeNotifications>({
     newOrders: 0,
     deliveries: 0,
@@ -91,11 +91,17 @@ export function useBackofficeNotifications(pollMs = 30000) {
   useEffect(() => {
     void refreshNotifications();
 
-    const timer = window.setInterval(() => {
-      void refreshNotifications();
-    }, pollMs);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshNotifications();
+    };
 
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(refreshWhenVisible, pollMs);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [pollMs, refreshNotifications]);
 
   return { notifications, refreshNotifications };

@@ -23,7 +23,10 @@ export async function GET() {
       "id": _id, orderNumber, customerName, customerPhone, deliveryLocation, salesChannel, status, paymentStatus,
       total, amountPaid, fulfilmentStages, currentFulfilmentStage,
       "assignedStaffId": assignedFulfilmentStaff._ref, assignedFulfilmentStaffName,
-      "items": lineItems[]{name, category, quantity}
+      "items": lineItems[]{
+        name, category, quantity,
+        "image": product->heroImage.asset->url
+      }
     }`,
     { manager, stages: [...stages], staffId: staff.customerId },
     { cache: "no-store" },

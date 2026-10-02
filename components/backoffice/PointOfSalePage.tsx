@@ -144,8 +144,20 @@ export default function PointOfSalePage() {
 
   useEffect(() => {
     void loadProducts();
-    const timer = window.setInterval(() => void loadProducts(true), 20_000);
-    return () => window.clearInterval(timer);
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void loadProducts(true);
+    };
+
+    // Keep POS stock reasonably fresh without continuously hammering Sanity.
+    // Checkout still performs authoritative stock/price validation server-side.
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [loadProducts]);
 
   useEffect(() => {

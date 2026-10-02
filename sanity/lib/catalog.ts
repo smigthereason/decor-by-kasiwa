@@ -1255,7 +1255,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
       | order(_createdAt desc, name asc)
       ${productProjection}`,
       {},
-      { cache: "no-store" },
+      { next: { revalidate: 30 } },
     );
 
   return records.map(

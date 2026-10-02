@@ -171,7 +171,8 @@ export async function getLiveOrders(): Promise<Order[]> {
         size,
         variantId,
         quantity,
-        unitPrice
+        unitPrice,
+        "image": product->heroImage.asset->url
       }
     }`,
     {},
