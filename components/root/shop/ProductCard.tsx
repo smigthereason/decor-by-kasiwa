@@ -65,7 +65,7 @@ export default function ProductCard({
     ]),
   );
   const currentUnitPrice = getQuantityUnitPrice(product, 1);
-  const { referencePrice, savingsPercent } = getPriceComparison(product);
+  const { referencePrice, savingsPercent, savingsLabel } = getPriceComparison(product);
 
   return (
     <Link
@@ -107,7 +107,7 @@ export default function ProductCard({
               </span>
               {savingsPercent > 0 && (
                 <span className="rounded-full bg-[var(--brand-green)] px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream shadow-sm">
-                  Save {savingsPercent}%
+                  {savingsLabel}
                 </span>
               )}
               {product.bestSeller && (
@@ -126,7 +126,7 @@ export default function ProductCard({
 
         {homeCompact && (savingsPercent > 0 || product.bestSeller) && (
           <span className="absolute left-2 top-2 rounded-full bg-[var(--brand-green)] px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.06em] !text-soft-cream shadow-sm sm:left-3 sm:top-3 sm:px-2.5">
-            {savingsPercent > 0 ? `Save ${savingsPercent}%` : "Best seller"}
+            {savingsPercent > 0 ? savingsLabel : "Best seller"}
           </span>
         )}
 
@@ -173,7 +173,7 @@ export default function ProductCard({
                   {formatMoney(referencePrice)}
                 </span>
                 <span className={homeCompact ? "text-[8px] font-semibold text-[var(--brand-green)]" : "text-[9px] font-semibold text-[var(--brand-green)]"}>
-                  Save {savingsPercent}%
+                  {savingsLabel}
                 </span>
               </>
             )}

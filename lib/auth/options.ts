@@ -72,18 +72,25 @@ export const authOptions: NextAuthOptions = {
       }
     },
 
-    async jwt({ token, account, user }) {
+    async jwt({ token, account, user, profile }) {
       if (account?.provider === "credentials" && user?.id) {
         token.customerId = user.id;
         token.role = user.role;
       }
 
       if (account?.provider === "google" && account.providerAccountId) {
+        const googleProfile = profile as { picture?: string } | undefined;
+        const googleImage = user?.image || googleProfile?.picture || undefined;
         const customer = await getGoogleCustomer(account.providerAccountId);
         if (customer) {
           token.customerId = customer._id;
           token.role = customer.role;
           token.googleId = customer.googleId ?? undefined;
+          // Prefer the image returned by Google for this sign-in. The Sanity
+          // copy is retained as a fallback for subsequent JWT refreshes.
+          token.picture = googleImage || customer.image || undefined;
+        } else if (googleImage) {
+          token.picture = googleImage;
         }
       }
 
@@ -94,6 +101,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.customerId || "";
         session.user.role = token.role || "CUSTOMER";
+        session.user.image = typeof token.picture === "string" ? token.picture : session.user.image || null;
       }
       return session;
     },

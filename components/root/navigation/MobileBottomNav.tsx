@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -23,6 +25,13 @@ export default function MobileBottomNav() {
   }
 
   const accountHref = getRoleHomePath(session?.user?.role, "/account");
+  const profileImage = session?.user?.image || null;
+  const [profileImageFailed, setProfileImageFailed] = useState(false);
+
+  useEffect(() => {
+    setProfileImageFailed(false);
+  }, [profileImage]);
+  const profileInitial = (session?.user?.email || session?.user?.name || "U").trim().charAt(0).toUpperCase();
   const accountLabel =
     session?.user?.role === "ADMIN"
       ? "Admin"
@@ -58,11 +67,29 @@ export default function MobileBottomNav() {
               aria-current={active ? "page" : undefined}
               className="focus-ring flex min-h-12 flex-col items-center justify-center gap-1 rounded-md px-1 text-[9px] font-medium"
             >
-              <Icon
-                size={18}
-                strokeWidth={active ? 2 : 1.5}
-                className={active ? "text-[var(--brand-green)]" : "text-[var(--muted)]"}
-              />
+              {label === accountLabel && session?.user ? (
+                <span className="relative grid size-[22px] place-items-center overflow-hidden rounded-full border border-[var(--brand-green)]/30 bg-[var(--paper)]">
+                  {profileImage && !profileImageFailed ? (
+                    <Image
+                      src={profileImage}
+                      alt=""
+                      fill
+                      sizes="22px"
+                      className="object-cover"
+                      unoptimized
+                      onError={() => setProfileImageFailed(true)}
+                    />
+                  ) : (
+                    <span className="text-[10px] font-semibold text-[var(--brand-green)]">{profileInitial}</span>
+                  )}
+                </span>
+              ) : (
+                <Icon
+                  size={18}
+                  strokeWidth={active ? 2 : 1.5}
+                  className={active ? "text-[var(--brand-green)]" : "text-[var(--muted)]"}
+                />
+              )}
               <span className={active ? "text-[var(--brand-green)]" : "text-[var(--muted)]"}>
                 {label}
               </span>

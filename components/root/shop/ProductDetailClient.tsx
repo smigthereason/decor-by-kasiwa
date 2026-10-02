@@ -305,7 +305,7 @@ export default function ProductDetailClient({
                   {priceComparison.referencePrice && priceComparison.savingsPercent > 0 && (
                     <>
                       <span className="text-sm text-[var(--muted)] line-through">{formatMoney(priceComparison.referencePrice)}</span>
-                      <span className="text-xs font-semibold text-[var(--brand-green)]">Save {priceComparison.savingsPercent}%</span>
+                      <span className="text-xs font-semibold text-[var(--brand-green)]">{priceComparison.savingsLabel}</span>
                     </>
                   )}
                 </div>
@@ -543,7 +543,7 @@ export default function ProductDetailClient({
                     {priceComparison.referencePrice && priceComparison.savingsPercent > 0 && (
                       <>
                         <span className="text-xs text-[var(--muted)] line-through">{formatMoney(priceComparison.referencePrice)}</span>
-                        <span className="text-[10px] font-semibold text-[var(--brand-green)]">Save {priceComparison.savingsPercent}%</span>
+                        <span className="text-[10px] font-semibold text-[var(--brand-green)]">{priceComparison.savingsLabel}</span>
                       </>
                     )}
                   </div>

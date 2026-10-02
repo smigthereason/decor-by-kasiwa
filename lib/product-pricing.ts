@@ -71,7 +71,13 @@ export function getPriceComparison(product: PriceableProduct, variantPrice?: num
   const savingsPercent = referencePrice && referencePrice > sellingPrice
     ? Math.round(((referencePrice - sellingPrice) / referencePrice) * 100)
     : 0;
-  return { sellingPrice, retailPrice, referencePrice, savingsPercent };
+  const isActiveSale = sellingPrice < retailPrice;
+  const savingsLabel = savingsPercent > 0
+    ? isActiveSale
+      ? `${savingsPercent}% off`
+      : `Save ${savingsPercent}%`
+    : null;
+  return { sellingPrice, retailPrice, referencePrice, savingsPercent, isActiveSale, savingsLabel };
 }
 
 export function getQuantityUnitPrice(

@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { CircleUserRound, Heart, ShoppingBag } from "lucide-react";
@@ -14,6 +16,13 @@ interface HeaderActionsProps {
 
 export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps) {
   const { data: session } = useSession();
+  const profileImage = session?.user?.image || null;
+  const [profileImageFailed, setProfileImageFailed] = useState(false);
+
+  useEffect(() => {
+    setProfileImageFailed(false);
+  }, [profileImage]);
+  const profileInitial = (session?.user?.email || session?.user?.name || user?.name || "U").trim().charAt(0).toUpperCase();
 
   const accountHref = user
     ? getRoleHomePath(session?.user?.role, "/account")
@@ -87,7 +96,23 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
             : "border-white/10 bg-white/10 text-white",
         ].join(" ")}
       >
-        <CircleUserRound size={19} strokeWidth={1.35} className="sm:h-5 sm:w-5" />
+        {user ? (
+          profileImage && !profileImageFailed ? (
+            <Image
+              src={profileImage}
+              alt=""
+              fill
+              sizes="40px"
+              className="rounded-full object-cover"
+              unoptimized
+              onError={() => setProfileImageFailed(true)}
+            />
+          ) : (
+            <span className="text-sm font-semibold text-[var(--brand-green)]">{profileInitial}</span>
+          )
+        ) : (
+          <CircleUserRound size={19} strokeWidth={1.35} className="sm:h-5 sm:w-5" />
+        )}
         {user && (
           <span
             aria-hidden="true"

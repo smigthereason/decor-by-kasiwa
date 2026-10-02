@@ -698,7 +698,7 @@ export default function PointOfSalePage() {
                             return comparison.referencePrice && comparison.savingsPercent > 0 ? (
                               <div className="mt-0.5 flex items-center gap-1.5">
                                 <span className="text-[9px] text-[var(--muted)] line-through">{formatMoney(comparison.referencePrice)}</span>
-                                <span className="text-[9px] font-semibold text-[var(--brand-green)]">Save {comparison.savingsPercent}%</span>
+                                <span className="text-[9px] font-semibold text-[var(--brand-green)]">{comparison.savingsLabel}</span>
                               </div>
                             ) : null;
                           })()}
