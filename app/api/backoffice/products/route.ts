@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { toSanityServiceError } from "@/lib/sanity-error";
 import { generateProductSku } from "@/sanity/lib/sku";
 import { serverClient } from "@/sanity/lib/serverClient";
 
@@ -242,6 +243,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, productId, slug, sku }, { status: 201 });
   } catch (cause) {
     console.error("Product creation failed:", cause);
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Product creation failed." }, { status: 500 });
+    const failure = toSanityServiceError(cause, "Product creation failed.");
+    return NextResponse.json({ message: failure.message }, { status: failure.status });
   }
 }

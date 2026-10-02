@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { toSanityServiceError } from "@/lib/sanity-error";
 import {
   createPosManualSale,
   createPosMpesaSale,
@@ -33,9 +34,10 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (cause) {
     console.error("[POS sale] failed", cause);
+    const failure = toSanityServiceError(cause, "Unable to complete POS sale.");
     return NextResponse.json(
-      { message: cause instanceof Error ? cause.message : "Unable to complete POS sale." },
-      { status: 400 },
+      { message: failure.message },
+      { status: failure.status === 500 ? 400 : failure.status },
     );
   }
 }

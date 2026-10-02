@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 function inventoryDocumentId(productId: string) {
@@ -422,10 +423,8 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Product update failed:", error);
-    return NextResponse.json(
-      { message: error instanceof Error ? error.message : "Product update failed." },
-      { status: 500 },
-    );
+    const failure = toSanityServiceError(error, "Product update failed.");
+    return NextResponse.json({ message: failure.message }, { status: failure.status });
   }
 }
 
@@ -471,6 +470,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true });
   } catch (cause) {
     console.error("Product deletion failed:", cause);
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Product deletion failed." }, { status: 500 });
+    const failure = toSanityServiceError(cause, "Product deletion failed.");
+    return NextResponse.json({ message: failure.message }, { status: failure.status });
   }
 }
