@@ -19,6 +19,42 @@ function periodStart(period: Period) {
   return now.getTime() - days * 24 * 60 * 60 * 1000;
 }
 
+function csvCell(value: string | undefined) {
+  const normalized = (value || "").replace(/\r?\n/g, " ");
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+function exportErrorsCsv(events: AuditEvent[], period: Period, status: "PENDING" | "RESOLVED" | "ALL") {
+  if (!events.length) return;
+  const header = ["Event Number", "Status", "Time", "Event", "Actor", "Email", "Role", "Reference", "Entity Type", "Entity ID", "Detail", "Resolved At", "Resolved By"];
+  const rows = events.map((event) => [
+    event.eventNumber,
+    event.resolutionStatus || "PENDING",
+    event.createdAt,
+    event.eventType,
+    event.actorName || "System",
+    event.actorEmail,
+    event.actorRole,
+    event.entityLabel,
+    event.entityType,
+    event.entityId,
+    event.detail,
+    event.resolvedAt,
+    event.resolvedBy,
+  ].map(csvCell).join(","));
+  const csv = [header.map(csvCell).join(","), ...rows].join("\r\n");
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `decor-by-kasiwa-errors-${period}-${status.toLowerCase()}-${stamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function DeveloperConsole({ events, totalRecorded, accessEmail }: { events: AuditEvent[]; totalRecorded: number; accessEmail: string }) {
   const [period, setPeriod] = useState<Period>("day");
   const [query, setQuery] = useState("");
@@ -97,7 +133,10 @@ export default function DeveloperConsole({ events, totalRecorded, accessEmail }:
 
       {errorsOnly ? <section className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#53705d]/20 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">Error review</span>{(["PENDING", "RESOLVED", "ALL"] as const).map((status) => <button key={status} onClick={() => { setErrorStatus(status); setSelectedErrors([]); }} className={`rounded-lg px-3 py-2 text-xs font-semibold ${errorStatus === status ? "bg-[#1f2a24] text-white" : "bg-black/[0.04] text-black/60"}`}>{status === "PENDING" ? "Pending" : status === "RESOLVED" ? "Resolved" : "All"}</button>)}<button onClick={() => { setErrorsOnly(false); setSelectedErrors([]); }} className="rounded-lg border border-black/10 px-3 py-2 text-xs">Show all events</button></div>
-        {selectedErrors.length ? <button disabled={busy} onClick={() => setResolution(selectedErrors, errorStatus !== "RESOLVED")} className="rounded-xl bg-[#1f2a24] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : errorStatus === "RESOLVED" ? `Reopen selected (${selectedErrors.length})` : `Mark selected resolved (${selectedErrors.length})`}</button> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={!filtered.length} onClick={() => exportErrorsCsv(filtered.filter((event) => event.eventType === "CLIENT_ERROR"), period, errorStatus)} className="rounded-xl border border-[#1f2a24] px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Export errors CSV</button>
+          {selectedErrors.length ? <button disabled={busy} onClick={() => setResolution(selectedErrors, errorStatus !== "RESOLVED")} className="rounded-xl bg-[#1f2a24] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : errorStatus === "RESOLVED" ? `Reopen selected (${selectedErrors.length})` : `Mark selected resolved (${selectedErrors.length})`}</button> : null}
+        </div>
       </section> : null}
 
       <div className="hidden overflow-hidden rounded-2xl border border-black/10 bg-white md:block">
