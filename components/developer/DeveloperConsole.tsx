@@ -19,12 +19,29 @@ function periodStart(period: Period) {
   return now.getTime() - days * 24 * 60 * 60 * 1000;
 }
 
+function nairobiDateKey(value: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Nairobi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(value));
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    return year && month && day ? `${year}-${month}-${day}` : "";
+  } catch {
+    return "";
+  }
+}
+
 function csvCell(value: string | undefined) {
   const normalized = (value || "").replace(/\r?\n/g, " ");
   return `"${normalized.replace(/"/g, '""')}"`;
 }
 
-function exportErrorsCsv(events: AuditEvent[], period: Period, status: "PENDING" | "RESOLVED" | "ALL") {
+function exportErrorsCsv(events: AuditEvent[], period: Period, status: "PENDING" | "RESOLVED" | "ALL", exactDate: string) {
   if (!events.length) return;
   const header = ["Event Number", "Status", "Time", "Event", "Actor", "Email", "Role", "Reference", "Entity Type", "Entity ID", "Detail", "Resolved At", "Resolved By"];
   const rows = events.map((event) => [
@@ -48,7 +65,8 @@ function exportErrorsCsv(events: AuditEvent[], period: Period, status: "PENDING"
   const link = document.createElement("a");
   const stamp = new Date().toISOString().slice(0, 10);
   link.href = url;
-  link.download = `decor-by-kasiwa-errors-${period}-${status.toLowerCase()}-${stamp}.csv`;
+  const rangeLabel = exactDate || period;
+  link.download = `decor-by-kasiwa-errors-${rangeLabel}-${status.toLowerCase()}-${stamp}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -57,6 +75,7 @@ function exportErrorsCsv(events: AuditEvent[], period: Period, status: "PENDING"
 
 export default function DeveloperConsole({ events, totalRecorded, accessEmail }: { events: AuditEvent[]; totalRecorded: number; accessEmail: string }) {
   const [period, setPeriod] = useState<Period>("day");
+  const [exactDate, setExactDate] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [actor, setActor] = useState("");
@@ -75,7 +94,9 @@ export default function DeveloperConsole({ events, totalRecorded, accessEmail }:
     const q = query.trim().toLowerCase();
     const a = actor.trim().toLowerCase();
     return events.filter((event) => {
-      if (new Date(event.createdAt).getTime() < cutoff) return false;
+      if (exactDate) {
+        if (nairobiDateKey(event.createdAt) !== exactDate) return false;
+      } else if (new Date(event.createdAt).getTime() < cutoff) return false;
       const actorText = `${event.actorName || ""} ${event.actorEmail || ""}`.toLowerCase();
       if (a && !actorText.includes(a)) return false;
       if (errorsOnly && event.eventType !== "CLIENT_ERROR") return false;
@@ -84,9 +105,13 @@ export default function DeveloperConsole({ events, totalRecorded, accessEmail }:
       return [event.eventType, event.actorName, event.actorEmail, event.actorRole, event.entityLabel, event.eventNumber, event.detail]
         .some((value) => (value || "").toLowerCase().includes(q));
     });
-  }, [events, period, query, actor, errorsOnly, errorStatus]);
+  }, [events, period, exactDate, query, actor, errorsOnly, errorStatus]);
 
-  const periodErrors = useMemo(() => events.filter((event) => new Date(event.createdAt).getTime() >= periodStart(period) && event.eventType === "CLIENT_ERROR"), [events, period]);
+  const periodErrors = useMemo(() => events.filter((event) => {
+    if (event.eventType !== "CLIENT_ERROR") return false;
+    if (exactDate) return nairobiDateKey(event.createdAt) === exactDate;
+    return new Date(event.createdAt).getTime() >= periodStart(period);
+  }), [events, period, exactDate]);
   const errors = periodErrors.filter((event) => (event.resolutionStatus || "PENDING") === "PENDING").length;
 
   async function setResolution(ids: string[], resolved: boolean) {
@@ -121,7 +146,12 @@ export default function DeveloperConsole({ events, totalRecorded, accessEmail }:
       <section className="mb-4 rounded-2xl border border-black/10 bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="flex rounded-xl bg-black/[0.04] p-1">
-            {(["day", "week", "month"] as Period[]).map((value) => <button key={value} onClick={() => setPeriod(value)} className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium capitalize lg:flex-none ${period === value ? "bg-white shadow-sm" : "text-black/55"}`}>{value}</button>)}
+            {(["day", "week", "month"] as Period[]).map((value) => <button key={value} onClick={() => { setPeriod(value); setExactDate(""); }} className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium capitalize lg:flex-none ${!exactDate && period === value ? "bg-white shadow-sm" : "text-black/55"}`}>{value}</button>)}
+          </div>
+          <div className="flex min-h-11 items-center gap-2 rounded-xl border border-black/10 bg-white px-3 focus-within:border-[#53705d]">
+            <label htmlFor="developer-exact-date" className="whitespace-nowrap text-xs font-semibold text-black/50">Exact date</label>
+            <input id="developer-exact-date" type="date" value={exactDate} onChange={(e) => { setExactDate(e.target.value); setSelectedErrors([]); }} className="min-w-0 bg-transparent text-sm outline-none" />
+            {exactDate ? <button type="button" onClick={() => { setExactDate(""); setSelectedErrors([]); }} className="text-xs font-semibold text-black/45 hover:text-black/70">Clear</button> : null}
           </div>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search errors, events, references or staff…" className="min-h-11 flex-1 rounded-xl border border-black/10 bg-white px-4 text-sm outline-none focus:border-[#53705d]" />
           <div className="flex min-w-0 gap-2">
@@ -134,7 +164,7 @@ export default function DeveloperConsole({ events, totalRecorded, accessEmail }:
       {errorsOnly ? <section className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#53705d]/20 bg-white p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">Error review</span>{(["PENDING", "RESOLVED", "ALL"] as const).map((status) => <button key={status} onClick={() => { setErrorStatus(status); setSelectedErrors([]); }} className={`rounded-lg px-3 py-2 text-xs font-semibold ${errorStatus === status ? "bg-[#1f2a24] text-white" : "bg-black/[0.04] text-black/60"}`}>{status === "PENDING" ? "Pending" : status === "RESOLVED" ? "Resolved" : "All"}</button>)}<button onClick={() => { setErrorsOnly(false); setSelectedErrors([]); }} className="rounded-lg border border-black/10 px-3 py-2 text-xs">Show all events</button></div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={!filtered.length} onClick={() => exportErrorsCsv(filtered.filter((event) => event.eventType === "CLIENT_ERROR"), period, errorStatus)} className="rounded-xl border border-[#1f2a24] px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Export errors CSV</button>
+          <button type="button" disabled={!filtered.length} onClick={() => exportErrorsCsv(filtered.filter((event) => event.eventType === "CLIENT_ERROR"), period, errorStatus, exactDate)} className="rounded-xl border border-[#1f2a24] px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Export errors CSV</button>
           {selectedErrors.length ? <button disabled={busy} onClick={() => setResolution(selectedErrors, errorStatus !== "RESOLVED")} className="rounded-xl bg-[#1f2a24] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : errorStatus === "RESOLVED" ? `Reopen selected (${selectedErrors.length})` : `Mark selected resolved (${selectedErrors.length})`}</button> : null}
         </div>
       </section> : null}
