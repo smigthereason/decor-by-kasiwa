@@ -17,6 +17,7 @@ type Job = {
   paymentStatus: string;
   total: number;
   amountPaid: number;
+  orderDate?: string;
   fulfilmentStages: Stage[];
   currentFulfilmentStage: Stage;
   assignedStaffId?: string;
@@ -39,6 +40,17 @@ const permissionFor: Record<Stage, string> = {
 const order: Stage[] = ["PRODUCTION", "PACKAGING", "DELIVERY"];
 const stageLabel = (stage: Stage) => stage[0] + stage.slice(1).toLowerCase();
 
+function kenyaDateKey(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 export default function FulfilmentWorkflowPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -49,6 +61,9 @@ export default function FulfilmentWorkflowPage() {
   const [saving, setSaving] = useState("");
   const [message, setMessage] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [appliedDateRange, setAppliedDateRange] = useState({ from: "", to: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +91,26 @@ export default function FulfilmentWorkflowPage() {
   function candidates(stage: Stage | undefined) {
     if (!stage) return [];
     return staff.filter((item) => item.role === roleFor[stage] || item.permissions?.includes(permissionFor[stage]));
+  }
+
+  function applyDateRange() {
+    setMessage("");
+    if (!dateFrom || !dateTo) {
+      setMessage("Select both From and To dates before filtering fulfilment orders.");
+      return;
+    }
+    if (dateFrom > dateTo) {
+      setMessage("The fulfilment From date cannot be after the To date.");
+      return;
+    }
+    setAppliedDateRange({ from: dateFrom, to: dateTo });
+  }
+
+  function clearDateRange() {
+    setDateFrom("");
+    setDateTo("");
+    setAppliedDateRange({ from: "", to: "" });
+    setMessage("");
   }
 
   async function assignCurrent(job: Job) {
@@ -135,10 +170,14 @@ export default function FulfilmentWorkflowPage() {
       stage,
       jobs: jobs.filter((job) =>
         job.currentFulfilmentStage === stage &&
-        (!normalizedOrderSearch || job.orderNumber.toLowerCase().includes(normalizedOrderSearch)),
+        (!normalizedOrderSearch || job.orderNumber.toLowerCase().includes(normalizedOrderSearch)) &&
+        (!appliedDateRange.from || !appliedDateRange.to || (() => {
+          const key = kenyaDateKey(job.orderDate);
+          return key >= appliedDateRange.from && key <= appliedDateRange.to;
+        })()),
       ),
     })),
-    [jobs, normalizedOrderSearch, visibleStages.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
+    [appliedDateRange.from, appliedDateRange.to, jobs, normalizedOrderSearch, visibleStages.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const matchedJobs = grouped.reduce((total, group) => total + group.jobs.length, 0);
 
@@ -173,8 +212,8 @@ export default function FulfilmentWorkflowPage() {
         </div>
 
         <div className="mt-5 rounded-2xl border hairline bg-white p-4 sm:p-5">
-          <label htmlFor="fulfilment-order-search" className="text-xs font-semibold">Find an order</label>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Search the active fulfilment queue by order number.</p>
+          <label htmlFor="fulfilment-order-search" className="text-xs font-semibold">Find and filter orders</label>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Search the active fulfilment queue by order number or limit it to orders paid within a selected date range.</p>
           <div className="relative mt-3">
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
             <input
@@ -197,9 +236,14 @@ export default function FulfilmentWorkflowPage() {
               </button>
             )}
           </div>
-          {normalizedOrderSearch && (
-            <p className="mt-2 text-[11px] text-[var(--muted)]">
-              {matchedJobs === 0 ? "No active fulfilment order matches this order number." : `${matchedJobs} matching ${matchedJobs === 1 ? "order" : "orders"}`}
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
+            <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={applyDateRange} className="min-h-11 rounded-full bg-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.05em] text-white">Apply dates</button>{(appliedDateRange.from || appliedDateRange.to) && <button type="button" onClick={clearDateRange} className="min-h-11 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear dates</button>}</div>
+          </div>
+          {(normalizedOrderSearch || appliedDateRange.from) && (
+            <p className="mt-3 text-[11px] text-[var(--muted)]">
+              {matchedJobs === 0 ? "No active fulfilment orders match the selected filters." : `${matchedJobs} matching ${matchedJobs === 1 ? "order" : "orders"}`}{appliedDateRange.from ? ` · ${appliedDateRange.from} to ${appliedDateRange.to}` : ""}
             </p>
           )}
         </div>

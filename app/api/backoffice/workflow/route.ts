@@ -21,7 +21,7 @@ export async function GET() {
   const orders = await serverClient.fetch(
     `*[_type == "commerceOrder" && paymentStatus == "paid" && defined(currentFulfilmentStage) && currentFulfilmentStage != "COMPLETED" && ($manager || currentFulfilmentStage in $stages) && ($manager || assignedFulfilmentStaff._ref == $staffId)] | order(coalesce(paidAt,createdAt) asc) {
       "id": _id, orderNumber, customerName, customerPhone, deliveryLocation, salesChannel, status, paymentStatus,
-      total, amountPaid, fulfilmentStages, currentFulfilmentStage,
+      "orderDate": coalesce(paidAt,soldAt,createdAt), total, amountPaid, fulfilmentStages, currentFulfilmentStage,
       "assignedStaffId": assignedFulfilmentStaff._ref, assignedFulfilmentStaffName,
       "items": lineItems[]{
         name, category, quantity,
