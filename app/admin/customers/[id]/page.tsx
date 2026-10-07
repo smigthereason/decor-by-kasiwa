@@ -13,6 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import CustomerInterestPanel from "@/components/backoffice/CustomerInterestPanel";
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import OrderTable from "@/components/backoffice/OrderTable";
 import StatusPill from "@/components/backoffice/StatusPill";
@@ -749,6 +750,9 @@ export default function AdminCustomerDetailPage() {
         {/* ORDER HISTORY                                                 */}
         {/* ============================================================= */}
 
+        <div className="space-y-4">
+          <CustomerInterestPanel customerId={customer.id} />
+
         <section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -805,6 +809,7 @@ export default function AdminCustomerDetailPage() {
             )}
           </div>
         </section>
+        </div>
       </div>
     </div>
   );

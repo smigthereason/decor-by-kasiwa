@@ -25,6 +25,7 @@ import ProductCard from "@/components/root/shop/ProductCard";
 import { getProductRating } from "@/lib/product-rating";
 import ProductRatingStars from "@/components/root/shop/ProductRatingStars";
 import { getPriceComparison, getQuantityPricingMessage, getQuantityUnitPrice } from "@/lib/product-pricing";
+import ProductViewTracker from "@/components/root/analytics/ProductViewTracker";
 
 export default function ProductDetailClient({
   product,
@@ -140,6 +141,7 @@ export default function ProductDetailClient({
 
   return (
     <>
+      <ProductViewTracker product={product} />
       <section className="flex min-h-[calc(100vh-140px)] w-full flex-col bg-[var(--paper)]">
         {/* HEADER BAR */}
         <div className="hidden w-full items-center justify-between border-b hairline px-4 py-6 md:px-8 lg:flex">

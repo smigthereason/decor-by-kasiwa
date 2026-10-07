@@ -62,6 +62,28 @@ export const customerUser = defineType({
     defineField({ name: "lastPurchaseAt", title: "Last purchase", type: "datetime", readOnly: true }),
     defineField({ name: "outstandingBalance", title: "Outstanding Balance (KES)", type: "number", initialValue: 0, readOnly: true }),
     defineField({ name: "lastPosPurchaseAt", title: "Last POS purchase", type: "datetime", readOnly: true }),
+    defineField({
+      name: "recentlyViewedProducts",
+      title: "Recently viewed products",
+      type: "array",
+      readOnly: true,
+      description: "Recent product interest captured from authenticated customer browsing.",
+      of: [{
+        type: "object",
+        fields: [
+          defineField({ name: "product", title: "Product", type: "reference", to: [{ type: "product" }] }),
+          defineField({ name: "viewedAt", title: "Viewed at", type: "datetime" }),
+          defineField({ name: "nameSnapshot", title: "Product name snapshot", type: "string", hidden: true }),
+          defineField({ name: "slugSnapshot", title: "Product slug snapshot", type: "string", hidden: true }),
+          defineField({ name: "imageUrlSnapshot", title: "Image URL snapshot", type: "string", hidden: true }),
+        ],
+        preview: {
+          select: { title: "nameSnapshot", subtitle: "viewedAt" },
+          prepare({ title, subtitle }) { return { title: title || "Product", subtitle: subtitle || "Viewed" }; },
+        },
+      }],
+    }),
+    defineField({ name: "lastProductViewAt", title: "Last product view", type: "datetime", readOnly: true }),
     defineField({ name: "createdAt", title: "Created at", type: "datetime", readOnly: true }),
     defineField({ name: "passwordHash", title: "Password hash", type: "string", hidden: true, readOnly: true }),
     defineField({ name: "passwordUpdatedAt", title: "Password updated at", type: "datetime", hidden: true, readOnly: true }),

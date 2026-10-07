@@ -559,6 +559,7 @@ import AutoCategoryCarousel, {
   type CategoryCarouselItem,
 } from "@/components/root/home/AutoCategoryCarousel";
 import ProductCard from "@/components/root/shop/ProductCard";
+import RecentlyViewedProducts from "@/components/root/shop/RecentlyViewedProducts";
 import type { ShopCategory, ShopLook, ShopNavigation, StoreProduct } from "@/types/commerce";
 import type { PublicSiteSettings } from "@/sanity/lib/siteSettings";
 import { formatMoney } from "@/lib/money";
@@ -921,6 +922,8 @@ export default function ShopLanding({
           <HorizontalProductCarousel products={newArrivalRail} />
         </section>
       )}
+
+      <RecentlyViewedProducts />
 
       {/* 5. Shop the Look - FULL WIDTH LAYOUT (NOT A CAROUSEL) */}
       {featuredLook && (

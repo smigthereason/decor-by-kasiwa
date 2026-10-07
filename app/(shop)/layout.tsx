@@ -4,6 +4,8 @@ import SiteHeader from "@/components/root/navigation/SiteHeader";
 import SiteFooter from "@/components/root/navigation/SiteFooter";
 import MobileBottomNav from "@/components/root/navigation/MobileBottomNav";
 import WhatsAppFloatingButton from "@/components/root/navigation/WhatsAppFloatingButton";
+import GoogleAnalytics from "@/components/root/analytics/GoogleAnalytics";
+import RecentViewSync from "@/components/root/analytics/RecentViewSync";
 import { getFeaturedShopLook, getShopNavigation } from "@/sanity/lib/catalog";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ export default async function ShopLayout({
 
   return (
     <div className="flex min-h-screen flex-col pb-[76px] lg:pb-0">
+      <GoogleAnalytics />
+      <RecentViewSync />
       <SiteHeader navigation={navigation} shopLookPreview={featuredShopLook ? { title: featuredShopLook.title, slug: featuredShopLook.slug, imageUrl: featuredShopLook.heroImageUrl } : undefined} />
 
       <main className="flex-1">
