@@ -10,9 +10,11 @@ export async function GET(request: Request) {
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
   try {
-    const reference = new URL(request.url).searchParams.get("reference")?.trim();
+    const url = new URL(request.url);
+    const reference = url.searchParams.get("reference")?.trim();
+    const forceProviderQuery = url.searchParams.get("forceProviderQuery") === "1";
     if (!reference) return NextResponse.json({ message: "POS payment reference is required." }, { status: 400 });
-    return NextResponse.json(await verifyPosPayment(reference));
+    return NextResponse.json(await verifyPosPayment(reference, { forceProviderQuery }));
   } catch (cause) {
     return NextResponse.json(
       { message: cause instanceof Error ? cause.message : "Unable to verify POS payment." },

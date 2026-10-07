@@ -141,6 +141,10 @@ type PosOrder = {
   mpesaCheckoutRequestId?: string;
   mpesaResultCode?: number;
   mpesaResultDescription?: string;
+  inventoryReviewRequired?: boolean;
+  inventoryReconciliationReason?: string;
+  inventoryReviewRaisedAt?: string;
+  inventoryReconciledAt?: string;
   customerId?: string;
   customerName?: string;
   customerEmail?: string;
@@ -559,6 +563,10 @@ async function fetchPosOrder(reference: string) {
       mpesaCheckoutRequestId,
       mpesaResultCode,
       mpesaResultDescription,
+      inventoryReviewRequired,
+      inventoryReconciliationReason,
+      inventoryReviewRaisedAt,
+      inventoryReconciledAt,
       "customerId": customer._ref,
       customerName,
       customerEmail,
@@ -583,17 +591,54 @@ async function fetchPosOrder(reference: string) {
 }
 
 async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
-  return serverClient.fetch<PosOrder | null>(
+  const direct = await serverClient.fetch<PosOrder | null>(
     `*[_type == "commerceOrder" && salesChannel == "POS" && mpesaCheckoutRequestId == $checkoutRequestId][0]{
       _id,_rev,orderNumber,paymentStatus,status,subtotal,discountAmount,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
-      mpesaResultCode,mpesaResultDescription,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
+      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
       "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
     }`,
     { checkoutRequestId },
     { cache: "no-store" },
   );
+  if (direct) return direct;
+
+  // Recovery path: the STK request can be accepted by Safaricom while the order
+  // patch is temporarily unavailable. The payment transaction is persisted
+  // separately, so callbacks can still resolve the correct order.
+  return serverClient.fetch<PosOrder | null>(
+    `*[_type == "paymentTransaction" && provider == "daraja" && providerTransactionId == $checkoutRequestId][0].order->{
+      _id,_rev,orderNumber,paymentStatus,status,subtotal,discountAmount,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
+      deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
+      paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
+      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
+      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
+    }`,
+    { checkoutRequestId },
+    { cache: "no-store" },
+  );
+}
+
+async function fetchDarajaCheckoutRequestId(reference: string) {
+  return serverClient.fetch<string | null>(
+    `*[_type == "paymentTransaction" && reference == $reference && provider == "daraja"][0].providerTransactionId`,
+    { reference },
+    { cache: "no-store" },
+  );
+}
+
+async function settleWithRetry<T>(operation: () => Promise<T>, attempts = 3) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (cause) {
+      lastError = cause;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+    }
+  }
+  throw lastError;
 }
 
 function summary(order: PosOrder) {
@@ -617,6 +662,10 @@ function summary(order: PosOrder) {
     deliveryLocation: order.deliveryLocation || "",
     soldByName: order.soldByName || "Staff",
     soldAt: order.soldAt || "",
+    inventoryReviewRequired: Boolean(order.inventoryReviewRequired),
+    inventoryReconciliationReason: order.inventoryReconciliationReason || "",
+    inventoryReviewRaisedAt: order.inventoryReviewRaisedAt || "",
+    inventoryReconciledAt: order.inventoryReconciledAt || "",
   };
 }
 
@@ -1068,7 +1117,10 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
   const { existing: order, customer } = await createPendingDarajaOrder(input, seller);
   if (!order) throw new Error("POS M-PESA order could not be created.");
   if (order.paymentStatus === "paid") return { ...summary(order), displayText: "Payment already completed." };
-  if (order.mpesaCheckoutRequestId) {
+
+  const reference = order.paymentReference || order.orderNumber;
+  const existingCheckoutRequestId = order.mpesaCheckoutRequestId || await fetchDarajaCheckoutRequestId(reference);
+  if (existingCheckoutRequestId) {
     return {
       ...summary(order),
       displayText: "An M-PESA prompt has already been sent for this sale. Ask the customer to complete it on their phone.",
@@ -1076,53 +1128,94 @@ export async function createPosMpesaSale(input: PosSaleInput, seller: PosSeller)
     };
   }
 
+  let stk: Awaited<ReturnType<typeof initiateDarajaStkPush>>;
   try {
-    const stk = await initiateDarajaStkPush({
+    // Only failure before Safaricom accepts the STK request is safe to mark as
+    // a failed sale. Once Safaricom returns CheckoutRequestID, money may still
+    // be collected even if a later local write temporarily fails.
+    stk = await initiateDarajaStkPush({
       phone: customer.phone,
       amount: Number(order.total || 0),
-      accountReference: darajaAccountReference(order.paymentReference || order.orderNumber),
+      accountReference: darajaAccountReference(reference),
     });
-    const now = new Date().toISOString();
-
-    await Promise.all([
-      serverClient.patch(order._id).set({
-        mpesaMerchantRequestId: stk.merchantRequestId,
-        mpesaCheckoutRequestId: stk.checkoutRequestId,
-        mpesaResultDescription: stk.customerMessage,
-        updatedAt: now,
-      }).commit(),
-      serverClient.patch(paymentTransactionId(order.paymentReference || order.orderNumber)).set({
-        provider: "daraja",
-        channel: "mobile_money",
-        providerTransactionId: stk.checkoutRequestId,
-        updatedAt: now,
-      }).commit(),
-      recordAuditEvent({
-        key: `pos-daraja-stk|${order.paymentReference || order.orderNumber}`,
-        eventType: "POS_MPESA_STK_SENT",
-        entityType: "commerceOrder",
-        entityId: order._id,
-        entityLabel: order.orderNumber,
-        actor: seller,
-        detail: `Safaricom STK Push sent to ${customer.phone} · checkout ${stk.checkoutRequestId}.`,
-        createdAt: now,
-      }),
-    ]);
-
-    const updated = await fetchPosOrder(order.paymentReference || order.orderNumber);
-    return {
-      ...summary(updated || order),
-      displayText: stk.customerMessage || "Ask the customer to enter their M-PESA PIN on the Safaricom prompt.",
-      testMode: stk.environment === "sandbox",
-    };
   } catch (cause) {
     const reason = cause instanceof Error ? cause.message : "M-PESA STK initiation failed.";
-    await Promise.all([
+    await Promise.allSettled([
       serverClient.patch(order._id).set({ paymentStatus: "failed", status: "cancelled", failureReason: reason, mpesaResultDescription: reason, updatedAt: new Date().toISOString() }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
-      serverClient.patch(paymentTransactionId(order.paymentReference || order.orderNumber)).set({ status: "failed", failureReason: reason, updatedAt: new Date().toISOString() }).commit(),
+      serverClient.patch(paymentTransactionId(reference)).set({ status: "failed", failureReason: reason, updatedAt: new Date().toISOString() }).commit(),
     ]);
     throw cause;
   }
+
+  const now = new Date().toISOString();
+  const [orderPersisted, paymentPersisted] = await Promise.allSettled([
+    settleWithRetry(() => serverClient.patch(order._id).set({
+      paymentStatus: "pending",
+      status: "pending",
+      failureReason: "",
+      mpesaMerchantRequestId: stk.merchantRequestId,
+      mpesaCheckoutRequestId: stk.checkoutRequestId,
+      mpesaResultDescription: stk.customerMessage,
+      updatedAt: now,
+    }).commit()),
+    settleWithRetry(() => serverClient.patch(paymentTransactionId(reference)).set({
+      provider: "daraja",
+      channel: "mobile_money",
+      status: "pending",
+      failureReason: "",
+      providerTransactionId: stk.checkoutRequestId,
+      updatedAt: now,
+    }).commit()),
+  ]);
+
+  const persistenceFailed = orderPersisted.status === "rejected" || paymentPersisted.status === "rejected";
+  if (persistenceFailed) {
+    console.error("[POS M-PESA] STK accepted but local persistence needs reconciliation", {
+      reference,
+      orderId: order._id,
+      checkoutRequestId: stk.checkoutRequestId,
+      merchantRequestId: stk.merchantRequestId,
+      orderPersisted: orderPersisted.status,
+      paymentPersisted: paymentPersisted.status,
+      orderError: orderPersisted.status === "rejected" ? String(orderPersisted.reason) : undefined,
+      paymentError: paymentPersisted.status === "rejected" ? String(paymentPersisted.reason) : undefined,
+    });
+  }
+
+  // Audit is intentionally best-effort. A logging failure must never turn an
+  // accepted STK request into a failed sale.
+  await Promise.allSettled([
+    recordAuditEvent({
+      key: `pos-daraja-stk|${reference}`,
+      eventType: "POS_MPESA_STK_SENT",
+      entityType: "commerceOrder",
+      entityId: order._id,
+      entityLabel: order.orderNumber,
+      actor: seller,
+      detail: `Safaricom STK Push sent to ${customer.phone} · checkout ${stk.checkoutRequestId}.`,
+      createdAt: now,
+    }),
+    ...(persistenceFailed ? [recordAuditEvent({
+      key: `pos-daraja-reconcile|${reference}|${stk.checkoutRequestId}`,
+      eventType: "POS_MPESA_RECONCILIATION_REQUIRED",
+      entityType: "commerceOrder",
+      entityId: order._id,
+      entityLabel: order.orderNumber,
+      actor: seller,
+      detail: `Safaricom accepted checkout ${stk.checkoutRequestId}, but one or more local persistence writes failed. Do not collect a second payment; verify this reference from Reconciliation.`,
+      createdAt: now,
+    })] : []),
+  ]);
+
+  const updated = await fetchPosOrder(reference);
+  return {
+    ...summary(updated || order),
+    displayText: persistenceFailed
+      ? "M-PESA prompt sent. Payment is pending reconciliation. Do not initiate a second payment for this sale."
+      : stk.customerMessage || "Ask the customer to enter their M-PESA PIN on the Safaricom prompt.",
+    testMode: stk.environment === "sandbox",
+    reconciliationRequired: persistenceFailed,
+  };
 }
 
 export async function createPosPaystackSale(input: PosSaleInput, seller: PosSeller, callbackBaseUrl: string) {
@@ -1255,6 +1348,95 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
 }
 
 
+async function sellerForPosOrder(order: PosOrder): Promise<PosSeller> {
+  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string } | null>(
+    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email}`,
+    { id: order._id },
+    { cache: "no-store" },
+  );
+  return {
+    id: storedSeller?.id || "",
+    name: order.soldByName || "POS Staff",
+    email: storedSeller?.email || "",
+    role: storedSeller?.role || "STORE_STAFF",
+  };
+}
+
+async function reconcilePaidPosInventory(order: PosOrder, now = new Date().toISOString()) {
+  const reference = order.paymentReference || order.orderNumber;
+  const seller = await sellerForPosOrder(order);
+  const ids = [...new Set((order.lineItems || []).map((line) => line.productId))];
+
+  try {
+    const products = await fetchProducts(ids);
+    const firstFulfilmentStage = order.fulfilmentStages?.[0];
+    const transaction = serverClient.transaction();
+
+    addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
+    transaction.patch(order._id, (patch) => {
+      let next = patch.set({
+        status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
+        ...(firstFulfilmentStage ? { currentFulfilmentStage: firstFulfilmentStage } : {}),
+        inventoryReviewRequired: false,
+        inventoryReconciliationReason: "",
+        inventoryReconciledAt: now,
+        updatedAt: now,
+      });
+      next = next.unset(["inventoryReviewRaisedAt"]);
+      return next;
+    });
+    addAuditToTransaction({
+      transaction,
+      key: `pos-inventory-reconciled|${reference}`,
+      eventType: "POS_INVENTORY_RECONCILED",
+      entityId: order._id,
+      entityLabel: order.orderNumber,
+      seller,
+      detail: "Inventory successfully reconciled after confirmed POS payment.",
+      now,
+    });
+    await transaction.commit();
+
+    return {
+      order: (await fetchPosOrder(reference)) || order,
+      reconciled: true,
+      message: "Inventory reconciled successfully.",
+    };
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : "Inventory could not be reconciled after confirmed payment.";
+    const reviewNote = `Payment is confirmed and must remain paid. Inventory requires review: ${reason}`;
+
+    await Promise.allSettled([
+      serverClient.patch(order._id).set({
+        paymentStatus: "paid",
+        status: "paid",
+        amountPaid: Number(order.total || 0),
+        balanceDue: 0,
+        inventoryReviewRequired: true,
+        inventoryReconciliationReason: reason,
+        inventoryReviewRaisedAt: now,
+        updatedAt: now,
+      }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
+      recordAuditEvent({
+        key: `pos-inventory-review|${reference}`,
+        eventType: "POS_INVENTORY_RECONCILIATION_REQUIRED",
+        entityType: "commerceOrder",
+        entityId: order._id,
+        entityLabel: order.orderNumber,
+        actor: seller,
+        detail: reviewNote,
+        createdAt: now,
+      }),
+    ]);
+
+    return {
+      order: (await fetchPosOrder(reference)) || { ...order, paymentStatus: "paid", status: "paid", amountPaid: Number(order.total || 0), balanceDue: 0, inventoryReviewRequired: true, inventoryReconciliationReason: reason, inventoryReviewRaisedAt: now },
+      reconciled: false,
+      message: reason,
+    };
+  }
+}
+
 async function finalizeDarajaPosPayment(order: PosOrder, payment: {
   checkoutRequestId: string;
   merchantRequestId?: string;
@@ -1312,29 +1494,16 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
     throw new Error(note);
   }
 
-  const ids = [...new Set((order.lineItems || []).map((line) => line.productId))];
-  const products = await fetchProducts(ids);
-  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string } | null>(
-    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email}`,
-    { id: order._id },
-    { cache: "no-store" },
-  );
-  const seller: PosSeller = {
-    id: storedSeller?.id || "",
-    name: order.soldByName || "POS Staff",
-    email: storedSeller?.email || "",
-    role: storedSeller?.role || "STORE_STAFF",
-  };
-
+  const seller = await sellerForPosOrder(order);
   const paidAt = payment.paidAt || now;
-  const firstFulfilmentStage = order.fulfilmentStages?.[0];
-  const transaction = serverClient.transaction();
-  addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
-  transaction.patch(order._id, (patch) =>
+  const financialTransaction = serverClient.transaction();
+
+  // Financial truth is persisted before inventory. Safaricom-confirmed money
+  // must never be reverted to failed/pending because stock changed afterwards.
+  financialTransaction.patch(order._id, (patch) =>
     patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
-      status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
-      ...(firstFulfilmentStage ? { currentFulfilmentStage: firstFulfilmentStage } : {}),
+      status: "paid",
       paymentProvider: "daraja",
       paymentChannel: "mobile_money",
       mpesaMerchantRequestId: payment.merchantRequestId || order.mpesaMerchantRequestId || "",
@@ -1345,11 +1514,13 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
       amountPaid: expectedAmount,
       balanceDue: 0,
       paidAt,
+      inventoryReviewRequired: false,
+      inventoryReconciliationReason: "",
       updatedAt: now,
       failureReason: payment.receiptNumber ? "" : "Payment confirmed by Daraja status query; awaiting M-PESA receipt callback.",
-    }),
+    }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]),
   );
-  transaction.patch(paymentTransactionId(reference), (patch) => patch.set({
+  financialTransaction.patch(paymentTransactionId(reference), (patch) => patch.set({
     provider: "daraja",
     channel: "mobile_money",
     status: "paid",
@@ -1360,7 +1531,7 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
     failureReason: "",
   }));
   addAuditToTransaction({
-    transaction,
+    transaction: financialTransaction,
     key: `pos-daraja-paid|${reference}`,
     eventType: "POS_MPESA_PAYMENT_CONFIRMED",
     entityId: order._id,
@@ -1371,15 +1542,22 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
   });
 
   try {
-    await transaction.commit();
+    await financialTransaction.commit();
   } catch (cause) {
     const concurrent = await fetchPosOrder(reference);
     if (concurrent?.paymentStatus === "paid") return concurrent;
     throw cause;
   }
 
-  const finalized = await fetchPosOrder(reference);
-  if (!finalized) throw new Error("M-PESA payment was confirmed but the POS order could not be reloaded.");
+  const financiallyPaid = await fetchPosOrder(reference);
+  if (!financiallyPaid || financiallyPaid.paymentStatus !== "paid") {
+    throw new Error("M-PESA payment was confirmed but the paid financial state could not be reloaded.");
+  }
+
+  // Inventory is a separate concern. A stock discrepancy is flagged for review
+  // but can no longer erase or hide confirmed money.
+  const inventory = await reconcilePaidPosInventory(financiallyPaid, now);
+  const finalized = inventory.order;
   const customer = customerDetails({
     requestId: reference.replace(/^DBK-POS-/, ""),
     cart: [],
@@ -1397,21 +1575,31 @@ async function failDarajaPayment(order: PosOrder, resultCode: number, resultDesc
   if (order.paymentStatus === "paid") return order;
   const now = new Date().toISOString();
   const reference = order.paymentReference || order.orderNumber;
-  await Promise.all([
-    serverClient.patch(order._id).ifRevisionId(order._rev).set({
-      paymentStatus: "failed",
-      status: "cancelled",
-      mpesaResultCode: resultCode,
-      mpesaResultDescription: resultDescription,
-      failureReason: resultDescription,
-      updatedAt: now,
-    }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
-    serverClient.patch(paymentTransactionId(reference)).set({
-      status: "failed",
-      failureReason: resultDescription,
-      updatedAt: now,
-    }).commit(),
-  ]);
+  try {
+    await Promise.all([
+      serverClient.patch(order._id).ifRevisionId(order._rev).set({
+        paymentStatus: "failed",
+        status: "cancelled",
+        mpesaResultCode: resultCode,
+        mpesaResultDescription: resultDescription,
+        failureReason: resultDescription,
+        updatedAt: now,
+      }).unset(["currentFulfilmentStage", "assignedFulfilmentStaff", "assignedFulfilmentStaffName"]).commit(),
+      serverClient.patch(paymentTransactionId(reference)).set({
+        status: "failed",
+        failureReason: resultDescription,
+        updatedAt: now,
+      }).commit(),
+    ]);
+  } catch (cause) {
+    // Manual reconciliation can be clicked twice or overlap with a provider
+    // callback. Treat an already-persisted equivalent result as idempotent
+    // instead of incorrectly reporting a revision conflict as "pending".
+    const concurrent = await fetchPosOrder(reference);
+    if (concurrent?.paymentStatus === "paid") return concurrent;
+    if (concurrent?.paymentStatus === "failed" && concurrent.mpesaResultCode === resultCode) return concurrent;
+    throw cause;
+  }
   return (await fetchPosOrder(reference)) || order;
 }
 
@@ -1445,51 +1633,124 @@ export async function handleDarajaStkCallback(payload: DarajaStkCallbackPayload)
   return { matched: true, state: "paid" as const, order: summary(finalized) };
 }
 
-export async function verifyPosPayment(reference: string) {
+export async function verifyPosPayment(reference: string, options: { forceProviderQuery?: boolean } = {}) {
   if (!/^DBK-POS-[A-Za-z0-9-]+$/.test(reference)) throw new Error("Invalid POS payment reference.");
   const order = await fetchPosOrder(reference);
   if (!order) throw new Error("POS order not found.");
-  if (order.paymentStatus === "paid") return { state: "paid" as const, order: summary(order) };
-  if (order.paymentStatus === "failed") return { state: "failed" as const, order: summary(order), message: order.mpesaResultDescription || "Payment failed." };
+  if (order.paymentStatus === "paid") {
+    if (order.inventoryReviewRequired) {
+      const inventory = await reconcilePaidPosInventory(order);
+      return {
+        state: "paid" as const,
+        order: summary(inventory.order),
+        inventoryReviewRequired: !inventory.reconciled,
+        inventoryMessage: inventory.message,
+        message: inventory.reconciled
+          ? "Payment was already confirmed. Inventory reconciliation has now completed successfully."
+          : `Payment is confirmed and remains paid. Inventory still requires review: ${inventory.message}`,
+      };
+    }
+    return { state: "paid" as const, order: summary(order), message: "Payment already completed." };
+  }
 
   if (order.paymentProvider === "daraja") {
-    if (!order.mpesaCheckoutRequestId) {
+    const checkoutRequestId = order.mpesaCheckoutRequestId || await fetchDarajaCheckoutRequestId(reference);
+    const explicitProviderFailure = typeof order.mpesaResultCode === "number" && order.mpesaResultCode !== 0;
+
+    // Normal POS polling can trust a final provider failure already recorded by
+    // the callback. Manual reconciliation can force a fresh Safaricom lookup so
+    // historical orders that were locally marked failed can be checked again.
+    if (order.paymentStatus === "failed" && explicitProviderFailure && !options.forceProviderQuery) {
+      return { state: "failed" as const, order: summary(order), message: order.mpesaResultDescription || "Payment failed." };
+    }
+    if (!checkoutRequestId) {
+      if (order.paymentStatus === "failed") {
+        return { state: "failed" as const, order: summary(order), message: order.mpesaResultDescription || "Payment failed before Safaricom accepted the STK request." };
+      }
       return { state: "pending" as const, order: summary(order), message: "Waiting for Safaricom to accept the M-PESA request." };
     }
 
     try {
-      const status = await queryDarajaStkStatus(order.mpesaCheckoutRequestId);
+      const status = await queryDarajaStkStatus(checkoutRequestId);
       const resultCode = Number(status.ResultCode);
+      const providerResultDescription = status.ResultDesc || status.ResponseDescription || status.CustomerMessage || "";
+
+      console.info("[POS M-PESA reconciliation] Safaricom status query", {
+        reference,
+        checkoutRequestId,
+        responseCode: status.ResponseCode || null,
+        resultCode: Number.isFinite(resultCode) ? resultCode : null,
+        resultDescription: providerResultDescription || null,
+      });
+
       if (Number.isFinite(resultCode)) {
         if (resultCode === 0) {
           const finalized = await finalizeDarajaPosPayment(order, {
-            checkoutRequestId: order.mpesaCheckoutRequestId,
+            checkoutRequestId,
             merchantRequestId: status.MerchantRequestID || order.mpesaMerchantRequestId,
             resultCode,
             resultDescription: status.ResultDesc || "M-PESA payment confirmed by Daraja status query.",
           });
+          const persisted = await fetchPosOrder(reference);
+          if (!persisted || persisted.paymentStatus !== "paid") {
+            throw new Error("Safaricom confirmed payment, but the reconciled paid state could not be verified locally.");
+          }
           return {
             state: "paid" as const,
-            order: summary(finalized),
-            message: finalized.providerReceiptNumber
-              ? `M-PESA payment confirmed · receipt ${finalized.providerReceiptNumber}.`
-              : "M-PESA payment confirmed. Waiting for the receipt callback to attach the final M-PESA code.",
+            order: summary(persisted),
+            checkoutRequestId,
+            providerResponseCode: status.ResponseCode || "",
+            providerResultCode: resultCode,
+            providerResultDescription,
+            inventoryReviewRequired: Boolean(persisted.inventoryReviewRequired),
+            inventoryMessage: persisted.inventoryReconciliationReason || "",
+            message: persisted.inventoryReviewRequired
+              ? `Safaricom confirmed this M-PESA payment and the order is now paid. Inventory requires review: ${persisted.inventoryReconciliationReason || "stock could not be reconciled."}`
+              : persisted.providerReceiptNumber
+                ? `Safaricom confirmed this M-PESA payment · receipt ${persisted.providerReceiptNumber}.`
+                : "Safaricom confirmed this M-PESA payment. The order has been reconciled as paid; the final M-PESA receipt code may still be unavailable for an older transaction.",
           };
         }
 
         const failed = await failDarajaPayment(order, resultCode, status.ResultDesc || `M-PESA ResultCode ${resultCode}`);
-        return { state: "failed" as const, order: summary(failed), message: status.ResultDesc || "M-PESA payment failed." };
+        return {
+          state: "failed" as const,
+          order: summary(failed),
+          checkoutRequestId,
+          providerResponseCode: status.ResponseCode || "",
+          providerResultCode: resultCode,
+          providerResultDescription,
+          message: options.forceProviderQuery
+            ? `Safaricom says this specific STK request was not paid (ResultCode ${resultCode})${providerResultDescription ? `: ${providerResultDescription}` : "."}`
+            : status.ResultDesc || "M-PESA payment failed.",
+        };
       }
+
+      return {
+        state: "pending" as const,
+        order: summary(order),
+        checkoutRequestId,
+        providerResponseCode: status.ResponseCode || "",
+        providerResultDescription,
+        message: `Safaricom accepted the status query${status.ResponseCode ? ` (ResponseCode ${status.ResponseCode})` : ""}, but did not return a final payment ResultCode. This is not confirmation that the customer paid.`,
+      };
     } catch (cause) {
+      const queryError = cause instanceof Error ? cause.message : String(cause);
       console.warn("[Daraja status] pending/query error", {
         reference,
-        checkoutRequestId: order.mpesaCheckoutRequestId,
-        message: cause instanceof Error ? cause.message : String(cause),
+        checkoutRequestId,
+        message: queryError,
       });
+      return {
+        state: "pending" as const,
+        order: summary(order),
+        checkoutRequestId,
+        message: `Safaricom could not provide a conclusive payment result: ${queryError}`,
+      };
     }
-
-    return { state: "pending" as const, order: summary(order), message: "Waiting for the customer to complete the Safaricom M-PESA prompt…" };
   }
+
+  if (order.paymentStatus === "failed") return { state: "failed" as const, order: summary(order), message: order.mpesaResultDescription || "Payment failed." };
 
   // Backward compatibility for any older POS payments that were started through Paystack.
   if (order.paymentChannel === "mobile_money") {

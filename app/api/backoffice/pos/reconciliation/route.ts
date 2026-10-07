@@ -8,5 +8,5 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
-  return NextResponse.json({ payments: await getPaymentReconciliation() });
+  return NextResponse.json({ payments: await getPaymentReconciliation(500) });
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList, CreditCard, FileClock, HandCoins, ReceiptText, RefreshCcw, RotateCcw, WalletCards } from "lucide-react";
+import { ChevronDown, ClipboardList, CreditCard, FileClock, HandCoins, ReceiptText, RefreshCcw, RotateCcw, WalletCards } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
 import { formatMoney } from "@/lib/money";
@@ -25,7 +25,8 @@ type Report = {
   byCashier: Array<{ name: string; orders: number; revenue: number }>;
 };
 type Expense = { id: string; expenseNumber: string; expenseType: string; staffName?: string; description: string; amount: number; paymentMethod?: string; expenseDate: string; createdByName?: string };
-type Payment = { id: string; reference: string; orderNumber?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; createdAt: string };
+type Payment = { id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string };
+type ReconciliationResult = { state: "paid" | "failed" | "pending"; message: string; providerResultCode?: number; providerResponseCode?: string; providerResultDescription?: string; checkoutRequestId?: string; inventoryReviewRequired?: boolean; inventoryMessage?: string };
 type Audit = { id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string };
 
 function statusClass(status: string) {
@@ -59,6 +60,13 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
+  const [reconcilingReference, setReconcilingReference] = useState<string | null>(null);
+  const [reconciliationResults, setReconciliationResults] = useState<Record<string, ReconciliationResult>>({});
+  const [reconciliationOrder, setReconciliationOrder] = useState("");
+  const [reconciliationProvider, setReconciliationProvider] = useState("");
+  const [reconciliationChannel, setReconciliationChannel] = useState("");
+  const [reconciliationStatus, setReconciliationStatus] = useState("");
+  const [reconciliationProcessedBy, setReconciliationProcessedBy] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [expenseForm, setExpenseForm] = useState({ expenseType: "EXPENSE", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "" });
@@ -101,6 +109,53 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     }
     void load(tab);
   }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo, salesStaff]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reconciliationProviders = useMemo(() => [...new Set(payments.map((payment) => payment.provider).filter((value): value is string => Boolean(value)))].sort(), [payments]);
+  const reconciliationChannels = useMemo(() => [...new Set(payments.map((payment) => payment.channel).filter((value): value is string => Boolean(value)))].sort(), [payments]);
+  const reconciliationStatuses = useMemo(() => [...new Set(payments.map((payment) => payment.status).filter(Boolean))].sort(), [payments]);
+  const reconciliationProcessors = useMemo(() => [...new Set(payments.map((payment) => payment.processedByName).filter((value): value is string => Boolean(value)))].sort(), [payments]);
+
+  const relatedPaidAttempts = useMemo(() => {
+    const normalizePhone = (value?: string) => (value || "").replace(/\D/g, "").slice(-9);
+    const paid = payments.filter((payment) => payment.status === "paid" && payment.provider === "daraja" && normalizePhone(payment.customerPhone));
+    const matches = new Map<string, Payment>();
+    for (const payment of payments) {
+      if (payment.status === "paid" || payment.provider !== "daraja") continue;
+      const phone = normalizePhone(payment.customerPhone);
+      if (!phone) continue;
+      const createdAt = new Date(payment.createdAt).getTime();
+      if (!Number.isFinite(createdAt)) continue;
+      const candidates = paid
+        .filter((candidate) => normalizePhone(candidate.customerPhone) === phone && Math.abs(candidate.amount - payment.amount) < 0.001)
+        .map((candidate) => ({ candidate, distance: Math.abs(new Date(candidate.createdAt).getTime() - createdAt) }))
+        .filter(({ distance }) => Number.isFinite(distance) && distance <= 15 * 60 * 1000)
+        .sort((a, b) => a.distance - b.distance);
+      if (candidates[0]) matches.set(payment.reference, candidates[0].candidate);
+    }
+    return matches;
+  }, [payments]);
+
+  const filteredPayments = useMemo(() => {
+    const orderQuery = reconciliationOrder.trim().toLowerCase();
+    return payments.filter((payment) => {
+      const orderMatches = !orderQuery || [payment.orderNumber, payment.reference, payment.providerReceiptNumber, payment.providerTransactionId, payment.customerName, payment.customerPhone]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(orderQuery));
+      return orderMatches
+        && (!reconciliationProvider || payment.provider === reconciliationProvider)
+        && (!reconciliationChannel || payment.channel === reconciliationChannel)
+        && (!reconciliationStatus || payment.status === reconciliationStatus)
+        && (!reconciliationProcessedBy || payment.processedByName === reconciliationProcessedBy);
+    });
+  }, [payments, reconciliationOrder, reconciliationProvider, reconciliationChannel, reconciliationStatus, reconciliationProcessedBy]);
+
+  function clearReconciliationFilters() {
+    setReconciliationOrder("");
+    setReconciliationProvider("");
+    setReconciliationChannel("");
+    setReconciliationStatus("");
+    setReconciliationProcessedBy("");
+  }
 
   const tabs = useMemo(() => salesStaff ? [
     { id: "expenses" as const, label: "Expenditure", icon: WalletCards },
@@ -194,6 +249,38 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     await load("history");
   }
 
+  async function reconcilePayment(payment: Payment) {
+    if (!manager || payment.provider !== "daraja" || !payment.reference.startsWith("DBK-POS-")) return;
+    setReconcilingReference(payment.reference);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/backoffice/pos/verify?reference=${encodeURIComponent(payment.reference)}&forceProviderQuery=1`, { cache: "no-store" });
+      const payload = await response.json() as { state?: "paid" | "failed" | "pending"; message?: string; order?: { orderNumber?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string }; providerResultCode?: number; providerResponseCode?: string; providerResultDescription?: string; checkoutRequestId?: string; inventoryReviewRequired?: boolean; inventoryMessage?: string };
+      if (!response.ok) throw new Error(payload.message || "Unable to verify M-PESA payment.");
+      const result: ReconciliationResult = {
+        state: payload.state || "pending",
+        message: payload.message || `Payment is ${payload.state || "pending"}.`,
+        providerResultCode: payload.providerResultCode,
+        providerResponseCode: payload.providerResponseCode,
+        providerResultDescription: payload.providerResultDescription,
+        checkoutRequestId: payload.checkoutRequestId,
+        inventoryReviewRequired: payload.inventoryReviewRequired ?? payload.order?.inventoryReviewRequired,
+        inventoryMessage: payload.inventoryMessage || payload.order?.inventoryReconciliationReason,
+      };
+      setReconciliationResults((current) => ({ ...current, [payment.reference]: result }));
+      setMessage(result.state === "paid"
+        ? result.inventoryReviewRequired
+          ? `M-PESA confirmed for ${payload.order?.orderNumber || payment.orderNumber || payment.reference}. Payment is paid; inventory requires review.`
+          : `M-PESA confirmed for ${payload.order?.orderNumber || payment.orderNumber || payment.reference}. Reconciliation has been updated.`
+        : result.message);
+      await Promise.all([load("reconciliation"), load("history"), load("reports")]);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Unable to verify M-PESA payment.");
+    } finally {
+      setReconcilingReference(null);
+    }
+  }
+
   const exportData = useMemo(() => {
     if (tab === "history") return {
       title: "Sales History",
@@ -225,9 +312,9 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     }
     if (tab === "receivables") return { title:"Receivables", columns:[{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"order",label:"Order"},{key:"total",label:"Total (KES)"},{key:"paid",label:"Paid (KES)"},{key:"balance",label:"Outstanding (KES)"}], rows:receivables.map((order)=>({customer:order.customerName,phone:order.customerPhone,order:order.orderNumber,total:order.total,paid:order.amountPaid,balance:order.balanceDue})) };
     if (tab === "expenses") return { title:"Expenditure and Petty Cash", columns:[{key:"date",label:"Date"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}], rows:expenses.map((expense)=>({date:expense.expenseDate,type:expense.expenseType,payee:expense.staffName||"—",description:expense.description,amount:expense.amount,method:expense.paymentMethod||"—",recordedBy:expense.createdByName||"—"})) };
-    if (tab === "reconciliation") return { title:"Payment Reconciliation", columns:[{key:"reference",label:"Reference"},{key:"order",label:"Order"},{key:"provider",label:"Provider"},{key:"channel",label:"Channel"},{key:"status",label:"Status"},{key:"amount",label:"Amount (KES)"},{key:"providerRef",label:"Provider Transaction"},{key:"processedBy",label:"Processed By"}], rows:payments.map((payment)=>({reference:payment.reference,order:payment.orderNumber||"—",provider:payment.provider||"—",channel:payment.channel||"—",status:payment.status,amount:payment.amount,providerRef:payment.providerReceiptNumber||payment.providerTransactionId||"—",processedBy:payment.processedByName||"—"})) };
+    if (tab === "reconciliation") return { title:"Payment Reconciliation", columns:[{key:"time",label:"Time"},{key:"reference",label:"Reference"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"provider",label:"Provider"},{key:"channel",label:"Channel"},{key:"status",label:"Status"},{key:"amount",label:"Amount (KES)"},{key:"providerRef",label:"Provider Transaction"},{key:"processedBy",label:"Processed By"},{key:"relatedPaid",label:"Possible Paid Retry"},{key:"inventoryReview",label:"Inventory Review"}], rows:filteredPayments.map((payment)=>({time:payment.createdAt,reference:payment.reference,order:payment.orderNumber||"—",customer:payment.customerName||"—",phone:payment.customerPhone||"—",provider:payment.provider||"—",channel:payment.channel||"—",status:payment.status,amount:payment.amount,providerRef:payment.providerReceiptNumber||payment.providerTransactionId||"—",processedBy:payment.processedByName||"—",relatedPaid:relatedPaidAttempts.get(payment.reference)?.orderNumber||"—",inventoryReview:payment.inventoryReviewRequired ? payment.inventoryReconciliationReason || "Required" : "—"})) };
     return { title:"POS Audit Trail", columns:[{key:"time",label:"Time"},{key:"event",label:"Event"},{key:"entity",label:"Entity"},{key:"actor",label:"Actor"},{key:"role",label:"Role"},{key:"detail",label:"Detail"}], rows:audit.map((item)=>({time:item.createdAt,event:item.eventType,entity:item.entityLabel||"—",actor:item.actorName||"System",role:item.actorRole||"—",detail:item.detail||"—"})) };
-  }, [audit, expenses, orders, payments, receivables, report, tab]);
+  }, [audit, expenses, filteredPayments, orders, receivables, relatedPaidAttempts, report, tab]);
 
   async function submitExpense(event: FormEvent) {
     event.preventDefault();
@@ -299,7 +386,22 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
 
         {tab === "expenses" && (manager || salesStaff) && <div className="grid gap-6 lg:grid-cols-[380px_1fr]"><form onSubmit={submitExpense} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><h2 className="text-lg font-semibold">Record expenditure</h2><div className="mt-4 grid gap-3"><select value={expenseForm.expenseType} onChange={(e)=>setExpenseForm({...expenseForm,expenseType:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="EXPENSE">Business expense</option><option value="PETTY_CASH">Petty cash</option><option value="STAFF_PAYMENT">Staff payment</option><option value="SALARY">Salary</option></select><input value={expenseForm.staffName} onChange={(e)=>setExpenseForm({...expenseForm,staffName:e.target.value})} placeholder="Staff / payee name" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><textarea value={expenseForm.description} onChange={(e)=>setExpenseForm({...expenseForm,description:e.target.value})} placeholder="Description" required className="min-h-24 rounded-lg border hairline p-3 text-sm"/><input type="number" min="0.01" step="0.01" value={expenseForm.amount} onChange={(e)=>setExpenseForm({...expenseForm,amount:e.target.value})} placeholder="Amount (KES)" required className="min-h-11 rounded-lg border hairline px-3 text-sm"/><select value={expenseForm.paymentMethod} onChange={(e)=>setExpenseForm({...expenseForm,paymentMethod:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm"><option value="cash">Cash</option><option value="mpesa">M-PESA</option><option value="paystack">Bank / Paystack</option><option value="other">Other</option></select><input value={expenseForm.transactionReference} onChange={(e)=>setExpenseForm({...expenseForm,transactionReference:e.target.value})} placeholder="Transaction reference (optional)" className="min-h-11 rounded-lg border hairline px-3 text-sm"/><button className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream">Save expenditure</button></div></form><SimpleTable headers={["Date","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} /></div>}
 
-        {tab === "reconciliation" && manager && <SimpleTable headers={["Reference","Order","Provider","Channel","Status","Amount","Provider transaction","Processed by"]} rows={payments.map((p)=>[p.reference,p.orderNumber||"—",p.provider||"—",p.channel||"—",p.status,formatMoney(p.amount),p.providerReceiptNumber||p.providerTransactionId||"—",p.processedByName||"—"])} />}
+        {tab === "reconciliation" && manager && <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
+          <div className="border-b hairline p-4">
+            <p className="text-xs text-[var(--muted)]">A failed row is a failed STK attempt, not automatically missing money. If staff prompted the same phone again and a matching amount was paid within 15 minutes, the row is flagged as a <strong>possible paid retry</strong>. The failed attempt remains failed because the successful payment belongs to its own Safaricom CheckoutRequestID.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_160px_170px_160px_210px_auto] xl:items-end">
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Order / reference<input value={reconciliationOrder} onChange={(event)=>setReconciliationOrder(event.target.value)} placeholder="Order, reference, customer or phone" className="min-h-10 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Provider<span className="relative"><select value={reconciliationProvider} onChange={(event)=>setReconciliationProvider(event.target.value)} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All providers</option>{reconciliationProviders.map((value)=><option key={value} value={value}>{value}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span></label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Channel<span className="relative"><select value={reconciliationChannel} onChange={(event)=>setReconciliationChannel(event.target.value)} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All channels</option>{reconciliationChannels.map((value)=><option key={value} value={value}>{value}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span></label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Status<span className="relative"><select value={reconciliationStatus} onChange={(event)=>setReconciliationStatus(event.target.value)} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All statuses</option>{reconciliationStatuses.map((value)=><option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span></label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Processed by<span className="relative"><select value={reconciliationProcessedBy} onChange={(event)=>setReconciliationProcessedBy(event.target.value)} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All staff</option>{reconciliationProcessors.map((value)=><option key={value} value={value}>{value}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span></label>
+              <button type="button" onClick={clearReconciliationFilters} className="min-h-10 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear</button>
+            </div>
+            <p className="mt-3 text-[10px] text-[var(--muted)]">Showing {filteredPayments.length} of {payments.length} recent payment records.</p>
+          </div>
+          <div className="grid gap-3 p-3 md:hidden">{filteredPayments.map((payment) => { const canVerify = payment.provider === "daraja" && payment.reference.startsWith("DBK-POS-") && payment.status !== "paid"; const canRetryInventory = payment.provider === "daraja" && payment.reference.startsWith("DBK-POS-") && payment.status === "paid" && payment.inventoryReviewRequired; const result = reconciliationResults[payment.reference]; const relatedPaid = relatedPaidAttempts.get(payment.reference); return <div key={payment.id} className="rounded-xl border hairline p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{payment.orderNumber || payment.reference}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{new Date(payment.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{payment.reference}</p></div><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(payment.status)}`}>{payment.status.replaceAll("_", " ")}</span></div><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><DataPoint label="Customer" value={`${payment.customerName || "—"} · ${payment.customerPhone || "—"}`} /><DataPoint label="Provider" value={`${payment.provider || "—"} · ${payment.channel || "—"}`} /><DataPoint label="Amount" value={formatMoney(payment.amount)} /><DataPoint label="Provider ref" value={payment.providerReceiptNumber || payment.providerTransactionId || "—"} /><DataPoint label="Processed by" value={payment.processedByName || "—"} /><DataPoint label="Failure reason" value={payment.failureReason || "—"} /></div>{relatedPaid && <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-[10px] text-emerald-800"><p className="font-semibold uppercase">Possible paid retry</p><p className="mt-1">Same phone and amount was paid on {relatedPaid.orderNumber || relatedPaid.reference} at {new Date(relatedPaid.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}. Do not mark this failed attempt paid.</p></div>}{payment.inventoryReviewRequired && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] text-amber-800"><p className="font-semibold uppercase">Paid · inventory review required</p><p className="mt-1">{payment.inventoryReconciliationReason || "Stock could not be reconciled after the confirmed payment."}</p></div>}{(canVerify || canRetryInventory) && <button type="button" disabled={reconcilingReference === payment.reference} onClick={() => void reconcilePayment(payment)} className="mt-4 min-h-10 rounded-full border border-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase text-[var(--brand-green)] disabled:opacity-50">{reconcilingReference === payment.reference ? "Working…" : canRetryInventory ? "Retry Inventory" : "Verify M-PESA"}</button>}{result && <div className={`mt-3 rounded-lg px-3 py-2 text-[10px] ${result.inventoryReviewRequired ? "bg-amber-50 text-amber-800" : result.state === "paid" ? "bg-emerald-50 text-emerald-800" : result.state === "failed" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"}`}><p className="font-semibold uppercase">Safaricom result: {result.state}</p><p className="mt-1 leading-4">{result.message}</p>{typeof result.providerResultCode === "number" && <p className="mt-1">ResultCode: {result.providerResultCode}</p>}</div>}</div>; })}{filteredPayments.length === 0 && <p className="rounded-xl border hairline p-6 text-center text-xs text-[var(--muted)]">No reconciliation records match the selected filters.</p>}</div>
+          <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1480px] text-xs"><thead className="bg-[var(--paper-2)] text-left text-[10px] uppercase text-[var(--muted)]"><tr>{["Time","Reference","Order","Customer","Provider","Channel","Status","Amount","Provider transaction","Processed by","Action / Safaricom result"].map((header)=><th key={header} className="p-4">{header}</th>)}</tr></thead><tbody className="divide-y hairline">{filteredPayments.map((payment) => { const canVerify = payment.provider === "daraja" && payment.reference.startsWith("DBK-POS-") && payment.status !== "paid"; const canRetryInventory = payment.provider === "daraja" && payment.reference.startsWith("DBK-POS-") && payment.status === "paid" && payment.inventoryReviewRequired; const result = reconciliationResults[payment.reference]; const relatedPaid = relatedPaidAttempts.get(payment.reference); return <tr key={payment.id}><td className="p-4 whitespace-nowrap">{new Date(payment.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}</td><td className="p-4 font-medium">{payment.reference}</td><td className="p-4">{payment.orderNumber || "—"}</td><td className="p-4"><p>{payment.customerName || "—"}</p><p className="text-[10px] text-[var(--muted)]">{payment.customerPhone || "—"}</p></td><td className="p-4">{payment.provider || "—"}</td><td className="p-4">{payment.channel || "—"}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(payment.status)}`}>{payment.status.replaceAll("_", " ")}</span>{payment.failureReason && <p className="mt-2 max-w-[220px] text-[10px] leading-4 text-[var(--muted)]">{payment.failureReason}</p>}</td><td className="p-4">{formatMoney(payment.amount)}</td><td className="p-4">{payment.providerReceiptNumber || payment.providerTransactionId || "—"}</td><td className="p-4">{payment.processedByName || "—"}</td><td className="p-4 align-top">{relatedPaid && <div className="mb-2 max-w-[320px] rounded-lg bg-emerald-50 px-3 py-2 text-[10px] leading-4 text-emerald-800"><p className="font-semibold uppercase">Possible paid retry</p><p>Same phone + amount paid on {relatedPaid.orderNumber || relatedPaid.reference} at {new Date(relatedPaid.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })}.</p></div>}{payment.inventoryReviewRequired && <div className="mb-2 max-w-[320px] rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800"><p className="font-semibold uppercase">Paid · inventory review required</p><p>{payment.inventoryReconciliationReason || "Stock could not be reconciled after the confirmed payment."}</p></div>}{canVerify || canRetryInventory ? <button type="button" disabled={reconcilingReference === payment.reference} onClick={() => void reconcilePayment(payment)} className="rounded-full border border-[var(--brand-green)] px-3 py-2 text-[9px] font-semibold uppercase text-[var(--brand-green)] disabled:opacity-50">{reconcilingReference === payment.reference ? "Working…" : canRetryInventory ? "Retry Inventory" : "Verify M-PESA"}</button> : "—"}{result && <div className={`mt-2 max-w-[320px] rounded-lg px-3 py-2 text-[10px] leading-4 ${result.inventoryReviewRequired ? "bg-amber-50 text-amber-800" : result.state === "paid" ? "bg-emerald-50 text-emerald-800" : result.state === "failed" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"}`}><p className="font-semibold uppercase">Safaricom result: {result.state}</p><p className="mt-1">{result.message}</p>{typeof result.providerResultCode === "number" && <p className="mt-1">ResultCode: {result.providerResultCode}</p>}</div>}</td></tr>; })}{filteredPayments.length === 0 && <tr><td colSpan={11} className="p-10 text-center text-[var(--muted)]">No reconciliation records match the selected filters.</td></tr>}</tbody></table></div>
+        </div>}
         {tab === "audit" && manager && <SimpleTable headers={["Time","Event","Entity","Actor","Role","Detail"]} rows={audit.map((a)=>[new Date(a.createdAt).toLocaleString("en-KE"),a.eventType.replaceAll("_"," "),a.entityLabel||"—",a.actorName||"System",a.actorRole||"—",a.detail||"—"])} />}
       </main>
     </div>

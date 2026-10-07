@@ -479,8 +479,8 @@ export async function getDeveloperAuditTrail(days = 31) {
 }
 
 export async function getPaymentReconciliation(limit = 200) {
-  return serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; createdAt: string; paidAt?: string }>>(
-    `*[_type == "paymentTransaction"] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,createdAt,paidAt}`,
+  return serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; paidAt?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string }>>(
+    `*[_type == "paymentTransaction"] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,customerName,customerPhone,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,failureReason,createdAt,paidAt,"inventoryReviewRequired":coalesce(order->inventoryReviewRequired,false),"inventoryReconciliationReason":coalesce(order->inventoryReconciliationReason,"")}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
 }
