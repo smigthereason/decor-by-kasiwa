@@ -12,6 +12,7 @@ import { TopNavigation } from "./components/TopNavigation";
 import { TopNavigationFallback } from "./components/TopNavigationFallback";
 import { MegaMenu } from "./components/MegaMenu";
 import { MobileMenu } from "./components/MobileMenu";
+import { MobileLandingSearch } from "./components/MobileLandingSearch";
 
 import type { ShopNavigation } from "@/types/commerce";
 
@@ -79,14 +80,15 @@ export default function SiteHeader({ navigation, shopLookPreview }: SiteHeaderPr
         </div>
       </header>
 
+      {pathname === "/" && (
+        <MobileLandingSearch search={search} setSearch={setSearch} onSubmit={handleMobileSearch} />
+      )}
+
       {/* Mobile Menu */}
       <MobileMenu
         isOpen={menuOpen}
         onClose={closeFullMenu}
         navigation={navigation}
-        search={search}
-        setSearch={setSearch}
-        onSubmit={handleMobileSearch}
       />
     </>
   );

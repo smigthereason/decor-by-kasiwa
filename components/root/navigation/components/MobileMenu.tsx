@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Search, X } from "lucide-react";
+import { X } from "lucide-react";
 import Link from "next/link";
-import type { FormEvent } from "react";
 import type { ShopNavigation } from "@/types/commerce";
 import { MobileAccordion } from "./MobileAccordion";
 import { MobileCategoryRow } from "./MobileCategoryRow";
@@ -11,9 +10,6 @@ interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
   navigation: ShopNavigation;
-  search: string;
-  setSearch: (value: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
 function MobileMenuHeader({ onClose }: { onClose: () => void }) {
@@ -35,42 +31,7 @@ function MobileMenuHeader({ onClose }: { onClose: () => void }) {
   );
 }
 
-type MobileSearchProps = Pick<
-  MobileMenuProps,
-  "search" | "setSearch" | "onSubmit"
->;
-
-function MobileSearch({
-  search,
-  setSearch,
-  onSubmit,
-}: MobileSearchProps) {
-  return (
-    <form
-      onSubmit={onSubmit}
-      className="mt-6 flex h-[50px] w-full items-center rounded-full bg-soft-cream/10 px-2 pl-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
-    >
-      <Search size={18} strokeWidth={1.5} className="mr-3 shrink-0 text-soft-cream/40" />
-      <input
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search products, categories or SKU"
-        aria-label="Search Decor by Kasiwa"
-        autoComplete="off"
-        className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-soft-cream outline-none placeholder:text-soft-cream/30"
-      />
-      <button
-        type="submit"
-        aria-label="Search"
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-soft-cream/15 text-soft-cream transition-all hover:bg-soft-cream/25"
-      >
-        <Search size={15} strokeWidth={1.7} />
-      </button>
-    </form>
-  );
-}
-
-export function MobileMenu({ isOpen, onClose, navigation, search, setSearch, onSubmit }: MobileMenuProps) {
+export function MobileMenu({ isOpen, onClose, navigation }: MobileMenuProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -87,7 +48,6 @@ export function MobileMenu({ isOpen, onClose, navigation, search, setSearch, onS
         >
           <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-5 pb-12 pt-5 sm:px-8 sm:pb-14 sm:pt-6">
             <MobileMenuHeader onClose={onClose} />
-            <MobileSearch search={search} setSearch={setSearch} onSubmit={onSubmit} />
 
             <nav aria-label="Mobile navigation" className="mt-6 space-y-0.5">
               <Link
