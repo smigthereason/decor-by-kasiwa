@@ -100,11 +100,12 @@ export type SalesHistoryFilters = {
   limit?: number;
   channel?: "ONLINE" | "POS";
   cashier?: string;
+  query?: string;
   from?: string;
   to?: string;
 };
 
-export async function listSalesHistory({ limit = 100, channel, cashier, from, to }: SalesHistoryFilters = {}) {
+export async function listSalesHistory({ limit = 100, channel, cashier, query, from, to }: SalesHistoryFilters = {}) {
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
   let start: string | null = null;
   let end: string | null = null;
@@ -117,14 +118,17 @@ export async function listSalesHistory({ limit = 100, channel, cashier, from, to
     end = endDate.toISOString();
   }
   const cashierName = cleanText(cashier) || null;
+  const search = cleanText(query) || null;
+  const searchPattern = search ? `*${search.replaceAll("*", "")}*` : null;
   return serverClient.fetch<PosHistoryOrder[]>(
     `*[_type == "commerceOrder"
       && (!defined($channel) || salesChannel == $channel)
       && (!defined($cashier) || soldByName == $cashier)
+      && (!defined($searchPattern) || [orderNumber,receiptNumber,customerName,customerPhone,customerEmail,providerReceiptNumber,paymentReference] match $searchPattern)
       && (!defined($start) || coalesce(soldAt,paidAt,createdAt) >= $start)
       && (!defined($end) || coalesce(soldAt,paidAt,createdAt) <= $end)
     ] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
-    { limit: safeLimit, channel: channel || null, cashier: cashierName, start, end },
+    { limit: safeLimit, channel: channel || null, cashier: cashierName, searchPattern, start, end },
     { cache: "no-store" },
   );
 }

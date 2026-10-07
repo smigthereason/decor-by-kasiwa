@@ -11,12 +11,13 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const channel = params.get("channel");
   const cashier = params.get("cashier")?.trim() || undefined;
+  const query = params.get("q")?.trim() || undefined;
   const from = params.get("from")?.trim() || undefined;
   const to = params.get("to")?.trim() || undefined;
   const limit = Number(params.get("limit") || 150);
   try {
     const [orders, cashiers] = await Promise.all([
-      listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, from, to }),
+      listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to }),
       listSalesCashiers(),
     ]);
     return NextResponse.json({ orders, cashiers });
