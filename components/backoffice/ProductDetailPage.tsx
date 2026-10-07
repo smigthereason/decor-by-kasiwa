@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Trash2, X } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
@@ -14,6 +15,7 @@ import { availableStock, formatKes, stockStatus } from "@/lib/operations/selecto
 type Mode = "admin" | "store";
 
 export default function ProductDetailPage({ mode }: { mode: Mode }) {
+  const { data: session } = useSession();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const productId = decodeURIComponent(params.id);
@@ -47,6 +49,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
   }
 
   const basePath = mode === "admin" ? "/admin/products" : "/store/products";
+  const limitedSalesStaff = mode === "store" && session?.user?.role === "STORE_STAFF";
 
   if (!product || !draft) {
     return (
@@ -98,21 +101,23 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     payload.set("name", draft.name.trim());
     payload.set("shortDescription", draft.shortDescription || "");
     payload.set("description", draft.description || "");
-    payload.set("onHand", String(draft.onHand));
-    payload.set("reserved", String(draft.reserved));
-    payload.set("incoming", String(draft.incoming));
-    payload.set("reorderPoint", String(draft.reorderPoint));
-    if (draft.ecommerceEnabled === false && draft.posEnabled === false) {
-      setMessage("Select at least one sales channel: E-commerce or POS.");
-      return;
+    if (!limitedSalesStaff) {
+      payload.set("onHand", String(draft.onHand));
+      payload.set("reserved", String(draft.reserved));
+      payload.set("incoming", String(draft.incoming));
+      payload.set("reorderPoint", String(draft.reorderPoint));
+      if (draft.ecommerceEnabled === false && draft.posEnabled === false) {
+        setMessage("Select at least one sales channel: E-commerce or POS.");
+        return;
+      }
+      payload.set("unitCost", String(draft.unitCost));
+      payload.set("ecommerceEnabled", String(draft.ecommerceEnabled !== false));
+      payload.set("posEnabled", String(draft.posEnabled !== false));
+      payload.set("retailPrice", String(draft.retailPrice));
+      payload.set("location", draft.location);
+      payload.set("available", String(draft.available !== false));
+      payload.set("bestSeller", String(draft.bestSeller === true));
     }
-    payload.set("unitCost", String(draft.unitCost));
-    payload.set("ecommerceEnabled", String(draft.ecommerceEnabled !== false));
-    payload.set("posEnabled", String(draft.posEnabled !== false));
-    payload.set("retailPrice", String(draft.retailPrice));
-    payload.set("location", draft.location);
-    payload.set("available", String(draft.available !== false));
-    payload.set("bestSeller", String(draft.bestSeller === true));
     if (heroImageFile) payload.set("heroImage", heroImageFile);
 
     setSaving(true);
@@ -128,12 +133,39 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
       await refresh();
       setHeroImageFile(null);
       setEditing(false);
-      setMessage("Product details, image and live inventory updated in Sanity.");
+      setMessage(limitedSalesStaff ? "Product catalogue content updated." : "Product details, image and live inventory updated in Sanity.");
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Update failed.");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (limitedSalesStaff) {
+    return (
+      <div className="min-h-full bg-[var(--paper-2)]">
+        <div className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10">
+          <Link href={basePath} className="group mb-3 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><ArrowLeft size={13}/> Back to products</Link>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div><p className="kicker text-[var(--muted)]">{product.sku}</p><h1 className="mt-2 text-2xl font-medium tracking-[-0.03em] sm:text-3xl">{editing ? draft.name : product.name}</h1><p className="mt-2 text-sm text-[var(--muted)]">{product.category}</p></div>
+            {!editing ? <button type="button" onClick={() => { setMessage(null); setEditing(true); }} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]"><Pencil size={14}/> Edit catalogue details</button> : <div className="flex gap-2"><button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Check size={14}/>{saving ? "Saving…" : "Save"}</button><button type="button" disabled={saving} onClick={cancelEdit} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]"><X size={14}/>Cancel</button></div>}
+          </div>
+          <p className="mt-4 max-w-2xl text-xs leading-5 text-[var(--muted)]">Sales Staff can maintain customer-facing product content. Prices, costs and stock quantities are manager-only and are not shown on this screen.</p>
+          {message && <p className="mt-4 text-xs text-[var(--muted)]">{message}</p>}
+        </div>
+        <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[0.8fr_1.4fr] lg:p-8">
+          <section className="rounded-xl border hairline bg-[var(--paper)] p-5">
+            <p className="kicker text-[var(--muted)]">Product image</p>
+            <div className="mt-4 aspect-[4/3] overflow-hidden rounded-lg border hairline bg-[var(--paper-2)] bg-cover bg-center" style={displayedImage ? { backgroundImage: `url("${displayedImage}")` } : undefined}>{!displayedImage && <div className="grid h-full place-items-center"><Boxes size={32} className="text-[var(--muted)]"/></div>}</div>
+            {editing && <label className="mt-4 block rounded-xl border border-dashed hairline bg-[var(--paper-2)] p-4"><span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]"><ImagePlus size={14}/> Replace hero image</span><input type="file" accept="image/*" onChange={(event) => setHeroImageFile(event.target.files?.[0] || null)} className="mt-3 block w-full text-xs"/></label>}
+          </section>
+          <section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6">
+            <p className="kicker text-[var(--muted)]">Catalogue content</p>
+            {editing ? <div className="mt-5 grid gap-4"><label className="grid gap-2"><span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Product name</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className="min-h-11 rounded-lg border hairline px-3 text-sm"/></label><label className="grid gap-2"><span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Short description</span><textarea rows={3} value={draft.shortDescription || ""} onChange={(event) => setDraft({ ...draft, shortDescription: event.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6"/></label><label className="grid gap-2"><span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Full description</span><textarea rows={8} value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="rounded-lg border hairline p-3 text-sm leading-6"/></label></div> : <div className="mt-5 space-y-5"><div><p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Short description</p><p className="mt-2 text-sm leading-6">{product.shortDescription || "No short description added yet."}</p></div><div className="border-t hairline pt-4"><p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Full description</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{product.description || "No full description added yet."}</p></div></div>}
+          </section>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -90,6 +90,7 @@ const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
+  { label: "Products", href: "/store/products", icon: Boxes },
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
   { label: "Inventory", href: "/store/inventory", icon: SearchCheck },
   { label: "Deliveries", href: "/store/deliveries", icon: Truck, badge: "deliveries" },

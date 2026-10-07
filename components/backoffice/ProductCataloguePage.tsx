@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowUpRight, Boxes, ChevronDown, Plus, Search } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
@@ -14,6 +15,7 @@ import { formatKes, stockStatus } from "@/lib/operations/selectors";
 type Mode = "admin" | "store";
 
 export default function ProductCataloguePage({ mode }: { mode: Mode }) {
+  const { data: session } = useSession();
   const { data, loading, error, refresh } = useLiveOperations();
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -38,6 +40,39 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
   }
 
   const basePath = mode === "admin" ? "/admin/products" : "/store/products";
+  const limitedSalesStaff = mode === "store" && session?.user?.role === "STORE_STAFF";
+
+  if (limitedSalesStaff) {
+    return (
+      <div className="min-h-full bg-[var(--paper-2)]">
+        <div className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10">
+          <p className="kicker text-[var(--muted)]">Products</p>
+          <h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">Product catalogue</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">View customer-facing product information and maintain catalogue descriptions. Pricing and inventory quantities are restricted to managers.</p>
+        </div>
+        <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full sm:max-w-sm"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search name, SKU or category..." className="w-full rounded-full border hairline bg-[var(--paper)] py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)]"/></div>
+            <div className="relative w-full sm:w-auto sm:min-w-52"><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="min-h-11 w-full appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm">{categories.map((category) => <option key={category}>{category}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] sm:ml-auto">{filteredProducts.length} products</span>
+          </div>
+        </div>
+        <section className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:p-8">
+          {filteredProducts.map((product) => (
+            <article key={product.id} className="min-w-0 rounded-xl border hairline bg-[var(--paper)] p-4">
+              <div className="flex items-start gap-3">
+                <div className="size-16 shrink-0 rounded-lg border hairline bg-[var(--paper-2)] bg-cover bg-center" style={product.image ? { backgroundImage: `url("${product.image}")` } : undefined}/>
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{product.name}</p><p className="mt-1 truncate text-[10px] text-[var(--muted)]">{product.sku} · {product.category}</p></div>
+                <Link href={`${basePath}/${encodeURIComponent(product.id)}`} className="group inline-grid size-9 shrink-0 place-items-center rounded-full border hairline" aria-label={`Open ${product.name}`}><ArrowUpRight size={14}/></Link>
+              </div>
+              <p className="mt-4 line-clamp-3 text-xs leading-5 text-[var(--muted)]">{product.shortDescription || product.description || "No description added yet."}</p>
+            </article>
+          ))}
+          {filteredProducts.length === 0 && <div className="rounded-xl border hairline bg-[var(--paper)] p-10 text-center sm:col-span-2 lg:col-span-3"><Boxes size={30} className="mx-auto text-[var(--muted)]"/><p className="mt-3 text-sm">No products found</p></div>}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-[var(--paper-2)]">

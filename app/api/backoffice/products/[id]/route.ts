@@ -86,7 +86,7 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const { id } = await context.params;
@@ -152,7 +152,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const { id } = await context.params;
@@ -178,7 +178,13 @@ export async function PATCH(
       body = (await request.json()) as Record<string, unknown>;
     }
 
-    if (staff.role !== "ADMIN") {
+    if (staff.role === "STORE_STAFF") {
+      const salesStaffEditableFields = new Set(["name", "shortDescription", "description"]);
+      const restrictedField = Object.keys(body).find((key) => !salesStaffEditableFields.has(key));
+      if (restrictedField) {
+        return NextResponse.json({ message: "Sales Staff can edit catalogue descriptions only. Prices and inventory quantities are manager-only." }, { status: 403 });
+      }
+    } else if (staff.role !== "ADMIN") {
       const storeEditableFields = new Set([
         "name", "shortDescription", "description", "onHand", "reserved", "incoming", "reorderPoint",
         "unitCost", "ecommerceEnabled", "posEnabled", "retailPrice", "location", "available", "bestSeller",
