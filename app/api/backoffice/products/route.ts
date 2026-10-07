@@ -159,7 +159,13 @@ export async function POST(request: Request) {
       });
     }
 
-    const initialStock = Math.max(0, numberValue(form.get("initialStock")));
+    const variantStockTotal = variantDocuments.reduce(
+      (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
+      0,
+    );
+    const initialStock = variantDocuments.length > 0
+      ? variantStockTotal
+      : Math.max(0, numberValue(form.get("initialStock")));
     const procurementCost = Math.max(0, numberValue(form.get("procurementCost")));
     const ecommerceEnabled = booleanValue(form.get("ecommerceEnabled"), true);
     const posEnabled = booleanValue(form.get("posEnabled"), true);

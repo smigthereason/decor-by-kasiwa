@@ -380,6 +380,12 @@ export async function PATCH(
         });
       }
       productPatch.variants = variantDocuments;
+      if (variantDocuments.length > 0) {
+        productPatch.initialStock = variantDocuments.reduce(
+          (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
+          0,
+        );
+      }
     }
 
     const inventoryPatch: Record<string, unknown> = {};

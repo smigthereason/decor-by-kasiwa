@@ -127,6 +127,14 @@ export type InventoryItem = {
   bestSeller?: boolean;
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;
+  variants?: Array<{
+    id: string;
+    title?: string;
+    colour?: string;
+    size?: string;
+    sku?: string;
+    stockQuantity: number;
+  }>;
 };
 
 export type Shipment = {

@@ -5,6 +5,7 @@ import { createHash, createHmac } from "node:crypto";
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
+import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { createShortOrderNumber } from "@/lib/order-number";
@@ -387,7 +388,8 @@ async function buildLines(cart: PosCartLine[]) {
     if (!product) throw new Error("A POS product could not be found in the live catalogue.");
     if (product.available === false || product.posEnabled === false) throw new Error(`${product.name || "Product"} is not available on POS.`);
     if (typeof product.price !== "number" || product.price <= 0) throw new Error(`${product.name || "Product"} has no valid price.`);
-    if (typeof product.initialStock === "number" && product.initialStock < line.quantity) {
+    const variantProduct = hasVariants(product.variants);
+    if (!variantProduct && typeof product.initialStock === "number" && product.initialStock < line.quantity) {
       throw new Error(`${product.name || "Product"} only has ${Math.max(product.initialStock, 0)} unit(s) available.`);
     }
 
@@ -685,26 +687,29 @@ function addSaleInventoryMutations(
     const soldQuantity = productLines.reduce((sum, line) => sum + line.quantity, 0);
     if (soldQuantity <= 0) continue;
 
-    if (typeof product.initialStock === "number") {
-      if (product.initialStock < soldQuantity) throw new Error(`${product.name || "Product"} no longer has enough stock.`);
-      const nextStock = product.initialStock - soldQuantity;
-      const nextVariants = decrementVariantStock(product, lines);
-      transaction.patch(product._id, (patch) =>
-        patch.ifRevisionId(product._rev).set({
-          initialStock: nextStock,
-          ...(nextVariants ? { variants: nextVariants } : {}),
-          ...(nextStock <= 0 ? { available: false } : {}),
-        }),
-      );
-      productLines.forEach((line) => movements.push({
-        productId: product._id,
-        productName: product.name || "Product",
-        variantId: line.variantId,
-        quantityChange: -line.quantity,
-        stockBefore: product.initialStock,
-        stockAfter: nextStock,
-      }));
-    }
+    const variantProduct = hasVariants(product.variants);
+    const currentStock = variantProduct ? variantStockTotal(product.variants) : Math.max(0, Number(product.initialStock || 0));
+    const nextVariants = variantProduct ? decrementVariantStock(product, lines) : undefined;
+    if (!variantProduct && currentStock < soldQuantity) throw new Error(`${product.name || "Product"} no longer has enough stock.`);
+    const nextStock = variantProduct
+      ? variantStockTotal(nextVariants || product.variants)
+      : Math.max(0, currentStock - soldQuantity);
+
+    transaction.patch(product._id, (patch) =>
+      patch.ifRevisionId(product._rev).set({
+        initialStock: nextStock,
+        ...(nextVariants ? { variants: nextVariants } : {}),
+        available: nextStock > 0,
+      }),
+    );
+    productLines.forEach((line) => movements.push({
+      productId: product._id,
+      productName: product.name || "Product",
+      variantId: line.variantId,
+      quantityChange: -line.quantity,
+      stockBefore: currentStock,
+      stockAfter: nextStock,
+    }));
   }
 
   addInventoryMovementsToTransaction({

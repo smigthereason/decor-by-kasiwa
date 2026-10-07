@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import type { PosSeller } from "@/lib/pos/server";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
+import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -402,12 +403,14 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
       const rows = requestedItems.filter((row) => row.productId === product._id);
       const qty = rows.reduce((sum, row) => sum + row.quantity, 0);
       if (!qty) continue;
-      if (typeof product.initialStock === "number") {
-        const nextStock = product.initialStock + qty;
-        const nextVariants = incrementVariantStock(product.variants, rows);
-        transaction.patch(product._id, (patch) => patch.ifRevisionId(product._rev).set({ initialStock: nextStock, available: true, ...(nextVariants ? { variants: nextVariants } : {}) }));
-        rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: product.initialStock, stockAfter: nextStock }));
-      }
+      const variantProduct = hasVariants(product.variants);
+      const currentStock = variantProduct ? variantStockTotal(product.variants) : Math.max(0, Number(product.initialStock || 0));
+      const nextVariants = variantProduct ? incrementVariantStock(product.variants, rows) : undefined;
+      const nextStock = variantProduct
+        ? variantStockTotal(nextVariants || product.variants)
+        : currentStock + qty;
+      transaction.patch(product._id, (patch) => patch.ifRevisionId(product._rev).set({ initialStock: nextStock, available: nextStock > 0, ...(nextVariants ? { variants: nextVariants } : {}) }));
+      rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock }));
     }
   }
 

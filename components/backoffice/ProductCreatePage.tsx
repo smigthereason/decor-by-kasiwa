@@ -120,6 +120,10 @@ export default function ProductCreatePage({ productId }: { productId?: string })
   const [existingGallery, setExistingGallery] = useState<ExistingGalleryImage[]>([]);
   const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
   const [visibility, setVisibility] = useState({ available: true, featured: false, newArrival: false, bestSeller: false, onSale: false });
+  const variantStockTotal = variants.reduce((total, variant) => {
+    const quantity = Number(variant.stockQuantity);
+    return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 0);
+  }, 0);
   const [selected, setSelected] = useState({
     categories: [] as string[],
     collections: [] as string[],
@@ -332,7 +336,15 @@ export default function ProductCreatePage({ productId }: { productId?: string })
         <div className="space-y-5">
           <Card title="Inventory">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <Field label="Initial stock"><input name="initialStock" type="number" min="0" defaultValue={product?.initialStock ?? 0} /></Field>
+              {variants.length > 0 ? (
+                <Field label="Total stock" hint="Calculated automatically from variant quantities">
+                  <input key="variant-total" type="number" min="0" value={variantStockTotal} readOnly aria-readonly="true" />
+                </Field>
+              ) : (
+                <Field label="Initial stock">
+                  <input key="initial-stock" name="initialStock" type="number" min="0" defaultValue={product?.initialStock ?? 0} />
+                </Field>
+              )}
               <Field label="Incoming"><input name="incoming" type="number" min="0" defaultValue={inventory?.incoming ?? 0} /></Field>
               <Field label="Reorder level"><input name="reorderPoint" type="number" min="0" defaultValue={inventory?.reorderPoint ?? 5} /></Field>
               <Field label="Procurement cost (KES)" hint="Initial cost used for profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>

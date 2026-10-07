@@ -7,7 +7,7 @@ export const inventoryMovement = defineType({
   fields: [
     defineField({ name: "movementNumber", title: "Movement Number", type: "string", validation: (Rule) => Rule.required() }),
     defineField({ name: "movementType", title: "Movement Type", type: "string", validation: (Rule) => Rule.required(), options: { list: [
-      { title: "Sale", value: "SALE" }, { title: "Return", value: "RETURN" }, { title: "Refund Restock", value: "REFUND_RESTOCK" }, { title: "Stock received", value: "RECEIPT" }, { title: "Transfer / stock out", value: "TRANSFER" }, { title: "Adjustment", value: "ADJUSTMENT" },
+      { title: "Sale", value: "SALE" }, { title: "Return", value: "RETURN" }, { title: "Refund Restock", value: "REFUND_RESTOCK" }, { title: "Stock purchased", value: "PURCHASE" }, { title: "Stock received", value: "RECEIPT" }, { title: "Transfer / stock out", value: "TRANSFER" }, { title: "Adjustment", value: "ADJUSTMENT" },
     ] } }),
     defineField({ name: "product", title: "Product", type: "reference", to: [{ type: "product" }], validation: (Rule) => Rule.required() }),
     defineField({ name: "productId", title: "Product ID", type: "string" }),
@@ -16,6 +16,9 @@ export const inventoryMovement = defineType({
     defineField({ name: "quantityChange", title: "Quantity Change", type: "number", validation: (Rule) => Rule.required() }),
     defineField({ name: "stockBefore", title: "Stock Before", type: "number" }),
     defineField({ name: "stockAfter", title: "Stock After", type: "number" }),
+    defineField({ name: "incomingBefore", title: "Incoming Before", type: "number" }),
+    defineField({ name: "incomingAfter", title: "Incoming After", type: "number" }),
+    defineField({ name: "variantLabel", title: "Variant Label", type: "string" }),
     defineField({ name: "sourceLocation", title: "Source Location", type: "string" }),
     defineField({ name: "destination", title: "Destination", type: "string" }),
     defineField({ name: "unitCost", title: "Procurement Cost / Unit (KES)", type: "number", validation: (Rule) => Rule.min(0) }),

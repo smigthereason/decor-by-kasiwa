@@ -4,6 +4,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
+import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { getDeliveryZoneById } from "@/lib/shipping-server";
@@ -354,7 +355,9 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       throw new Error(`${product.name || "A product"} does not have a valid live price.`);
     }
 
+    const variantProduct = hasVariants(product.variants);
     if (
+      !variantProduct &&
       typeof product.initialStock === "number" &&
       product.initialStock < line.quantity
     ) {
@@ -818,24 +821,35 @@ export async function finalizePaystackPayment(reference: string) {
     const productLines = (order.lineItems || []).filter((line) => line.productId === product._id);
     const soldQuantity = productLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
 
-    if (soldQuantity <= 0 || typeof product.initialStock !== "number") {
-      continue;
-    }
+    if (soldQuantity <= 0) continue;
 
-    const nextStock = Math.max(0, product.initialStock - soldQuantity);
-    if (product.initialStock < soldQuantity) {
+    const variantProduct = hasVariants(product.variants);
+    const currentStock = variantProduct ? variantStockTotal(product.variants) : Math.max(0, Number(product.initialStock || 0));
+    const nextVariants = variantProduct ? decrementVariantStock(product, productLines) : undefined;
+
+    if (variantProduct) {
+      for (const line of productLines) {
+        const variant = product.variants?.find((item) => item._key === line.variantId);
+        const available = Math.max(0, Number(variant?.stockQuantity || 0));
+        if (available < Number(line.quantity || 0)) {
+          stockWarnings.push(`${product.name || "Product"}${variant?.title ? ` (${variant.title})` : ""}: paid quantity ${line.quantity}, variant stock before finalisation ${available}.`);
+        }
+      }
+    } else if (currentStock < soldQuantity) {
       stockWarnings.push(
-        `${product.name || "Product"}: paid quantity ${soldQuantity}, available before finalisation ${product.initialStock}.`,
+        `${product.name || "Product"}: paid quantity ${soldQuantity}, available before finalisation ${currentStock}.`,
       );
     }
 
-    const nextVariants = decrementVariantStock(product, productLines);
+    const nextStock = variantProduct
+      ? variantStockTotal(nextVariants || product.variants)
+      : Math.max(0, currentStock - soldQuantity);
     productLines.forEach((line) => stockMovements.push({
       productId: product._id,
       productName: product.name || "Product",
       variantId: line.variantId,
       quantityChange: -Number(line.quantity || 0),
-      stockBefore: product.initialStock,
+      stockBefore: currentStock,
       stockAfter: nextStock,
     }));
     mutation.patch(product._id, (patch) =>
@@ -844,7 +858,7 @@ export async function finalizePaystackPayment(reference: string) {
         .set({
           initialStock: nextStock,
           ...(nextVariants ? { variants: nextVariants } : {}),
-          ...(nextStock <= 0 ? { available: false } : {}),
+          available: nextStock > 0,
         }),
     );
   }

@@ -14,7 +14,7 @@ function monthKey(date: Date) {
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const start = new Date();
@@ -25,7 +25,7 @@ export async function GET() {
   const [products, orders, receipts] = await Promise.all([
     serverClient.fetch<ProductValue[]>(
       `*[_type == "product"]{
-        "stock": coalesce(initialStock, 0),
+        "stock": select(count(variants) > 0 => math::sum(variants[].stockQuantity), coalesce(initialStock, 0)),
         "retail": coalesce(price, 0),
         "cost": coalesce(*[_type == "inventoryRecord" && product._ref == ^._id][0].unitCost, procurementCost, 0)
       }`, {}, { cache: "no-store" },
@@ -35,7 +35,7 @@ export async function GET() {
       { from: start.toISOString() }, { cache: "no-store" },
     ),
     serverClient.fetch<ReceiptRow[]>(
-      `*[_type == "inventoryMovement" && movementType == "RECEIPT" && createdAt >= $from]{createdAt,quantityChange,unitCost,movementValue}`,
+      `*[_type == "inventoryMovement" && createdAt >= $from && (movementType == "PURCHASE" || (movementType == "RECEIPT" && !defined(incomingBefore)))]{createdAt,quantityChange,unitCost,movementValue}`,
       { from: start.toISOString() }, { cache: "no-store" },
     ),
   ]);

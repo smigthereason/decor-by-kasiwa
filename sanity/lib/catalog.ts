@@ -348,6 +348,11 @@ function mapProduct(
     : undefined;
   const scheduledSaleActive = saleActive && configuredSale !== undefined;
   const effectivePrice = scheduledSaleActive ? configuredSale : configuredRetail;
+  const effectiveStock = record.variants?.length
+    ? record.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stockQuantity || 0)), 0)
+    : typeof record.initialStock === "number"
+      ? Math.max(0, record.initialStock)
+      : undefined;
 
   return {
     id: record._id,
@@ -437,14 +442,13 @@ function mapProduct(
 
     stock:
       stockLabel(
-        record.initialStock,
+        effectiveStock,
         record.available,
       ),
 
     stockQuantity:
-      typeof record.initialStock ===
-      "number"
-        ? record.initialStock
+      typeof effectiveStock === "number"
+        ? effectiveStock
         : null,
 
     colours:

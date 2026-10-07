@@ -1,5 +1,6 @@
 import "server-only";
 
+import { effectiveOnHand, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 import { adminMetrics, storeMetrics } from "./selectors";
@@ -30,6 +31,7 @@ type RawProduct = {
   category?: string;
   colours?: string[];
   image?: string;
+  variants?: StockVariant[];
   inventory?: {
     location?: string;
     reserved?: number;
@@ -83,6 +85,7 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
       "category": primaryCategory->title,
       colours,
       "image": heroImage.asset->url,
+      variants,
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
         location,
         reserved,
@@ -104,7 +107,7 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
     category: safeString(row.category, "Uncategorised"),
     finish: row.colours?.[0] || "",
     location: row.inventory?.location || "Unassigned",
-    onHand: typeof row.initialStock === "number" ? row.initialStock : 0,
+    onHand: effectiveOnHand(row.initialStock, row.variants),
     reserved: row.inventory?.reserved || 0,
     incoming: row.inventory?.incoming || 0,
     reorderPoint: row.inventory?.reorderPoint ?? 5,
@@ -117,6 +120,14 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
     bestSeller: row.bestSeller === true,
     ecommerceEnabled: row.ecommerceEnabled !== false,
     posEnabled: row.posEnabled !== false,
+    variants: (row.variants || []).map((variant, index) => ({
+      id: variant._key || `${row._id}-variant-${index}`,
+      title: variant.title,
+      colour: variant.colour,
+      size: variant.size,
+      sku: variant.sku,
+      stockQuantity: Math.max(0, Number(variant.stockQuantity || 0)),
+    })),
   }));
 }
 
