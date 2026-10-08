@@ -51,13 +51,7 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "PAGE_VIEW" || body.action === "INTERACTION") {
-      await recordStaffActivity({
-        sessionId,
-        actor,
-        eventType: body.action === "PAGE_VIEW" ? "STAFF_PAGE_VIEW" : "STAFF_INTERACTION",
-        route: body.route,
-        label: body.label,
-      });
+      await touchStaffSession({ sessionId, actor, route: body.route });
       return NextResponse.json({ ok: true });
     }
 

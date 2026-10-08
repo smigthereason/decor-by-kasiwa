@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { recordAuditEvent } from "@/lib/pos/ledger";
@@ -132,16 +132,19 @@ export async function touchStaffSession({
   if (increment > 0) patch.inc({ durationMinutes: increment });
   await patch.commit();
 
-  await recordAuditEvent({
-    key: `staff-login|${sessionId}`,
-    eventType: "STAFF_LOGIN",
-    entityType: "staffSession",
-    entityId: id,
-    entityLabel: "Back-office sign in",
-    actor: { id: staffId, name: actor.name, email: actor.email, role: actor.role },
-    detail: route ? `Signed in and opened ${safeText(route, 240)}.` : "Signed in to the back office.",
-    createdAt: now,
-  });
+  // One login document per session. Heartbeats and page views must not create more.
+  if (!existing) {
+    await recordAuditEvent({
+      key: `staff-login|${sessionId}`,
+      eventType: "STAFF_LOGIN",
+      entityType: "staffSession",
+      entityId: id,
+      entityLabel: "Back-office sign in",
+      actor: { id: staffId, name: actor.name, email: actor.email, role: actor.role },
+      detail: route ? `Signed in and opened ${safeText(route, 240)}.` : "Signed in to the back office.",
+      createdAt: now,
+    });
+  }
 
   return id;
 }
@@ -162,21 +165,23 @@ export async function recordStaffActivity({
   detail?: string;
 }) {
   const sessionIdValue = await touchStaffSession({ sessionId, actor, route });
+  // Page views and clicks are stored on the session document (lastRoute).
+  // A fresh auditEvent per click is what filled the 25k document cap.
+  if (eventType !== "CLIENT_ERROR") return;
+
   const now = new Date().toISOString();
   const safeRoute = safeText(route, 240) || "Back office";
   const safeLabel = safeText(label, 160);
+  const safeDetail = safeText(detail, 1000) || `Client error on ${safeRoute}.`;
+  const day = now.slice(0, 10);
   await recordAuditEvent({
-    key: `staff-activity|${sessionId}|${eventType}|${randomUUID()}`,
+    key: `client-error|${day}|${hashId(`${safeRoute}|${safeLabel}|${safeDetail}`)}`,
     eventType,
     entityType: "staffActivity",
     entityId: sessionIdValue,
     entityLabel: safeLabel || safeRoute,
     actor: { id: baseDocumentId(actor.id), name: actor.name, email: actor.email, role: actor.role },
-    detail: eventType === "CLIENT_ERROR"
-      ? safeText(detail, 1000) || `Client error on ${safeRoute}.`
-      : eventType === "STAFF_PAGE_VIEW"
-        ? `Viewed ${safeRoute}.`
-        : `${safeLabel || "Used a control"} on ${safeRoute}.`,
+    detail: safeDetail,
     createdAt: now,
   });
 }

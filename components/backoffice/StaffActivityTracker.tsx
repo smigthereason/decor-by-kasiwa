@@ -120,8 +120,12 @@ export default function StaffActivityTracker() {
   useEffect(() => {
     const nativeFetch = window.fetch.bind(window);
 
+    const reported = new Set<string>();
     const report = (label: string, detail: string) => {
       if (!sessionId.current) return;
+      const fingerprint = `${label}\n${detail}`.slice(0, 400);
+      if (reported.has(fingerprint)) return;
+      reported.add(fingerprint);
       void postActivity({
         action: "CLIENT_ERROR",
         sessionId: sessionId.current,
