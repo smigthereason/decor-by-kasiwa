@@ -592,12 +592,14 @@ function mapShopLook(record: SanityShopLookRecord): ShopLook {
 export async function getShopLooks(): Promise<ShopLook[]> {
   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return [];
 
-  const records = await serverClient.fetch<SanityShopLookRecord[]>(
+  const records = await client.fetch<SanityShopLookRecord[]>(
     `*[
       _type == "shopLook" &&
       defined(slug.current) &&
       active != false
     ] | order(featured desc, displayOrder asc, title asc) ${shopLookProjection}`,
+    {},
+    { next: { revalidate: 10 } },
   );
 
   return records.map(mapShopLook).filter((look) => look.products.length > 0);
@@ -611,13 +613,14 @@ export async function getFeaturedShopLook(): Promise<ShopLook | null> {
 export async function getShopLookBySlug(slug: string): Promise<ShopLook | null> {
   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return null;
 
-  const record = await serverClient.fetch<SanityShopLookRecord | null>(
+  const record = await client.fetch<SanityShopLookRecord | null>(
     `*[
       _type == "shopLook" &&
       slug.current == $slug &&
       active != false
     ][0] ${shopLookProjection}`,
     { slug },
+    { next: { revalidate: 10 } },
   );
 
   if (!record) return null;
@@ -1246,7 +1249,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
   }
 
   const records =
-    await serverClient.fetch<
+    await (channel === "pos" ? serverClient : client).fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1259,7 +1262,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
       | order(_createdAt desc, name asc)
       ${productProjection}`,
       {},
-      { next: { revalidate: 30 } },
+      channel === "pos" ? { cache: "no-store" } : { next: { revalidate: 10 } },
     );
 
   return records.map(
@@ -1278,7 +1281,7 @@ export async function getStoreProductBySlug(
   }
 
   const record =
-    await serverClient.fetch<
+    await client.fetch<
       SanityProductRecord | null
     >(
       `*[
@@ -1293,7 +1296,7 @@ export async function getStoreProductBySlug(
       {
         slug,
       },
-      { cache: "no-store" },
+      { next: { revalidate: 10 } },
     );
 
   if (!record) return null;
@@ -1304,7 +1307,7 @@ export async function getStoreProductBySlug(
   const requestedIds = Array.from(new Set([...pairingIds, ...merchandisedSampleIds]));
 
   if (requestedIds.length) {
-    const curated = await serverClient.fetch<SanityProductRecord[]>(
+    const curated = await client.fetch<SanityProductRecord[]>(
       `*[
         _type == "product" &&
         _id in $ids &&
@@ -1313,7 +1316,7 @@ export async function getStoreProductBySlug(
         ecommerceEnabled != false
       ] ${productProjection}`,
       { ids: requestedIds },
-      { cache: "no-store" },
+      { next: { revalidate: 10 } },
     );
     const mapped = new Map(curated.map((item) => [item._id, mapProduct(item)]));
     product.pairings = pairingIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
@@ -1336,7 +1339,7 @@ export async function getRelatedStoreProducts(
 
   const records =
     product.categoryId
-      ? await serverClient.fetch<
+      ? await client.fetch<
           SanityProductRecord[]
         >(
           `*[
@@ -1371,7 +1374,7 @@ export async function getRelatedStoreProducts(
   }
 
   const fallback =
-    await serverClient.fetch<
+    await client.fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1432,7 +1435,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
       collections,
     ] =
       await Promise.all([
-        serverClient.fetch<
+        client.fetch<
           SanityCategoryRecord[]
         >(
           `*[
@@ -1459,7 +1462,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        serverClient.fetch<
+        client.fetch<
           SanityReferenceLabel[]
         >(
           `*[
@@ -1476,7 +1479,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        serverClient.fetch<
+        client.fetch<
           SanityReferenceLabel[]
         >(
           `*[
@@ -1493,7 +1496,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
           }`,
         ),
 
-        serverClient.fetch<
+        client.fetch<
           SanityReferenceLabel[]
         >(
           `*[

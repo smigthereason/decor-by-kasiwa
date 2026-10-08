@@ -1,0 +1,247 @@
+diff --git a/app/api/catalog/route.ts b/app/api/catalog/route.ts
+index 17a3023..d9d2d62 100644
+--- a/app/api/catalog/route.ts
++++ b/app/api/catalog/route.ts
+@@ -14,7 +14,11 @@ export async function GET(request: Request) {
+     const products = await getStoreProducts(channel);
+     return NextResponse.json(
+       { products },
+-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
++      {
++        headers: channel === "pos"
++          ? { "Cache-Control": "no-store, no-cache, must-revalidate" }
++          : { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" },
++      },
+     );
+   } catch (error) {
+     console.error("Catalogue API failed", {
+diff --git a/app/api/sanity/revalidate/route.ts b/app/api/sanity/revalidate/route.ts
+new file mode 100644
+index 0000000..114a1fa
+--- /dev/null
++++ b/app/api/sanity/revalidate/route.ts
+@@ -0,0 +1,67 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++import { revalidatePath } from "next/cache";
++import { NextResponse } from "next/server";
++
++export const dynamic = "force-dynamic";
++
++const PUBLIC_TYPES = new Set([
++  "product",
++  "category",
++  "shopLook",
++  "shopSpace",
++  "shopStyle",
++  "collection",
++]);
++
++function safeEqual(left: string, right: string) {
++  const a = Buffer.from(left);
++  const b = Buffer.from(right);
++  return a.length === b.length && timingSafeEqual(a, b);
++}
++
++function validSignature(body: string, header: string | null, secret: string) {
++  if (!header) return false;
++  const parts = Object.fromEntries(
++    header.split(",").map((part) => {
++      const index = part.indexOf("=");
++      return [part.slice(0, index), part.slice(index + 1)];
++    }),
++  );
++  const timestamp = parts.t;
++  const signature = parts.v1;
++  if (!timestamp || !signature) return false;
++  const digest = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest();
++  return safeEqual(signature, digest.toString("hex")) || safeEqual(signature, digest.toString("base64"));
++}
++
++export async function POST(request: Request) {
++  const secret = process.env.SANITY_REVALIDATE_SECRET?.trim();
++  if (!secret) {
++    return NextResponse.json({ message: "Revalidate secret is not configured." }, { status: 500 });
++  }
++
++  const body = await request.text();
++  const signature = request.headers.get("sanity-webhook-signature");
++  if (!validSignature(body, signature, secret)) {
++    return NextResponse.json({ message: "Invalid webhook signature." }, { status: 401 });
++  }
++
++  let payload: { _id?: string; _type?: string } = {};
++  try {
++    payload = JSON.parse(body) as { _id?: string; _type?: string };
++  } catch {
++    return NextResponse.json({ message: "Invalid webhook payload." }, { status: 400 });
++  }
++
++  const id = payload._id || "";
++  const type = payload._type || "";
++  if (id.startsWith("drafts.") || !PUBLIC_TYPES.has(type)) {
++    return NextResponse.json({ revalidated: false, ignored: true });
++  }
++
++  revalidatePath("/", "layout");
++  revalidatePath("/shop", "layout");
++  revalidatePath("/shop-by-look", "layout");
++
++  return NextResponse.json({ revalidated: true, type });
++}
+diff --git a/sanity/lib/catalog.ts b/sanity/lib/catalog.ts
+index 7c9c595..0a03434 100644
+--- a/sanity/lib/catalog.ts
++++ b/sanity/lib/catalog.ts
+@@ -592,12 +592,14 @@ function mapShopLook(record: SanityShopLookRecord): ShopLook {
+ export async function getShopLooks(): Promise<ShopLook[]> {
+   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return [];
+ 
+-  const records = await serverClient.fetch<SanityShopLookRecord[]>(
++  const records = await client.fetch<SanityShopLookRecord[]>(
+     `*[
+       _type == "shopLook" &&
+       defined(slug.current) &&
+       active != false
+     ] | order(featured desc, displayOrder asc, title asc) ${shopLookProjection}`,
++    {},
++    { next: { revalidate: 10 } },
+   );
+ 
+   return records.map(mapShopLook).filter((look) => look.products.length > 0);
+@@ -611,13 +613,14 @@ export async function getFeaturedShopLook(): Promise<ShopLook | null> {
+ export async function getShopLookBySlug(slug: string): Promise<ShopLook | null> {
+   if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) return null;
+ 
+-  const record = await serverClient.fetch<SanityShopLookRecord | null>(
++  const record = await client.fetch<SanityShopLookRecord | null>(
+     `*[
+       _type == "shopLook" &&
+       slug.current == $slug &&
+       active != false
+     ][0] ${shopLookProjection}`,
+     { slug },
++    { next: { revalidate: 10 } },
+   );
+ 
+   if (!record) return null;
+@@ -1246,7 +1249,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
+   }
+ 
+   const records =
+-    await serverClient.fetch<
++    await (channel === "pos" ? serverClient : client).fetch<
+       SanityProductRecord[]
+     >(
+       `*[
+@@ -1259,7 +1262,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
+       | order(_createdAt desc, name asc)
+       ${productProjection}`,
+       {},
+-      { next: { revalidate: 30 } },
++      channel === "pos" ? { cache: "no-store" } : { next: { revalidate: 10 } },
+     );
+ 
+   return records.map(
+@@ -1278,7 +1281,7 @@ export async function getStoreProductBySlug(
+   }
+ 
+   const record =
+-    await serverClient.fetch<
++    await client.fetch<
+       SanityProductRecord | null
+     >(
+       `*[
+@@ -1293,7 +1296,7 @@ export async function getStoreProductBySlug(
+       {
+         slug,
+       },
+-      { cache: "no-store" },
++      { next: { revalidate: 10 } },
+     );
+ 
+   if (!record) return null;
+@@ -1304,7 +1307,7 @@ export async function getStoreProductBySlug(
+   const requestedIds = Array.from(new Set([...pairingIds, ...merchandisedSampleIds]));
+ 
+   if (requestedIds.length) {
+-    const curated = await serverClient.fetch<SanityProductRecord[]>(
++    const curated = await client.fetch<SanityProductRecord[]>(
+       `*[
+         _type == "product" &&
+         _id in $ids &&
+@@ -1313,7 +1316,7 @@ export async function getStoreProductBySlug(
+         ecommerceEnabled != false
+       ] ${productProjection}`,
+       { ids: requestedIds },
+-      { cache: "no-store" },
++      { next: { revalidate: 10 } },
+     );
+     const mapped = new Map(curated.map((item) => [item._id, mapProduct(item)]));
+     product.pairings = pairingIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
+@@ -1336,7 +1339,7 @@ export async function getRelatedStoreProducts(
+ 
+   const records =
+     product.categoryId
+-      ? await serverClient.fetch<
++      ? await client.fetch<
+           SanityProductRecord[]
+         >(
+           `*[
+@@ -1371,7 +1374,7 @@ export async function getRelatedStoreProducts(
+   }
+ 
+   const fallback =
+-    await serverClient.fetch<
++    await client.fetch<
+       SanityProductRecord[]
+     >(
+       `*[
+@@ -1432,7 +1435,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
+       collections,
+     ] =
+       await Promise.all([
+-        serverClient.fetch<
++        client.fetch<
+           SanityCategoryRecord[]
+         >(
+           `*[
+@@ -1459,7 +1462,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
+           }`,
+         ),
+ 
+-        serverClient.fetch<
++        client.fetch<
+           SanityReferenceLabel[]
+         >(
+           `*[
+@@ -1476,7 +1479,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
+           }`,
+         ),
+ 
+-        serverClient.fetch<
++        client.fetch<
+           SanityReferenceLabel[]
+         >(
+           `*[
+@@ -1493,7 +1496,7 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
+           }`,
+         ),
+ 
+-        serverClient.fetch<
++        client.fetch<
+           SanityReferenceLabel[]
+         >(
+           `*[
+diff --git a/sanity/lib/client.ts b/sanity/lib/client.ts
+index c3305b6..4874ef7 100644
+--- a/sanity/lib/client.ts
++++ b/sanity/lib/client.ts
+@@ -5,7 +5,7 @@ export const client = createClient({
+   projectId,
+   dataset,
+   apiVersion,
+-  useCdn: false,
++  useCdn: true,
+ });
+ 
+ export const writeClient = createClient({

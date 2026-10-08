@@ -14,7 +14,11 @@ export async function GET(request: Request) {
     const products = await getStoreProducts(channel);
     return NextResponse.json(
       { products },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+      {
+        headers: channel === "pos"
+          ? { "Cache-Control": "no-store, no-cache, must-revalidate" }
+          : { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" },
+      },
     );
   } catch (error) {
     console.error("Catalogue API failed", {
