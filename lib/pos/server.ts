@@ -77,6 +77,7 @@ type RawProduct = {
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   initialStock?: number;
+  procurementCost?: number;
   available?: boolean;
   posEnabled?: boolean;
   category?: string;
@@ -104,6 +105,7 @@ type PosLine = {
   variantId?: string;
   quantity: number;
   unitPrice: number;
+  unitCost: number;
 };
 
 type PosOrder = {
@@ -338,6 +340,7 @@ async function fetchProducts(productIds: string[]) {
       wholesalePrice,
       wholesaleMinQuantity,
       initialStock,
+      procurementCost,
       available,
       posEnabled,
       "category": primaryCategory->title,
@@ -416,6 +419,7 @@ async function buildLines(cart: PosCartLine[]) {
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
       unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
+      unitCost: Math.max(0, Number(product.procurementCost || 0)),
     };
   });
 
@@ -435,6 +439,7 @@ function orderLineDocuments(lines: PosLine[]) {
     variantId: line.variantId,
     quantity: line.quantity,
     unitPrice: line.unitPrice,
+    unitCost: line.unitCost,
   }));
 }
 
@@ -584,7 +589,8 @@ async function fetchPosOrder(reference: string) {
         size,
         variantId,
         quantity,
-        unitPrice
+        unitPrice,
+        unitCost
       }
     }`,
     { reference },
@@ -599,7 +605,7 @@ async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
       mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
-      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
+      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
     }`,
     { checkoutRequestId },
     { cache: "no-store" },
@@ -615,7 +621,7 @@ async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
       mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
-      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
+      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
     }`,
     { checkoutRequestId },
     { cache: "no-store" },
@@ -1882,7 +1888,7 @@ export async function getPosReceipt(orderId: string) {
         refundedAmount,paymentStatus,paymentProvider,paymentChannel,paymentReference,providerReceiptNumber,
         mpesaMerchantRequestId,mpesaCheckoutRequestId,mpesaResultCode,mpesaResultDescription,
         manualPaymentName,manualPaymentReference,soldByName,soldByRole,soldAt,
-        "lineItems": lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
+        "lineItems": lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
       },
       "settings": *[_type == "siteSettings"][0]{brandName,email,phone}
     }`,

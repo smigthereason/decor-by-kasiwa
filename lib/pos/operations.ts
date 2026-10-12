@@ -65,7 +65,7 @@ export type PosHistoryOrder = {
   paymentReference: string;
   paymentProvider: string;
   providerReceiptNumber: string;
-  lineItems: Array<{ productId: string; name: string; variantId?: string; quantity: number; unitPrice: number }>;
+  lineItems: Array<{ productId: string; name: string; variantId?: string; quantity: number; unitPrice: number; unitCost?: number }>;
 };
 
 const historyProjection = `{
@@ -94,7 +94,7 @@ const historyProjection = `{
   "paymentReference": coalesce(paymentReference,""),
   "paymentProvider": coalesce(paymentProvider,""),
   "providerReceiptNumber": coalesce(providerReceiptNumber,paystackTransactionId,""),
-  "lineItems": lineItems[]{"productId":coalesce(product._ref,productId),name,variantId,quantity,unitPrice}
+  "lineItems": lineItems[]{"productId":coalesce(product._ref,productId),name,variantId,quantity,unitPrice,unitCost}
 }`;
 
 export type SalesHistoryFilters = {
@@ -173,7 +173,35 @@ export type SalesReport = {
   byDate: Array<{ date: string; orders: number; revenue: number; deliveryPayables: number; moneyIn: number }>;
   byProduct: Array<{ name: string; quantity: number; revenue: number }>;
   byCashier: Array<{ name: string; orders: number; revenue: number }>;
+  grossSales: number;
+  discounts: number;
+  returns: number;
+  discountsAndReturns: number;
+  netSales: number;
+  costOfGoodsSold: number;
+  grossProfit: number;
+  operatingExpenses: number;
+  operatingProfit: number;
+  expenseBreakdown: Array<{ category: ExpenseCategory; label: string; amount: number }>;
+  cogsFallbackLines: number;
+  cogsUncostedLines: number;
 };
+
+
+export type ExpenseCategory = "RENT" | "SALARIES" | "MARKETING" | "DELIVERY_UTILITIES" | "OTHER";
+
+const EXPENSE_CATEGORIES: Array<{ category: ExpenseCategory; label: string }> = [
+  { category: "RENT", label: "Rent" },
+  { category: "SALARIES", label: "Salaries" },
+  { category: "MARKETING", label: "Marketing" },
+  { category: "DELIVERY_UTILITIES", label: "Delivery & utilities" },
+  { category: "OTHER", label: "Other operating expenses" },
+];
+
+function normalizeExpenseCategory(value: unknown, expenseType?: string): ExpenseCategory {
+  if (value === "RENT" || value === "SALARIES" || value === "MARKETING" || value === "DELIVERY_UTILITIES" || value === "OTHER") return value;
+  return expenseType === "SALARY" ? "SALARIES" : "OTHER";
+}
 
 type SalesReportRange = { from?: string; to?: string };
 
@@ -212,13 +240,16 @@ function reportWindow(period: "day" | "week" | "month", range: SalesReportRange 
 
 export async function getSalesReport(period: "day" | "week" | "month", range: SalesReportRange = {}): Promise<SalesReport> {
   const { period: reportPeriod, start, end } = reportWindow(period, range);
-  const [orders, refunds, failedPending, globalReceivables] = await Promise.all([
+  const [orders, returnRows, failedPending, globalReceivables, expenseRows] = await Promise.all([
     serverClient.fetch<PosHistoryOrder[]>(
       `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"]]${historyProjection}`,
       { start, end }, { cache: "no-store" },
     ),
-    serverClient.fetch<Array<{ amount?: number }>>(
-      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed"]{"amount":coalesce(refundAmount,0)}`,
+    serverClient.fetch<Array<{ amount?: number; restock?: boolean; items?: Array<{ productId?: string; quantity?: number; unitCost?: number }> }>>(
+      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed"]{
+        "amount":coalesce(refundAmount,0),restock,
+        "items":items[]{"productId":coalesce(product._ref,productId),quantity,unitCost}
+      }`,
       { start, end }, { cache: "no-store" },
     ),
     serverClient.fetch<Array<{ status?: string }>>(
@@ -226,7 +257,48 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
       { start, end }, { cache: "no-store" },
     ),
     serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0].balanceDue),0)`, {}, { cache: "no-store" }),
+    serverClient.fetch<Array<{ expenseCategory?: string; expenseType?: string; amount?: number }>>(
+      `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end]{expenseCategory,expenseType,amount}`,
+      { start, end }, { cache: "no-store" },
+    ),
   ]);
+
+  const costProductIds = new Set<string>();
+  for (const order of orders) {
+    for (const line of order.lineItems || []) {
+      if (line.productId && typeof line.unitCost !== "number") costProductIds.add(line.productId);
+    }
+  }
+  for (const returned of returnRows) {
+    if (!returned.restock) continue;
+    for (const line of returned.items || []) {
+      if (line.productId && typeof line.unitCost !== "number") costProductIds.add(line.productId);
+    }
+  }
+
+  const currentCosts = costProductIds.size
+    ? await serverClient.fetch<Array<{ id: string; unitCost?: number }>>(
+        `*[_type == "product" && _id in $ids]{
+          "id":_id,
+          "unitCost":coalesce(*[_type == "inventoryRecord" && product._ref == ^._id][0].unitCost,procurementCost,0)
+        }`,
+        { ids: [...costProductIds] }, { cache: "no-store" },
+      )
+    : [];
+  const currentCostByProduct = new Map(currentCosts.map((row) => [row.id, Math.max(0, Number(row.unitCost || 0))]));
+  let cogsFallbackLines = 0;
+  let cogsUncostedLines = 0;
+  const lineCost = (productId: string | undefined, snapshot: number | undefined) => {
+    if (typeof snapshot === "number" && Number.isFinite(snapshot)) {
+      const cost = Math.max(0, snapshot);
+      if (cost === 0) cogsUncostedLines += 1;
+      return cost;
+    }
+    cogsFallbackLines += 1;
+    const cost = productId ? currentCostByProduct.get(productId) || 0 : 0;
+    if (cost === 0) cogsUncostedLines += 1;
+    return cost;
+  };
 
   const moneyInValue = (order: PosHistoryOrder) => Math.max(0, order.amountPaid - order.refundedAmount);
   const deliveryValue = (order: PosHistoryOrder) => Math.min(Math.max(0, order.deliveryFee), moneyInValue(order));
@@ -255,6 +327,32 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     cashierMap.set(cashier, current);
   }
 
+  const grossSales = orders.reduce((sum, order) => sum + Math.max(0, Number(order.subtotal || 0)), 0);
+  const discounts = orders.reduce((sum, order) => sum + Math.max(0, Number(order.discountAmount || 0)), 0);
+  const returns = returnRows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0);
+  const discountsAndReturns = discounts + returns;
+  const netSales = grossSales - discountsAndReturns;
+  const soldCogs = orders.reduce((sum, order) => sum + (order.lineItems || []).reduce((lineSum, line) => {
+    return lineSum + Math.max(0, Number(line.quantity || 0)) * lineCost(line.productId, line.unitCost);
+  }, 0), 0);
+  const returnedCogs = returnRows.reduce((sum, returned) => {
+    if (!returned.restock) return sum;
+    return sum + (returned.items || []).reduce((lineSum, line) => {
+      return lineSum + Math.max(0, Number(line.quantity || 0)) * lineCost(line.productId, line.unitCost);
+    }, 0);
+  }, 0);
+  const costOfGoodsSold = soldCogs - returnedCogs;
+  const grossProfit = netSales - costOfGoodsSold;
+
+  const expenseTotals = new Map<ExpenseCategory, number>(EXPENSE_CATEGORIES.map(({ category }) => [category, 0]));
+  for (const expense of expenseRows) {
+    const category = normalizeExpenseCategory(expense.expenseCategory, expense.expenseType);
+    expenseTotals.set(category, (expenseTotals.get(category) || 0) + Math.max(0, Number(expense.amount || 0)));
+  }
+  const expenseBreakdown = EXPENSE_CATEGORIES.map(({ category, label }) => ({ category, label, amount: expenseTotals.get(category) || 0 }));
+  const operatingExpenses = expenseBreakdown.reduce((sum, row) => sum + row.amount, 0);
+  const operatingProfit = grossProfit - operatingExpenses;
+
   const channelRevenue = (predicate: (order: PosHistoryOrder) => boolean) => orders.filter(predicate).reduce((sum, order) => sum + revenueValue(order), 0);
   const channelMoneyIn = (predicate: (order: PosHistoryOrder) => boolean) => orders.filter(predicate).reduce((sum, order) => sum + moneyInValue(order), 0);
   return {
@@ -270,18 +368,31 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
     paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
     outstandingReceivables: Number(globalReceivables || 0),
-    refunds: refunds.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    refunds: returns,
     failedPayments: failedPending.filter((row) => row.status === "failed" || row.status === "timed_out").length,
     pendingPayments: failedPending.filter((row) => row.status === "pending").length,
     orders: orders.length,
     byDate: [...dateMap.values()].sort((a, b) => b.date.localeCompare(a.date)),
     byProduct: [...productMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 20),
     byCashier: [...cashierMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 20),
+    grossSales,
+    discounts,
+    returns,
+    discountsAndReturns,
+    netSales,
+    costOfGoodsSold,
+    grossProfit,
+    operatingExpenses,
+    operatingProfit,
+    expenseBreakdown,
+    cogsFallbackLines,
+    cogsUncostedLines,
   };
 }
 
 export type ExpenseInput = {
   expenseType: "EXPENSE" | "PETTY_CASH" | "STAFF_PAYMENT" | "SALARY";
+  expenseCategory?: ExpenseCategory;
   staffName?: string;
   description: string;
   amount: number;
@@ -292,9 +403,9 @@ export type ExpenseInput = {
 
 export async function listExpenses(limit = 150) {
   return serverClient.fetch<Array<{
-    id: string; expenseNumber: string; expenseType: string; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string;
+    id: string; expenseNumber: string; expenseType: string; expenseCategory: ExpenseCategory; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string;
   }>>(
-    `*[_type == "expenseTransaction"] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName}`,
+    `*[_type == "expenseTransaction"] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,"expenseCategory":coalesce(expenseCategory,select(expenseType == "SALARY" => "SALARIES","OTHER")),staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
 }
@@ -306,13 +417,14 @@ export async function createExpense(input: ExpenseInput, seller: PosSeller) {
   if (!description) throw new Error("Expense description is required.");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid expense amount.");
   if (!input.expenseType || !["EXPENSE", "PETTY_CASH", "STAFF_PAYMENT", "SALARY"].includes(input.expenseType)) throw new Error("Select a valid expense type.");
+  const expenseCategory = normalizeExpenseCategory(input.expenseCategory, input.expenseType);
   const now = new Date().toISOString();
   const expenseDate = input.expenseDate && !Number.isNaN(Date.parse(input.expenseDate)) ? new Date(input.expenseDate).toISOString() : now;
   const key = `${seller.id}|${expenseDate}|${description}|${amount}`;
   const id = `expenseTransaction.${hashId(key)}`;
   const expenseNumber = `EXP-${hashId(key).slice(0, 12).toUpperCase()}`;
   await serverClient.createIfNotExists({
-    _id: id, _type: "expenseTransaction", expenseNumber, expenseType: input.expenseType,
+    _id: id, _type: "expenseTransaction", expenseNumber, expenseType: input.expenseType, expenseCategory,
     staffName: cleanText(input.staffName) || undefined, description, amount, currency: "KES",
     paymentMethod: input.paymentMethod || "other", transactionReference: cleanText(input.transactionReference) || undefined,
     expenseDate, createdBy: { _type: "reference", _ref: seller.id }, createdByName: seller.name, createdByRole: seller.role, createdAt: now,
@@ -433,7 +545,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     restock: Boolean(input.restock), status: providerStatus, providerRefundId: providerRefundId || undefined,
     items: requestedItems.map((row, index) => {
       const soldLine = order.lineItems.find((line) => line.productId === row.productId && (!row.variantId || line.variantId === row.variantId));
-      return { _key: `${index}-${safeId(row.productId)}`, _type: "object", product: { _type: "reference", _ref: row.productId }, productId: row.productId, name: soldLine?.name || "Product", variantId: row.variantId, quantity: row.quantity, unitPrice: Number(soldLine?.unitPrice || 0) };
+      return { _key: `${index}-${safeId(row.productId)}`, _type: "object", product: { _type: "reference", _ref: row.productId }, productId: row.productId, name: soldLine?.name || "Product", variantId: row.variantId, quantity: row.quantity, unitPrice: Number(soldLine?.unitPrice || 0), unitCost: typeof soldLine?.unitCost === "number" ? soldLine.unitCost : undefined };
     }),
     processedBy: { _type: "reference", _ref: seller.id }, processedByName: seller.name, processedByRole: seller.role, createdAt: now,
   });

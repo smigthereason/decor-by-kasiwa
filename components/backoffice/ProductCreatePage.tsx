@@ -347,7 +347,7 @@ export default function ProductCreatePage({ productId }: { productId?: string })
               )}
               <Field label="Incoming"><input name="incoming" type="number" min="0" defaultValue={inventory?.incoming ?? 0} /></Field>
               <Field label="Reorder level"><input name="reorderPoint" type="number" min="0" defaultValue={inventory?.reorderPoint ?? 5} /></Field>
-              <Field label="Procurement cost (KES)" hint="Initial cost used for profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>
+              <Field label="Cost of Production / Initial Cost (KES)" hint="Used as procurement cost / COGS in profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>
               <Field label="Inventory location" className="sm:col-span-2 lg:col-span-1 xl:col-span-2"><input name="location" defaultValue={inventory?.location || "Main store"} /></Field>
             </div>
           </Card>

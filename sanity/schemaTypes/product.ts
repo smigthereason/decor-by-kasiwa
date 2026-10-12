@@ -94,8 +94,8 @@ export const product = defineType({
     }),
     defineField({
       name: "procurementCost",
-      title: "Procurement cost (KES)",
-      description: "Initial/procurement cost used for profit and loss reporting.",
+      title: "Cost of Production / Initial Cost (KES)",
+      description: "Stored as procurement cost and used as cost of goods sold (COGS) in profit and loss reporting.",
       type: "number",
       group: "core",
       validation: (rule) => rule.min(0),

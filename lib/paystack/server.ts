@@ -47,6 +47,7 @@ type RawCheckoutProduct = {
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   initialStock?: number;
+  procurementCost?: number;
   available?: boolean;
   ecommerceEnabled?: boolean;
   category?: string;
@@ -74,6 +75,7 @@ type PendingOrderLine = {
   variantId?: string;
   quantity: number;
   unitPrice: number;
+  unitCost: number;
 };
 
 type PendingOrder = {
@@ -292,6 +294,7 @@ async function fetchCheckoutProducts(productIds: string[]) {
       wholesalePrice,
       wholesaleMinQuantity,
       initialStock,
+      procurementCost,
       available,
       ecommerceEnabled,
       "category": primaryCategory->title,
@@ -401,6 +404,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
       unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
+      unitCost: Math.max(0, Number(product.procurementCost || 0)),
     };
   });
 
@@ -544,6 +548,7 @@ export async function initializePaystackCheckout({
       variantId: line.variantId,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
+      unitCost: line.unitCost,
     })),
   });
 
@@ -649,7 +654,8 @@ async function fetchPendingOrder(reference: string) {
         size,
         variantId,
         quantity,
-        unitPrice
+        unitPrice,
+        unitCost
       }
     }`,
     { reference },

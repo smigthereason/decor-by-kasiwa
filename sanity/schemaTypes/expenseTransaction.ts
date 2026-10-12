@@ -9,6 +9,13 @@ export const expenseTransaction = defineType({
     defineField({ name: "expenseType", title: "Type", type: "string", validation: (Rule) => Rule.required(), options: { list: [
       { title: "Business Expense", value: "EXPENSE" }, { title: "Petty Cash", value: "PETTY_CASH" }, { title: "Staff Payment", value: "STAFF_PAYMENT" }, { title: "Salary", value: "SALARY" },
     ] } }),
+    defineField({ name: "expenseCategory", title: "P&L Category", type: "string", initialValue: "OTHER", options: { list: [
+      { title: "Rent", value: "RENT" },
+      { title: "Salaries", value: "SALARIES" },
+      { title: "Marketing", value: "MARKETING" },
+      { title: "Delivery & Utilities", value: "DELIVERY_UTILITIES" },
+      { title: "Other Operating Expense", value: "OTHER" },
+    ] } }),
     defineField({ name: "staffName", title: "Staff / Payee Name", type: "string" }),
     defineField({ name: "description", title: "Description", type: "text", rows: 3, validation: (Rule) => Rule.required() }),
     defineField({ name: "amount", title: "Amount", type: "number", validation: (Rule) => Rule.required().min(0.01) }),

@@ -22,6 +22,7 @@ export const returnTransaction = defineType({
       defineField({ name: "variantId", title: "Variant ID", type: "string" }),
       defineField({ name: "quantity", title: "Quantity", type: "number", validation: (Rule) => Rule.required().min(1) }),
       defineField({ name: "unitPrice", title: "Unit Price", type: "number", validation: (Rule) => Rule.required().min(0) }),
+      defineField({ name: "unitCost", title: "Unit Procurement Cost at Sale", type: "number", readOnly: true, validation: (Rule) => Rule.min(0) }),
     ] })] }),
     defineField({ name: "processedBy", title: "Processed By", type: "reference", to: [{ type: "customerUser" }] }),
     defineField({ name: "processedByName", title: "Processed By Name", type: "string" }),

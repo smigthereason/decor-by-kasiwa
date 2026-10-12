@@ -315,7 +315,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
 
             <div className="mt-6 grid gap-4 border-t hairline pt-5 sm:grid-cols-4">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Procurement cost</p>
+                <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Cost of production / initial cost</p>
                 {editing ? (
                   <input type="number" min={0} value={draft.unitCost} onChange={(e) => setDraft({ ...draft, unitCost: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                 ) : (

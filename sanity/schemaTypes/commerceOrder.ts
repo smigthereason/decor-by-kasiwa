@@ -401,6 +401,14 @@ export const commerceOrder = defineType({
               type: "number",
               validation: (Rule) => Rule.required().min(0),
             }),
+            defineField({
+              name: "unitCost",
+              title: "Unit Procurement Cost at Sale",
+              description: "Snapshot of the product procurement cost when this sale was created. Used for profit and loss reporting.",
+              type: "number",
+              readOnly: true,
+              validation: (Rule) => Rule.min(0),
+            }),
           ],
           preview: {
             select: {
