@@ -182,25 +182,32 @@ export type SalesReport = {
   grossProfit: number;
   operatingExpenses: number;
   operatingProfit: number;
-  expenseBreakdown: Array<{ category: ExpenseCategory; label: string; amount: number }>;
+  expenseBreakdown: Array<{ ledgerAccount: string; label: string; amount: number }>;
   cogsFallbackLines: number;
   cogsUncostedLines: number;
 };
 
 
-export type ExpenseCategory = "RENT" | "SALARIES" | "MARKETING" | "DELIVERY_UTILITIES" | "OTHER";
+export type LegacyExpenseCategory = "RENT" | "SALARIES" | "MARKETING" | "DELIVERY_UTILITIES" | "OTHER";
 
-const EXPENSE_CATEGORIES: Array<{ category: ExpenseCategory; label: string }> = [
-  { category: "RENT", label: "Rent" },
-  { category: "SALARIES", label: "Salaries" },
-  { category: "MARKETING", label: "Marketing" },
-  { category: "DELIVERY_UTILITIES", label: "Delivery & utilities" },
-  { category: "OTHER", label: "Other operating expenses" },
-];
+const LEGACY_LEDGER_LABELS: Record<LegacyExpenseCategory, string> = {
+  RENT: "Rent",
+  SALARIES: "Salaries",
+  MARKETING: "Marketing",
+  DELIVERY_UTILITIES: "Delivery & utilities",
+  OTHER: "Other operating expenses",
+};
 
-function normalizeExpenseCategory(value: unknown, expenseType?: string): ExpenseCategory {
-  if (value === "RENT" || value === "SALARIES" || value === "MARKETING" || value === "DELIVERY_UTILITIES" || value === "OTHER") return value;
-  return expenseType === "SALARY" ? "SALARIES" : "OTHER";
+function legacyLedgerAccount(value: unknown, expenseType?: string) {
+  if (value === "RENT" || value === "SALARIES" || value === "MARKETING" || value === "DELIVERY_UTILITIES" || value === "OTHER") {
+    return LEGACY_LEDGER_LABELS[value];
+  }
+  return expenseType === "SALARY" ? "Salaries" : "Other operating expenses";
+}
+
+function cleanLedgerAccount(value: unknown, legacyCategory?: unknown, expenseType?: string) {
+  const provided = cleanText(value);
+  return provided || legacyLedgerAccount(legacyCategory, expenseType);
 }
 
 type SalesReportRange = { from?: string; to?: string };
@@ -257,8 +264,8 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
       { start, end }, { cache: "no-store" },
     ),
     serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0].balanceDue),0)`, {}, { cache: "no-store" }),
-    serverClient.fetch<Array<{ expenseCategory?: string; expenseType?: string; amount?: number }>>(
-      `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end]{expenseCategory,expenseType,amount}`,
+    serverClient.fetch<Array<{ ledgerAccount?: string; expenseCategory?: string; expenseType?: string; amount?: number }>>(
+      `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end]{ledgerAccount,expenseCategory,expenseType,amount}`,
       { start, end }, { cache: "no-store" },
     ),
   ]);
@@ -344,12 +351,18 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
   const costOfGoodsSold = soldCogs - returnedCogs;
   const grossProfit = netSales - costOfGoodsSold;
 
-  const expenseTotals = new Map<ExpenseCategory, number>(EXPENSE_CATEGORIES.map(({ category }) => [category, 0]));
+  const expenseTotals = new Map<string, { label: string; amount: number }>();
   for (const expense of expenseRows) {
-    const category = normalizeExpenseCategory(expense.expenseCategory, expense.expenseType);
-    expenseTotals.set(category, (expenseTotals.get(category) || 0) + Math.max(0, Number(expense.amount || 0)));
+    const label = cleanLedgerAccount(expense.ledgerAccount, expense.expenseCategory, expense.expenseType);
+    const key = label.toLocaleLowerCase("en-KE");
+    const current = expenseTotals.get(key) || { label, amount: 0 };
+    current.amount += Math.max(0, Number(expense.amount || 0));
+    expenseTotals.set(key, current);
   }
-  const expenseBreakdown = EXPENSE_CATEGORIES.map(({ category, label }) => ({ category, label, amount: expenseTotals.get(category) || 0 }));
+  const expenseBreakdown = [...expenseTotals.values()]
+    .filter((row) => row.amount > 0)
+    .sort((a, b) => a.label.localeCompare(b.label, "en-KE"))
+    .map((row) => ({ ledgerAccount: row.label, label: row.label, amount: row.amount }));
   const operatingExpenses = expenseBreakdown.reduce((sum, row) => sum + row.amount, 0);
   const operatingProfit = grossProfit - operatingExpenses;
 
@@ -392,7 +405,8 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
 
 export type ExpenseInput = {
   expenseType: "EXPENSE" | "PETTY_CASH" | "STAFF_PAYMENT" | "SALARY";
-  expenseCategory?: ExpenseCategory;
+  ledgerAccount?: string;
+  expenseCategory?: LegacyExpenseCategory;
   staffName?: string;
   description: string;
   amount: number;
@@ -402,12 +416,13 @@ export type ExpenseInput = {
 };
 
 export async function listExpenses(limit = 150) {
-  return serverClient.fetch<Array<{
-    id: string; expenseNumber: string; expenseType: string; expenseCategory: ExpenseCategory; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string;
+  const rows = await serverClient.fetch<Array<{
+    id: string; expenseNumber: string; expenseType: string; ledgerAccount?: string; expenseCategory?: LegacyExpenseCategory; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string;
   }>>(
-    `*[_type == "expenseTransaction"] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,"expenseCategory":coalesce(expenseCategory,select(expenseType == "SALARY" => "SALARIES","OTHER")),staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName}`,
+    `*[_type == "expenseTransaction"] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,ledgerAccount,expenseCategory,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
+  return rows.map((row) => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }));
 }
 
 export async function createExpense(input: ExpenseInput, seller: PosSeller) {
@@ -417,19 +432,20 @@ export async function createExpense(input: ExpenseInput, seller: PosSeller) {
   if (!description) throw new Error("Expense description is required.");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid expense amount.");
   if (!input.expenseType || !["EXPENSE", "PETTY_CASH", "STAFF_PAYMENT", "SALARY"].includes(input.expenseType)) throw new Error("Select a valid expense type.");
-  const expenseCategory = normalizeExpenseCategory(input.expenseCategory, input.expenseType);
+  const ledgerAccount = cleanText(input.ledgerAccount) || (input.expenseType === "SALARY" ? "Salaries" : "");
+  if (!ledgerAccount) throw new Error("Ledger account is required so this expenditure can be reported correctly in Profit & Loss.");
   const now = new Date().toISOString();
   const expenseDate = input.expenseDate && !Number.isNaN(Date.parse(input.expenseDate)) ? new Date(input.expenseDate).toISOString() : now;
   const key = `${seller.id}|${expenseDate}|${description}|${amount}`;
   const id = `expenseTransaction.${hashId(key)}`;
   const expenseNumber = `EXP-${hashId(key).slice(0, 12).toUpperCase()}`;
   await serverClient.createIfNotExists({
-    _id: id, _type: "expenseTransaction", expenseNumber, expenseType: input.expenseType, expenseCategory,
+    _id: id, _type: "expenseTransaction", expenseNumber, expenseType: input.expenseType, ledgerAccount,
     staffName: cleanText(input.staffName) || undefined, description, amount, currency: "KES",
     paymentMethod: input.paymentMethod || "other", transactionReference: cleanText(input.transactionReference) || undefined,
     expenseDate, createdBy: { _type: "reference", _ref: seller.id }, createdByName: seller.name, createdByRole: seller.role, createdAt: now,
   });
-  await recordAuditEvent({ key: `expense|${id}`, eventType: "EXPENSE_RECORDED", entityType: "expenseTransaction", entityId: id, entityLabel: expenseNumber, actor: seller, detail: `${input.expenseType} · KES ${amount.toLocaleString("en-KE")} · ${description}` });
+  await recordAuditEvent({ key: `expense|${id}`, eventType: "EXPENSE_RECORDED", entityType: "expenseTransaction", entityId: id, entityLabel: expenseNumber, actor: seller, detail: `${ledgerAccount} · ${input.expenseType} · KES ${amount.toLocaleString("en-KE")} · ${description}` });
   return { id, expenseNumber };
 }
 

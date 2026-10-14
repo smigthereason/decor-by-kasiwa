@@ -24,10 +24,10 @@ type Report = {
   byProduct: Array<{ name: string; quantity: number; revenue: number }>;
   byCashier: Array<{ name: string; orders: number; revenue: number }>;
   grossSales: number; discounts: number; returns: number; discountsAndReturns: number; netSales: number; costOfGoodsSold: number; grossProfit: number; operatingExpenses: number; operatingProfit: number;
-  expenseBreakdown: Array<{ category: "RENT" | "SALARIES" | "MARKETING" | "DELIVERY_UTILITIES" | "OTHER"; label: string; amount: number }>;
+  expenseBreakdown: Array<{ ledgerAccount: string; label: string; amount: number }>;
   cogsFallbackLines: number; cogsUncostedLines: number;
 };
-type Expense = { id: string; expenseNumber: string; expenseType: string; expenseCategory: "RENT" | "SALARIES" | "MARKETING" | "DELIVERY_UTILITIES" | "OTHER"; staffName?: string; description: string; amount: number; paymentMethod?: string; expenseDate: string; createdByName?: string };
+type Expense = { id: string; expenseNumber: string; expenseType: string; ledgerAccount: string; staffName?: string; description: string; amount: number; paymentMethod?: string; expenseDate: string; createdByName?: string };
 type Payment = { id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string };
 type ReconciliationResult = { state: "paid" | "failed" | "pending"; message: string; providerResultCode?: number; providerResponseCode?: string; providerResultDescription?: string; checkoutRequestId?: string; inventoryReviewRequired?: boolean; inventoryMessage?: string };
 type Audit = { id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string };
@@ -73,7 +73,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [reconciliationProcessedBy, setReconciliationProcessedBy] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [expenseForm, setExpenseForm] = useState({ expenseType: "EXPENSE", expenseCategory: "OTHER", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "" });
+  const [expenseForm, setExpenseForm] = useState({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "" });
 
   const load = useCallback(async (target: Tab = tab) => {
     setLoading(true); setMessage(null);
@@ -118,6 +118,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const reconciliationProviders = useMemo(() => [...new Set(payments.map((payment) => payment.provider).filter((value): value is string => Boolean(value)))].sort(), [payments]);
   const reconciliationChannels = useMemo(() => [...new Set(payments.map((payment) => payment.channel).filter((value): value is string => Boolean(value)))].sort(), [payments]);
   const reconciliationStatuses = useMemo(() => [...new Set(payments.map((payment) => payment.status).filter(Boolean))].sort(), [payments]);
+  const ledgerAccountSuggestions = useMemo(() => [...new Set(expenses.map((expense) => expense.ledgerAccount.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en-KE")), [expenses]);
   const reconciliationProcessors = useMemo(() => [...new Set(payments.map((payment) => payment.processedByName).filter((value): value is string => Boolean(value)))].sort(), [payments]);
 
   const relatedPaidAttempts = useMemo(() => {
@@ -324,7 +325,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
       };
     }
     if (tab === "receivables") return { title:"Receivables", columns:[{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"order",label:"Order"},{key:"total",label:"Total (KES)"},{key:"paid",label:"Paid (KES)"},{key:"balance",label:"Outstanding (KES)"}], rows:receivables.map((order)=>({customer:order.customerName,phone:order.customerPhone,order:order.orderNumber,total:order.total,paid:order.amountPaid,balance:order.balanceDue})) };
-    if (tab === "expenses") return { title:"Expenditure and Petty Cash", columns:[{key:"date",label:"Date"},{key:"category",label:"P&L Category"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}], rows:expenses.map((expense)=>({date:expense.expenseDate,category:expense.expenseCategory.replaceAll("_"," "),type:expense.expenseType,payee:expense.staffName||"—",description:expense.description,amount:expense.amount,method:expense.paymentMethod||"—",recordedBy:expense.createdByName||"—"})) };
+    if (tab === "expenses") return { title:"Expenditure and Petty Cash", columns:[{key:"date",label:"Date"},{key:"ledger",label:"Ledger Account"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}], rows:expenses.map((expense)=>({date:expense.expenseDate,ledger:expense.ledgerAccount,type:expense.expenseType,payee:expense.staffName||"—",description:expense.description,amount:expense.amount,method:expense.paymentMethod||"—",recordedBy:expense.createdByName||"—"})) };
     if (tab === "reconciliation") return { title:"Payment Reconciliation", columns:[{key:"time",label:"Time"},{key:"reference",label:"Reference"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"provider",label:"Provider"},{key:"channel",label:"Channel"},{key:"status",label:"Status"},{key:"amount",label:"Amount (KES)"},{key:"providerRef",label:"Provider Transaction"},{key:"processedBy",label:"Processed By"},{key:"relatedPaid",label:"Possible Paid Retry"},{key:"inventoryReview",label:"Inventory Review"}], rows:filteredPayments.map((payment)=>({time:payment.createdAt,reference:payment.reference,order:payment.orderNumber||"—",customer:payment.customerName||"—",phone:payment.customerPhone||"—",provider:payment.provider||"—",channel:payment.channel||"—",status:payment.status,amount:payment.amount,providerRef:payment.providerReceiptNumber||payment.providerTransactionId||"—",processedBy:payment.processedByName||"—",relatedPaid:relatedPaidAttempts.get(payment.reference)?.orderNumber||"—",inventoryReview:payment.inventoryReviewRequired ? payment.inventoryReconciliationReason || "Required" : "—"})) };
     return { title:"POS Audit Trail", columns:[{key:"time",label:"Time"},{key:"event",label:"Event"},{key:"entity",label:"Entity"},{key:"actor",label:"Actor"},{key:"role",label:"Role"},{key:"detail",label:"Detail"}], rows:audit.map((item)=>({time:item.createdAt,event:item.eventType,entity:item.entityLabel||"—",actor:item.actorName||"System",role:item.actorRole||"—",detail:item.detail||"—"})) };
   }, [audit, expenses, filteredPayments, orders, receivables, relatedPaidAttempts, report, tab]);
@@ -335,7 +336,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.message || "Unable to record expenditure.");
     setMessage(`${payload.expenseNumber || "Expense"} recorded.`);
-    setExpenseForm({ expenseType: "EXPENSE", expenseCategory: "OTHER", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "" });
+    setExpenseForm({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "" });
     await load("expenses");
   }
 
@@ -401,13 +402,15 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
         {tab === "expenses" && (manager || salesStaff) && <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
           <form onSubmit={submitExpense} className="rounded-2xl border hairline bg-[var(--paper)] p-5">
             <h2 className="text-lg font-semibold">Record expenditure</h2>
-            <p className="mt-1 text-xs text-[var(--muted)]">Choose the P&amp;L category so this expense is included correctly in the profit and loss report.</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Record the actual ledger account used by the business. Profit &amp; Loss reads operating-expense rows directly from Expenditure and only shows ledger accounts that have transactions in the selected report period.</p>
             <div className="mt-4 grid gap-3">
               <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Expense type
-                <span className="relative"><select value={expenseForm.expenseType} onChange={(e)=>setExpenseForm({...expenseForm,expenseType:e.target.value,expenseCategory:e.target.value === "SALARY" ? "SALARIES" : expenseForm.expenseCategory})} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-sm font-normal normal-case text-[var(--ink)]"><option value="EXPENSE">Business expense</option><option value="PETTY_CASH">Petty cash</option><option value="STAFF_PAYMENT">Staff payment</option><option value="SALARY">Salary</option></select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span>
+                <span className="relative"><select value={expenseForm.expenseType} onChange={(e)=>setExpenseForm({...expenseForm,expenseType:e.target.value,ledgerAccount:e.target.value === "SALARY" && !expenseForm.ledgerAccount.trim() ? "Salaries" : expenseForm.ledgerAccount})} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-sm font-normal normal-case text-[var(--ink)]"><option value="EXPENSE">Business expense</option><option value="PETTY_CASH">Petty cash</option><option value="STAFF_PAYMENT">Staff payment</option><option value="SALARY">Salary</option></select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span>
               </label>
-              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">P&amp;L category
-                <span className="relative"><select value={expenseForm.expenseCategory} onChange={(e)=>setExpenseForm({...expenseForm,expenseCategory:e.target.value})} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-sm font-normal normal-case text-[var(--ink)]"><option value="RENT">Rent</option><option value="SALARIES">Salaries</option><option value="MARKETING">Marketing</option><option value="DELIVERY_UTILITIES">Delivery &amp; utilities</option><option value="OTHER">Other operating expense</option></select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Ledger Account
+                <input list="expense-ledger-accounts" value={expenseForm.ledgerAccount} onChange={(e)=>setExpenseForm({...expenseForm,ledgerAccount:e.target.value})} placeholder="e.g. Rent, Salaries, Marketing, Electricity" required className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm font-normal normal-case text-[var(--ink)]"/>
+                <datalist id="expense-ledger-accounts">{ledgerAccountSuggestions.map((account)=><option key={account} value={account}/>)}</datalist>
+                <span className="text-[10px] font-normal normal-case tracking-normal text-[var(--muted)]">Use an existing ledger account or type a new one. Only accounts with expenditure in the selected report period appear in P&amp;L.</span>
               </label>
               <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Expense date
                 <input type="date" value={expenseForm.expenseDate} onChange={(e)=>setExpenseForm({...expenseForm,expenseDate:e.target.value})} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-sm font-normal normal-case text-[var(--ink)]"/>
@@ -422,7 +425,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
               <button className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream">Save expenditure</button>
             </div>
           </form>
-          <SimpleTable headers={["Date","P&L Category","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.expenseCategory.replaceAll("_"," "),expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} />
+          <SimpleTable headers={["Date","Ledger Account","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.ledgerAccount,expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} />
         </div>}
 
         {tab === "reconciliation" && manager && <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
@@ -455,28 +458,65 @@ function MobileDataCards({ headers, rows, totalRow }: { headers: string[]; rows:
 
 function ReportTable({ title, headers, rows, totalRow }: { title: string; headers: string[]; rows: string[][]; totalRow?: string[] }) { return <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]"><h3 className="p-4 font-semibold">{title}</h3><div className="px-3 pb-3 md:hidden"><MobileDataCards headers={headers} rows={rows} totalRow={totalRow}/></div><div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[420px] text-xs"><thead className="bg-[var(--paper-2)] text-left text-[10px] uppercase text-[var(--muted)]"><tr>{headers.map((header)=><th key={header} className="p-3">{header}</th>)}</tr></thead><tbody className="divide-y hairline">{rows.map((row,index)=><tr key={index}>{row.map((cell,cellIndex)=><td key={cellIndex} className="p-3">{cell}</td>)}</tr>)}{totalRow&&<tr className="bg-[var(--paper-2)] font-bold">{totalRow.map((cell,cellIndex)=><td key={cellIndex} className="p-3">{cell}</td>)}</tr>}</tbody></table></div></div>; }
 function ProfitLossStatement({ report }: { report: Report }) {
-  const rows = [
-    { label: "Gross sales", amount: report.grossSales, strong: false },
-    { label: "Discounts and returns", amount: report.discountsAndReturns, strong: false },
-    { label: "Net sales", amount: report.netSales, strong: true },
-    { label: "Cost of goods sold", amount: report.costOfGoodsSold, strong: false },
-    { label: "Gross profit", amount: report.grossProfit, strong: true },
-    ...report.expenseBreakdown.map((row) => ({ label: row.label, amount: row.amount, strong: false })),
-    { label: "Total operating expenses", amount: report.operatingExpenses, strong: true },
-    { label: "Operating profit", amount: report.operatingProfit, strong: true },
+  const operatingProfitClass = report.operatingProfit >= 0 ? "text-emerald-700" : "text-red-700";
+  const summary = [
+    { label: "Net sales", value: report.netSales },
+    { label: "Gross profit", value: report.grossProfit },
+    { label: "Operating profit", value: report.operatingProfit },
   ];
+  const StatementRow = ({ label, amount, strong = false, negative = false, highlight = false }: { label: string; amount: number; strong?: boolean; negative?: boolean; highlight?: boolean }) => (
+    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 px-5 py-3 text-sm ${strong ? "font-semibold" : ""} ${highlight ? "bg-[var(--paper-2)]" : ""}`}>
+      <span className={strong ? "text-[var(--ink)]" : "text-[var(--muted)]"}>{label}</span>
+      <span className={`min-w-[120px] text-right tabular-nums ${strong ? "text-[var(--ink)]" : ""}`}>{negative && amount !== 0 ? `(${formatMoney(Math.abs(amount))})` : formatMoney(amount)}</span>
+    </div>
+  );
 
   return <section className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
-    <div className="border-b hairline p-5">
-      <p className="kicker text-[var(--muted)]">Profit &amp; Loss</p>
-      <h2 className="mt-1 text-xl font-semibold">Operating statement</h2>
-      <p className="mt-2 text-xs text-[var(--muted)]">Cost of goods sold uses the procurement cost captured against each product. Restocked returns reverse their item cost. Operating expenses come from the Expenditure tab.</p>
-      {report.cogsFallbackLines > 0 && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">{report.cogsFallbackLines} historical sale/return line{report.cogsFallbackLines === 1 ? "" : "s"} did not contain a cost snapshot, so this report uses the product&apos;s current procurement cost for those lines. New sales snapshot procurement cost at the time of sale.</p>}
+    <div className="border-b hairline p-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="kicker text-[var(--muted)]">Profit &amp; Loss</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em]">Operating statement</h2>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--muted)]">Revenue comes from completed sales. Cost of goods sold uses product procurement cost. Operating expenses are fetched from Expenditure ledger accounts for this report period; ledger accounts with no transactions are not displayed.</p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {summary.map((item) => <div key={item.label} className="rounded-xl border hairline bg-[var(--paper-2)] px-4 py-3"><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{item.label}</p><p className={`mt-1 text-lg font-semibold tabular-nums ${item.label === "Operating profit" ? operatingProfitClass : ""}`}>{formatMoney(item.value)}</p></div>)}
+      </div>
+      {report.cogsFallbackLines > 0 && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-800">{report.cogsFallbackLines} historical sale/return line{report.cogsFallbackLines === 1 ? "" : "s"} did not contain a cost snapshot, so this report uses the product&apos;s current procurement cost for those lines. New sales snapshot procurement cost at the time of sale.</p>}
       {report.cogsUncostedLines > 0 && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[10px] leading-4 text-red-800">{report.cogsUncostedLines} sale/return line{report.cogsUncostedLines === 1 ? " has" : "s have"} no procurement cost greater than zero. COGS and profit may be understated until those product costs are completed.</p>}
     </div>
+
     <div className="divide-y hairline">
-      <div className="grid grid-cols-[1fr_auto] gap-4 bg-[var(--paper-2)] px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]"><span>Item</span><span>Amount</span></div>
-      {rows.map((row) => <div key={row.label} className={`grid grid-cols-[1fr_auto] gap-4 px-5 py-4 text-sm ${row.strong ? "font-bold" : ""}`}><span>{row.label}</span><span className="text-right">{formatMoney(row.amount)}</span></div>)}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-6 bg-[var(--paper-2)] px-5 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><span>Statement item</span><span className="min-w-[120px] text-right">Amount</span></div>
+
+      <div>
+        <div className="px-5 pb-1 pt-4 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Revenue</div>
+        <StatementRow label="Gross sales" amount={report.grossSales}/>
+        <StatementRow label="Discounts and returns" amount={report.discountsAndReturns} negative/>
+        <StatementRow label="Net sales" amount={report.netSales} strong highlight/>
+      </div>
+
+      <div>
+        <div className="px-5 pb-1 pt-4 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Cost of sales</div>
+        <StatementRow label="Cost of goods sold" amount={report.costOfGoodsSold}/>
+        <StatementRow label="Gross profit" amount={report.grossProfit} strong highlight/>
+      </div>
+
+      <div>
+        <div className="px-5 pb-1 pt-4 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">Operating expenses</div>
+        {report.expenseBreakdown.length > 0
+          ? report.expenseBreakdown.map((row) => <StatementRow key={row.ledgerAccount} label={row.label} amount={row.amount}/>)
+          : <div className="px-5 py-3 text-xs text-[var(--muted)]">No operating expenditure was recorded for this period.</div>}
+        <StatementRow label="Total operating expenses" amount={report.operatingExpenses} strong highlight/>
+      </div>
+
+      <div className="bg-[var(--paper-2)]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 px-5 py-4">
+          <span className="text-base font-bold">Operating profit</span>
+          <span className={`min-w-[120px] text-right text-lg font-bold tabular-nums ${operatingProfitClass}`}>{formatMoney(report.operatingProfit)}</span>
+        </div>
+      </div>
     </div>
     <div className="border-t hairline px-5 py-3 text-[10px] text-[var(--muted)]">Discounts: {formatMoney(report.discounts)} · Returns: {formatMoney(report.returns)}</div>
   </section>;
