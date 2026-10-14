@@ -372,26 +372,33 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
       );
     }
 
-    const variant = line.variantId
-      ? product.variants?.find((item) => item._key === line.variantId)
-      : product.variants?.find(
-          (item) =>
-            (!line.colour || item.colour === line.colour) &&
-            (!line.size || item.size === line.size),
-        );
-
-    if (line.variantId && !variant) {
-      throw new Error(`${product.name || "A product"} variant is no longer available.`);
+    if (variantProduct && !line.variantId) {
+      throw new Error(
+        `${product.name || "A product"} requires an available variant to be selected before checkout.`,
+      );
     }
 
-    if (
-      variant &&
-      typeof variant.stockQuantity === "number" &&
-      variant.stockQuantity < line.quantity
-    ) {
-      throw new Error(
-        `${product.name || "A product"} selected variant only has ${Math.max(variant.stockQuantity, 0)} unit(s) available.`,
-      );
+    const variant = line.variantId
+      ? product.variants?.find((item) => item._key === line.variantId)
+      : undefined;
+
+    if (variantProduct && !variant) {
+      throw new Error(`${product.name || "A product"} selected variant is no longer available.`);
+    }
+
+    if (variantProduct && variant) {
+      const availableVariantStock = Number(variant.stockQuantity);
+      const variantName = variant.title?.trim() || variant.colour?.trim() || variant.size?.trim() || "selected variant";
+
+      if (!Number.isFinite(availableVariantStock) || availableVariantStock <= 0) {
+        throw new Error(`${product.name || "A product"} (${variantName}) is out of stock.`);
+      }
+
+      if (availableVariantStock < line.quantity) {
+        throw new Error(
+          `${product.name || "A product"} (${variantName}) only has ${Math.max(availableVariantStock, 0)} unit(s) available.`,
+        );
+      }
     }
 
     return {
@@ -876,8 +883,8 @@ export async function finalizePaystackPayment(reference: string) {
   );
   const now = new Date().toISOString();
 
-  mutation.patch(order._id, (patch) =>
-    patch
+  mutation.patch(order._id, (patch) => {
+    let next = patch
       .ifRevisionId(order._rev)
       .set({
         customer: {
@@ -897,9 +904,21 @@ export async function finalizePaystackPayment(reference: string) {
         paidAt,
         currency: transaction.currency,
         failureReason: "",
+        inventoryReviewRequired: stockWarnings.length > 0,
+        inventoryReconciliationReason: stockWarnings.length > 0
+          ? `Payment was confirmed after stock changed. Review these items before fulfilment:\n${stockWarnings.join("\n")}`
+          : "",
         updatedAt: now,
-      }),
-  );
+      });
+
+    if (stockWarnings.length > 0) {
+      next = next.set({ inventoryReviewRaisedAt: now });
+    } else {
+      next = next.unset(["inventoryReviewRaisedAt"]);
+    }
+
+    return next;
+  });
 
   addInventoryMovementsToTransaction({
     transaction: mutation,

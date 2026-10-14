@@ -112,12 +112,19 @@ function clampLineQuantity(
   variantId?: string,
 ) {
   const base = clampProductQuantity(product, quantity);
-  const variant = variantId
-    ? product.variants?.find((item) => item.id === variantId)
-    : undefined;
+  const variantProduct = Boolean(product.variants?.length);
 
-  if (typeof variant?.stockQuantity === "number") {
-    return Math.max(0, Math.min(base, variant.stockQuantity));
+  if (variantProduct) {
+    if (!variantId) return 0;
+
+    const variant = product.variants?.find((item) => item.id === variantId);
+    const variantStock = Number(variant?.stockQuantity);
+
+    if (!variant || !Number.isFinite(variantStock) || variantStock <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(base, variantStock));
   }
 
   return base;
@@ -402,10 +409,16 @@ export function CommerceProvider({
         }
 
         const quantity =
-          clampProductQuantity(
+          clampLineQuantity(
             product,
             line.quantity,
+            line.variantId,
           );
+
+        if (quantity <= 0) {
+          changed = true;
+          continue;
+        }
 
         if (
           quantity !==
@@ -506,14 +519,17 @@ export function CommerceProvider({
     const product =
       productMap.get(productId);
 
+    const variantProduct = Boolean(product?.variants?.length);
     const variant = variantId
       ? product?.variants?.find((item) => item.id === variantId)
       : undefined;
+    const variantStock = Number(variant?.stockQuantity);
 
     if (
       !product ||
       isProductSoldOut(product) ||
-      variant?.stockQuantity === 0
+      (variantProduct && (!variantId || !variant)) ||
+      (variantProduct && (!Number.isFinite(variantStock) || variantStock <= 0))
     ) {
       return false;
     }
@@ -626,6 +642,19 @@ export function CommerceProvider({
         quantity,
         variantId,
       );
+
+      if (safeQuantity <= 0) {
+        return current.filter(
+          (line) =>
+            !sameLine(
+              line,
+              productId,
+              colour,
+              size,
+              variantId,
+            ),
+        );
+      }
 
       return current.map(
         (line) =>

@@ -193,15 +193,25 @@ export default function WishlistPage() {
 
                 {/* ACTION BUTTONS */}
                 <div className="grid grid-cols-2 gap-2 border-t hairline p-4">
-                  <button
-                    type="button"
-                    onClick={() => addToCart(product.id, 1, product.colours?.[0])}
-                    disabled={soldOut}
-                    className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <ShoppingCart size={12} />
-                    <span>{soldOut ? "Out of stock" : "Add to Cart"}</span>
-                  </button>
+                  {product.variants?.length ? (
+                    <Link
+                      href={`/shop/${product.slug}`}
+                      className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95"
+                    >
+                      <ShoppingCart size={12} />
+                      <span>Select options</span>
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addToCart(product.id, 1, product.colours?.[0])}
+                      disabled={soldOut}
+                      className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2.5 text-[9px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <ShoppingCart size={12} />
+                      <span>{soldOut ? "Out of stock" : "Add to Cart"}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleWishlist(product.id)}
