@@ -22,9 +22,11 @@ import { inventoryRecord } from "./inventoryRecord";
 import { shipment } from "./shipment";
 import { restockRequest } from "./restockRequest";
 import { shopLook } from "./shopLook";
+import { storeLocation } from "./storeLocation";
 
 export const schema: { types: SchemaTypeDefinition[] } = {
   types: [
+    storeLocation,
     auditEvent,
     staffSession,
     expenseTransaction,

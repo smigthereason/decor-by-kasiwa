@@ -133,7 +133,7 @@ async function options() {
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });
   }
@@ -147,7 +147,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });
   }

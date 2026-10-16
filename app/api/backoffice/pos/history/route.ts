@@ -6,7 +6,7 @@ import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   const params = new URL(request.url).searchParams;
   const channel = params.get("channel");

@@ -491,6 +491,7 @@ export default function AdminCustomerDetailPage() {
                   className="rounded-lg border hairline bg-[var(--paper)] px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none transition focus:border-[var(--brand-green)]"
                 >
                   <option value="CUSTOMER">Customer</option>
+                  <option value="MANAGER">Manager</option>
                   <option value="STORE_STAFF">Sales Staff / Cashier</option>
                   <option value="PRODUCTION_STAFF">Production Staff</option>
                   <option value="PACKAGING_STAFF">Packaging Staff</option>

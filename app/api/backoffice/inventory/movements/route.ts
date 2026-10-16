@@ -3,17 +3,22 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import {
+  adjustLocationBalance,
+  allocatedIncoming,
+  allocatedOnHand,
+  findLocationBalance,
+  locationIncoming,
+  locationOnHand,
+  type LocationBalance,
+  type StoreRefSnapshot,
+} from "@/lib/inventory/location-stock";
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 export const dynamic = "force-dynamic";
 
-type IncomingVariant = {
-  _key?: string;
-  variantId?: string;
-  variantLabel?: string;
-  quantity?: number;
-};
+const UNALLOCATED = "__UNALLOCATED__";
 
 type ProductRow = {
   _id: string;
@@ -27,10 +32,12 @@ type ProductRow = {
     _id?: string;
     location?: string;
     incoming?: number;
-    incomingByVariant?: IncomingVariant[];
     unitCost?: number;
+    locationBalances?: LocationBalance[];
   } | null;
 };
+
+type StoreRow = StoreRefSnapshot & { active?: boolean };
 
 function inventoryDocumentId(productId: string) {
   return `inventory.${productId.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
@@ -41,58 +48,54 @@ function movementNumber() {
   return `DBK-INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${randomUUID().slice(0, 6).toUpperCase()}`;
 }
 
-function incomingForVariant(rows: IncomingVariant[] | undefined, variantId: string) {
-  return Math.max(0, Number(rows?.find((row) => row.variantId === variantId)?.quantity || 0));
-}
-
-function updateIncomingVariant(
-  rows: IncomingVariant[] | undefined,
-  variant: StockVariant,
-  quantityChange: number,
-) {
-  const variantId = variant._key || "";
-  const existing = [...(rows || [])];
-  const index = existing.findIndex((row) => row.variantId === variantId);
-  const current = index >= 0 ? Math.max(0, Number(existing[index]?.quantity || 0)) : 0;
-  const next = Math.max(0, current + quantityChange);
-  const row: IncomingVariant = {
-    _key: variantId || randomUUID().replaceAll("-", ""),
-    variantId,
-    variantLabel: variantLabel(variant),
-    quantity: next,
-  };
-  if (index >= 0) existing[index] = { ...existing[index], ...row };
-  else existing.push(row);
-  return existing.filter((item) => Number(item.quantity || 0) > 0);
-}
-
 function updateVariantOnHand(variants: StockVariant[], variantId: string, quantityChange: number) {
-  return variants.map((variant) => {
-    if (variant._key !== variantId) return variant;
-    return {
-      ...variant,
-      stockQuantity: Math.max(0, Number(variant.stockQuantity || 0) + quantityChange),
-    };
-  });
+  return variants.map((variant) => variant._key === variantId
+    ? { ...variant, stockQuantity: Math.max(0, Number(variant.stockQuantity || 0) + quantityChange) }
+    : variant);
+}
+
+async function getStore(storeId: string): Promise<StoreRow | null> {
+  if (!storeId || storeId === UNALLOCATED) return null;
+  return serverClient.fetch<StoreRow | null>(
+    `*[_type == "storeLocation" && _id == $storeId && active != false][0]{"id":_id,name,code,"active":coalesce(active,true)}`,
+    { storeId },
+    { cache: "no-store" },
+  );
+}
+
+function requireAssignedStore(staff: { role: string; storeLocationId?: string }, requestedStoreId: string, label: string) {
+  if (staff.role !== "MANAGER") return;
+  if (!staff.storeLocationId) throw new Error("This Manager is not assigned to a store/location. Ask Admin to assign one under Staff.");
+  if (requestedStoreId !== staff.storeLocationId) throw new Error(`Managers can only ${label} stock for their assigned store.`);
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
-  const movements = await serverClient.fetch(
-    `*[_type == "inventoryMovement" && movementType in ["PURCHASE", "RECEIPT", "TRANSFER"]] | order(createdAt desc)[0...100]{
-      _id,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,stockBefore,stockAfter,incomingBefore,incomingAfter,sourceLocation,destination,unitCost,movementValue,actorName,note,createdAt
+  const scope = staff.role === "MANAGER" ? staff.storeLocationId || "__NONE__" : "";
+  const movements = await serverClient.fetch<Array<Record<string, unknown>>>(
+    `*[
+      _type == "inventoryMovement" &&
+      movementType in ["PURCHASE", "RECEIPT", "TRANSFER"] &&
+      ($scope == "" || sourceStore._ref == $scope || destinationStore._ref == $scope)
+    ] | order(createdAt desc)[0...150]{
+      _id,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,stockBefore,stockAfter,
+      incomingBefore,incomingAfter,sourceLocation,destination,"sourceStoreId":sourceStore._ref,"destinationStoreId":destinationStore._ref,
+      unitCost,movementValue,actorName,note,createdAt
     }`,
-    {},
+    { scope },
     { cache: "no-store" },
   );
 
-  return NextResponse.json({ movements });
+  const hideCost = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
+  return NextResponse.json({
+    movements: hideCost ? movements.map(({ unitCost: _unitCost, movementValue: _movementValue, ...movement }) => movement) : movements,
+  });
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   try {
@@ -101,133 +104,138 @@ export async function POST(request: Request) {
       productId?: string;
       variantId?: string;
       quantity?: number;
-      destination?: string;
+      sourceStoreId?: string;
+      destinationStoreId?: string;
       note?: string;
     };
     const action = body.action;
     const productId = typeof body.productId === "string" ? body.productId.trim() : "";
     const variantId = typeof body.variantId === "string" ? body.variantId.trim() : "";
     const quantity = Math.floor(Number(body.quantity || 0));
-    const destination = typeof body.destination === "string" ? body.destination.trim() : "";
+    const sourceStoreId = typeof body.sourceStoreId === "string" ? body.sourceStoreId.trim() : "";
+    const destinationStoreId = typeof body.destinationStoreId === "string" ? body.destinationStoreId.trim() : "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
     if (!productId) return NextResponse.json({ message: "Select a product." }, { status: 400 });
-    if (!action || !["PURCHASE", "RECEIVE", "TRANSFER"].includes(action)) {
-      return NextResponse.json({ message: "Choose Purchase stock, Receive stock or Transfer stock." }, { status: 400 });
-    }
+    if (!action || !["PURCHASE", "RECEIVE", "TRANSFER"].includes(action)) return NextResponse.json({ message: "Choose Purchase stock, Receive stock or Transfer stock." }, { status: 400 });
     if (!(quantity > 0)) return NextResponse.json({ message: "Quantity must be at least 1." }, { status: 400 });
-    if ((action === "RECEIVE" || action === "TRANSFER") && !destination) {
-      return NextResponse.json({ message: action === "RECEIVE" ? "Select the store/location receiving this stock." : "Destination is required for a stock transfer." }, { status: 400 });
+    if ((action === "PURCHASE" || action === "RECEIVE") && !destinationStoreId) return NextResponse.json({ message: "Select the store/location for this stock." }, { status: 400 });
+    if (action === "TRANSFER" && (!sourceStoreId || !destinationStoreId || sourceStoreId === destinationStoreId)) return NextResponse.json({ message: "Select different source and destination stores." }, { status: 400 });
+
+    if (action === "PURCHASE" || action === "RECEIVE") requireAssignedStore(staff, destinationStoreId, action === "PURCHASE" ? "purchase" : "receive");
+    if (action === "TRANSFER") {
+      if (sourceStoreId === UNALLOCATED && !["ADMIN", "STORE"].includes(staff.role)) throw new Error("Only Admin or Store Manager can allocate existing unassigned stock to a branch.");
+      if (sourceStoreId !== UNALLOCATED) requireAssignedStore(staff, sourceStoreId, "transfer");
     }
 
-    const product = await serverClient.fetch<ProductRow | null>(
-      `*[_type == "product" && _id == $productId][0]{
-        _id,_rev,name,sku,initialStock,procurementCost,variants,
-        "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{_id,location,incoming,incomingByVariant,unitCost}
-      }`,
-      { productId },
-      { cache: "no-store" },
-    );
+    const [destinationStore, sourceStore, product] = await Promise.all([
+      getStore(destinationStoreId),
+      sourceStoreId && sourceStoreId !== UNALLOCATED ? getStore(sourceStoreId) : Promise.resolve(null),
+      serverClient.fetch<ProductRow | null>(
+        `*[_type == "product" && _id == $productId][0]{
+          _id,_rev,name,sku,initialStock,procurementCost,variants,
+          "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
+            _id,location,incoming,unitCost,
+            "locationBalances": locationBalances[]{_key,store,"storeId":coalesce(store._ref,storeId),"storeName":coalesce(store->name,storeName),"storeCode":coalesce(store->code,storeCode),onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
+          }
+        }`,
+        { productId },
+        { cache: "no-store" },
+      ),
+    ]);
     if (!product) return NextResponse.json({ message: "Product not found." }, { status: 404 });
+    if (!destinationStore) return NextResponse.json({ message: "Destination store is not active or does not exist." }, { status: 400 });
+    if (sourceStoreId && sourceStoreId !== UNALLOCATED && !sourceStore) return NextResponse.json({ message: "Source store is not active or does not exist." }, { status: 400 });
 
     const variantProduct = hasVariants(product.variants);
     const selectedVariant = variantProduct ? product.variants?.find((variant) => variant._key === variantId) : undefined;
-    if (variantProduct && !selectedVariant) {
-      return NextResponse.json({ message: "Select a product variant so its quantity remains in sync with total stock." }, { status: 400 });
-    }
+    if (variantProduct && !selectedVariant) return NextResponse.json({ message: "Select a product variant so branch stock stays accurate." }, { status: 400 });
 
-    const before = effectiveOnHand(product.initialStock, product.variants);
+    const balances = product.inventory?.locationBalances || [];
+    const companyBefore = effectiveOnHand(product.initialStock, product.variants);
     const aggregateIncomingBefore = Math.max(0, Number(product.inventory?.incoming || 0));
-    const selectedIncomingBefore = selectedVariant
-      ? incomingForVariant(product.inventory?.incomingByVariant, variantId)
-      : aggregateIncomingBefore;
+    const legacyIncoming = Math.max(0, aggregateIncomingBefore - allocatedIncoming(balances));
+    const destinationBefore = findLocationBalance(balances, destinationStore.id);
+    const sourceBefore = sourceStore ? findLocationBalance(balances, sourceStore.id) : undefined;
+    const variantKey = selectedVariant?._key;
+    const variantName = selectedVariant ? variantLabel(selectedVariant) : undefined;
 
-    if (action === "RECEIVE" && quantity > selectedIncomingBefore) {
-      return NextResponse.json({ message: `Only ${selectedIncomingBefore} purchased unit${selectedIncomingBefore === 1 ? " is" : "s are"} awaiting receipt${selectedVariant ? ` for ${variantLabel(selectedVariant)}` : ""}.` }, { status: 409 });
-    }
+    const availableAtSource = sourceStoreId === UNALLOCATED
+      ? Math.max(0, (variantKey ? Number(selectedVariant?.stockQuantity || 0) : companyBefore) - allocatedOnHand(balances, variantKey))
+      : locationOnHand(sourceBefore, variantKey);
+    const incomingAtDestination = locationIncoming(destinationBefore, variantKey);
 
-    const selectedOnHand = selectedVariant ? Math.max(0, Number(selectedVariant.stockQuantity || 0)) : before;
-    if (action === "TRANSFER" && quantity > selectedOnHand) {
-      return NextResponse.json({ message: `Only ${selectedOnHand} unit${selectedOnHand === 1 ? " is" : "s are"} currently in stock${selectedVariant ? ` for ${variantLabel(selectedVariant)}` : ""}.` }, { status: 409 });
-    }
+    if (action === "RECEIVE" && quantity > incomingAtDestination) return NextResponse.json({ message: `Only ${incomingAtDestination} purchased unit${incomingAtDestination === 1 ? " is" : "s are"} awaiting receipt at ${destinationStore.name}${variantName ? ` for ${variantName}` : ""}.` }, { status: 409 });
+    if (action === "TRANSFER" && quantity > availableAtSource) return NextResponse.json({ message: `Only ${availableAtSource} unit${availableAtSource === 1 ? " is" : "s are"} available at the selected source${variantName ? ` for ${variantName}` : ""}.` }, { status: 409 });
 
+    let nextBalances = balances;
     let nextVariants = product.variants;
-    let after = before;
-    let incomingAfter = aggregateIncomingBefore;
-    let incomingByVariant = product.inventory?.incomingByVariant || [];
+    let companyAfter = companyBefore;
 
     if (action === "PURCHASE") {
-      incomingAfter = aggregateIncomingBefore + quantity;
-      if (selectedVariant) incomingByVariant = updateIncomingVariant(incomingByVariant, selectedVariant, quantity);
+      nextBalances = adjustLocationBalance(nextBalances, destinationStore, { incomingDelta: quantity, variantId: variantKey, variantLabel: variantName });
     } else if (action === "RECEIVE") {
-      incomingAfter = Math.max(0, aggregateIncomingBefore - quantity);
-      if (selectedVariant && product.variants) {
-        incomingByVariant = updateIncomingVariant(incomingByVariant, selectedVariant, -quantity);
-        nextVariants = updateVariantOnHand(product.variants, variantId, quantity);
-        after = variantStockTotal(nextVariants);
+      nextBalances = adjustLocationBalance(nextBalances, destinationStore, { incomingDelta: -quantity, onHandDelta: quantity, variantId: variantKey, variantLabel: variantName });
+      if (variantKey && product.variants) {
+        nextVariants = updateVariantOnHand(product.variants, variantKey, quantity);
+        companyAfter = variantStockTotal(nextVariants);
       } else {
-        after = before + quantity;
+        companyAfter = companyBefore + quantity;
       }
     } else if (action === "TRANSFER") {
-      if (selectedVariant && product.variants) {
-        nextVariants = updateVariantOnHand(product.variants, variantId, -quantity);
-        after = variantStockTotal(nextVariants);
-      } else {
-        after = before - quantity;
-      }
+      if (sourceStoreId !== UNALLOCATED && sourceStore) nextBalances = adjustLocationBalance(nextBalances, sourceStore, { onHandDelta: -quantity, variantId: variantKey, variantLabel: variantName });
+      nextBalances = adjustLocationBalance(nextBalances, destinationStore, { onHandDelta: quantity, variantId: variantKey, variantLabel: variantName });
     }
 
+    const allocatedIncomingAfter = allocatedIncoming(nextBalances);
+    const incomingAfter = legacyIncoming + allocatedIncomingAfter;
     const unitCost = Math.max(0, Number(product.inventory?.unitCost ?? product.procurementCost ?? 0));
     const inventoryId = product.inventory?._id || inventoryDocumentId(productId);
-    const movementId = `inventoryMovement.${randomUUID().replaceAll("-", "")}`;
     const now = new Date().toISOString();
-    const currentLocation = product.inventory?.location || "Main store";
-
     const transaction = serverClient.transaction();
-    if (action !== "PURCHASE") {
-      transaction.patch(productId, (patch) =>
-        patch.ifRevisionId(product._rev).set({
-          initialStock: after,
-          ...(nextVariants ? { variants: nextVariants } : {}),
-          available: after > 0,
-        }),
-      );
+
+    if (action === "RECEIVE") {
+      transaction.patch(productId, (patch) => patch.ifRevisionId(product._rev).set({
+        initialStock: companyAfter,
+        ...(nextVariants ? { variants: nextVariants } : {}),
+        available: companyAfter > 0,
+      }));
     }
 
     transaction.createIfNotExists({
       _id: inventoryId,
       _type: "inventoryRecord",
       product: { _type: "reference", _ref: productId },
-      location: currentLocation,
+      location: "Multi-location",
+      locationBalances: [],
       reserved: 0,
       incoming: 0,
       incomingByVariant: [],
       reorderPoint: 5,
       unitCost,
     });
-    transaction.patch(inventoryId, (patch) => patch.set({
-      incoming: incomingAfter,
-      incomingByVariant,
-      ...(action === "RECEIVE" ? { location: destination } : {}),
-    }));
+    transaction.patch(inventoryId, (patch) => patch.set({ location: "Multi-location", locationBalances: nextBalances, incoming: incomingAfter }));
 
-    const movementType = action === "PURCHASE" ? "PURCHASE" : action === "RECEIVE" ? "RECEIPT" : "TRANSFER";
+    const sourceName = action === "PURCHASE" ? "Supplier / purchase" : action === "RECEIVE" ? "Incoming stock" : sourceStoreId === UNALLOCATED ? "Unallocated legacy stock" : sourceStore?.name || "Store";
+    const movementId = `inventoryMovement.${randomUUID().replaceAll("-", "")}`;
     transaction.create({
       _id: movementId,
       _type: "inventoryMovement",
       movementNumber: movementNumber(),
-      movementType,
+      movementType: action === "PURCHASE" ? "PURCHASE" : action === "RECEIVE" ? "RECEIPT" : "TRANSFER",
       product: { _type: "reference", _ref: productId },
       productId,
       productName: product.name || "Product",
-      ...(selectedVariant ? { variantId, variantLabel: variantLabel(selectedVariant) } : {}),
+      ...(selectedVariant ? { variantId: variantKey, variantLabel: variantName } : {}),
       quantityChange: action === "TRANSFER" ? -quantity : quantity,
-      stockBefore: before,
-      stockAfter: after,
+      stockBefore: companyBefore,
+      stockAfter: companyAfter,
       incomingBefore: aggregateIncomingBefore,
       incomingAfter,
-      sourceLocation: action === "PURCHASE" ? "Supplier / purchase" : action === "RECEIVE" ? "Incoming stock" : currentLocation,
-      ...(action === "RECEIVE" || action === "TRANSFER" ? { destination } : {}),
+      sourceLocation: sourceName,
+      destination: destinationStore.name,
+      ...(sourceStore ? { sourceStore: { _type: "reference", _ref: sourceStore.id } } : {}),
+      destinationStore: { _type: "reference", _ref: destinationStore.id },
       unitCost,
       movementValue: unitCost * quantity,
       actor: { _type: "reference", _ref: staff.customerId },
@@ -236,15 +244,16 @@ export async function POST(request: Request) {
       note: note || undefined,
       createdAt: now,
     });
-    await transaction.commit();
 
+    await transaction.commit();
     return NextResponse.json({
       ok: true,
-      stockBefore: before,
-      stockAfter: after,
+      stockBefore: companyBefore,
+      stockAfter: companyAfter,
       incomingBefore: aggregateIncomingBefore,
       incomingAfter,
-      unitCost,
+      locationOnHand: locationOnHand(findLocationBalance(nextBalances, destinationStore.id), variantKey),
+      locationIncoming: locationIncoming(findLocationBalance(nextBalances, destinationStore.id), variantKey),
       movementId,
     });
   } catch (cause) {

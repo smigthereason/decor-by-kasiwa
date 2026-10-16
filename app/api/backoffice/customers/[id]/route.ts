@@ -4,7 +4,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import type { CustomerRole, CustomerStatus } from "@/lib/auth/sanity-users";
 import { serverClient } from "@/sanity/lib/serverClient";
 
-const roles: CustomerRole[] = ["CUSTOMER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "STORE", "ADMIN"];
+const roles: CustomerRole[] = ["CUSTOMER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "MANAGER", "STORE", "ADMIN"];
 const statuses: CustomerStatus[] = ["ACTIVE", "SUSPENDED"];
 const clean = (value: unknown) => (typeof value === "string" ? value.trim() : undefined);
 
@@ -28,11 +28,17 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     return NextResponse.json({ message: "You cannot suspend your own admin account." }, { status: 400 });
   }
 
-  const existing = await serverClient.fetch<{ _id: string } | null>(
-    `*[_type == "customerUser" && _id == $id][0]{_id}`,
+  const existing = await serverClient.fetch<{ _id: string; assignedStoreId?: string } | null>(
+    `*[_type == "customerUser" && _id == $id][0]{_id,"assignedStoreId":assignedStore._ref}`,
     { id: customerId },
   );
   if (!existing) return NextResponse.json({ message: "Customer not found." }, { status: 404 });
+  if (role === "MANAGER" && !existing.assignedStoreId) {
+    return NextResponse.json(
+      { message: "Assign this account to a store under Staff before using the Manager role." },
+      { status: 400 },
+    );
+  }
 
   const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
   for (const key of ["name", "phone", "address1", "address2", "city", "region", "country"] as const) {

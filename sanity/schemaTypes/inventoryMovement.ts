@@ -21,6 +21,8 @@ export const inventoryMovement = defineType({
     defineField({ name: "variantLabel", title: "Variant Label", type: "string" }),
     defineField({ name: "sourceLocation", title: "Source Location", type: "string" }),
     defineField({ name: "destination", title: "Destination", type: "string" }),
+    defineField({ name: "sourceStore", title: "Source Store", type: "reference", to: [{ type: "storeLocation" }] }),
+    defineField({ name: "destinationStore", title: "Destination Store", type: "reference", to: [{ type: "storeLocation" }] }),
     defineField({ name: "unitCost", title: "Procurement Cost / Unit (KES)", type: "number", validation: (Rule) => Rule.min(0) }),
     defineField({ name: "movementValue", title: "Movement Value (KES)", type: "number", validation: (Rule) => Rule.min(0) }),
     defineField({ name: "order", title: "Order", type: "reference", to: [{ type: "commerceOrder" }] }),

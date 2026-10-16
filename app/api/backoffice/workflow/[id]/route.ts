@@ -7,7 +7,7 @@ import { FULFILMENT_STAGES, roleForStage, type FulfilmentStage } from "@/lib/ope
 import { recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
 
-const allowed = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
+const allowed = ["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
 const permissionFor: Record<FulfilmentStage, StaffPermission> = { PRODUCTION: "PRODUCTION", PACKAGING: "PACKAGING", DELIVERY: "DELIVERY" };
 
 type Order = { _id: string; orderNumber: string; currentFulfilmentStage?: FulfilmentStage | "COMPLETED"; fulfilmentStages?: FulfilmentStage[]; assignedStaffId?: string };
@@ -37,7 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
     if (!order?.currentFulfilmentStage || order.currentFulfilmentStage === "COMPLETED") throw new Error("This sale has no active fulfilment stage.");
     const stage: FulfilmentStage = order.currentFulfilmentStage;
-    const manager = staff.role === "ADMIN" || staff.role === "STORE";
+    const manager = staff.role === "ADMIN" || staff.role === "STORE" || staff.role === "MANAGER";
 
     if (body.action === "assign_current") {
       if (!manager) return NextResponse.json({ message: "Only a manager or admin can assign the current workflow stage." }, { status: 403 });

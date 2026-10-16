@@ -25,7 +25,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
 
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });

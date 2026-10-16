@@ -1,6 +1,7 @@
 import "server-only";
 
 import { effectiveOnHand, type StockVariant } from "@/lib/inventory/stock";
+import { allocatedOnHand, findLocationBalance, locationIncoming, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 import { adminMetrics, storeMetrics } from "./selectors";
@@ -38,6 +39,7 @@ type RawProduct = {
     incoming?: number;
     reorderPoint?: number;
     unitCost?: number;
+    locationBalances?: LocationBalance[];
   } | null;
 };
 
@@ -48,7 +50,7 @@ type RawCustomer = {
   phone?: string;
   image?: string | null;
   googleId?: string | null;
-  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
+  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "MANAGER" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "EMAIL_PASSWORD" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
   address1?: string;
@@ -66,7 +68,7 @@ function safeString(value: unknown, fallback = "—") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-export async function getLiveProducts(): Promise<InventoryItem[]> {
+export async function getLiveProducts(storeLocationId?: string): Promise<InventoryItem[]> {
   const rows = await serverClient.fetch<RawProduct[]>(
     `*[_type == "product" && defined(slug.current)] | order(name asc) {
       _id,
@@ -91,44 +93,78 @@ export async function getLiveProducts(): Promise<InventoryItem[]> {
         reserved,
         incoming,
         reorderPoint,
-        unitCost
+        unitCost,
+        "locationBalances": locationBalances[]{
+          _key,
+          store,
+          "storeId": coalesce(store._ref, storeId),
+          "storeName": coalesce(store->name, storeName),
+          "storeCode": coalesce(store->code, storeCode),
+          onHand,
+          incoming,
+          variants[]{_key,variantId,variantLabel,onHand,incoming}
+        }
       }
     }`,
     {},
     { cache: "no-store" },
   );
 
-  return rows.map((row) => ({
-    id: row._id,
-    productId: row._id,
-    slug: row.slug,
-    sku: safeString(row.sku, "NO-SKU"),
-    name: safeString(row.name, "Untitled product"),
-    category: safeString(row.category, "Uncategorised"),
-    finish: row.colours?.[0] || "",
-    location: row.inventory?.location || "Unassigned",
-    onHand: effectiveOnHand(row.initialStock, row.variants),
-    reserved: row.inventory?.reserved || 0,
-    incoming: row.inventory?.incoming || 0,
-    reorderPoint: row.inventory?.reorderPoint ?? 5,
-    unitCost: row.inventory?.unitCost ?? row.procurementCost ?? 0,
-    retailPrice: typeof row.price === "number" ? row.price : 0,
-    image: row.image || undefined,
-    shortDescription: row.shortDescription || undefined,
-    description: row.description || undefined,
-    available: row.available !== false,
-    bestSeller: row.bestSeller === true,
-    ecommerceEnabled: row.ecommerceEnabled !== false,
-    posEnabled: row.posEnabled !== false,
-    variants: (row.variants || []).map((variant, index) => ({
+  return rows.map((row) => {
+    const companyOnHand = effectiveOnHand(row.initialStock, row.variants);
+    const balances = row.inventory?.locationBalances || [];
+    const scopedBalance = storeLocationId ? findLocationBalance(balances, storeLocationId) : undefined;
+    const scopedVariants = (row.variants || []).map((variant, index) => ({
       id: variant._key || `${row._id}-variant-${index}`,
       title: variant.title,
       colour: variant.colour,
       size: variant.size,
       sku: variant.sku,
-      stockQuantity: Math.max(0, Number(variant.stockQuantity || 0)),
-    })),
-  }));
+      stockQuantity: storeLocationId
+        ? locationOnHand(scopedBalance, variant._key)
+        : Math.max(0, Number(variant.stockQuantity || 0)),
+    }));
+
+    return {
+      id: row._id,
+      productId: row._id,
+      slug: row.slug,
+      sku: safeString(row.sku, "NO-SKU"),
+      name: safeString(row.name, "Untitled product"),
+      category: safeString(row.category, "Uncategorised"),
+      finish: row.colours?.[0] || "",
+      location: storeLocationId ? scopedBalance?.storeName || "Assigned store" : row.inventory?.location || "Company stock",
+      onHand: storeLocationId ? locationOnHand(scopedBalance) : companyOnHand,
+      companyOnHand,
+      unallocatedOnHand: Math.max(0, companyOnHand - allocatedOnHand(balances)),
+      locationBalances: balances.map((balance) => ({
+        storeId: balance.store?._ref || balance.storeId || "",
+        storeName: balance.storeName || "Store",
+        storeCode: balance.storeCode,
+        onHand: Math.max(0, Number(balance.onHand || 0)),
+        incoming: Math.max(0, Number(balance.incoming || 0)),
+        variants: (balance.variants || []).map((variant) => ({
+          variantId: variant.variantId || "",
+          variantLabel: variant.variantLabel,
+          onHand: Math.max(0, Number(variant.onHand || 0)),
+          incoming: Math.max(0, Number(variant.incoming || 0)),
+        })),
+      })).filter((balance) => Boolean(balance.storeId)),
+      reserved: row.inventory?.reserved || 0,
+      incoming: storeLocationId ? locationIncoming(scopedBalance) : row.inventory?.incoming || 0,
+      reorderPoint: row.inventory?.reorderPoint ?? 5,
+      unitCost: row.inventory?.unitCost ?? row.procurementCost ?? 0,
+      retailPrice: typeof row.price === "number" ? row.price : 0,
+      image: row.image || undefined,
+      shortDescription: row.shortDescription || undefined,
+      description: row.description || undefined,
+      available: row.available !== false,
+      bestSeller: row.bestSeller === true,
+      ecommerceEnabled: row.ecommerceEnabled !== false,
+      posEnabled: row.posEnabled !== false,
+      variants: scopedVariants,
+    };
+  });
 }
 
 export async function getLiveOrders(): Promise<Order[]> {
@@ -415,9 +451,9 @@ function buildActivity({
     .slice(0, 10);
 }
 
-export async function getLiveOperationsSnapshot(): Promise<OperationsSnapshot> {
+export async function getLiveOperationsSnapshot(storeLocationId?: string): Promise<OperationsSnapshot> {
   const [products, orders, shipments, restockRequests] = await Promise.all([
-    getLiveProducts(),
+    getLiveProducts(storeLocationId),
     getLiveOrders(),
     getLiveShipments(),
     getLiveRestockRequests(),

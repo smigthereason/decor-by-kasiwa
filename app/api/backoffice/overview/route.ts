@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
 
   if (!staff.ok) {
     return NextResponse.json(
@@ -17,12 +17,25 @@ export async function GET() {
   }
 
   try {
-    const snapshot = await getLiveOperationsSnapshot();
+    const scopeStoreId = staff.storeLocationId || undefined;
+    const snapshot = await getLiveOperationsSnapshot(scopeStoreId);
+    const hideProcurement = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
 
     // Store roles need operational data but not the full customer directory.
     const payload = {
       ...snapshot,
       viewerRole: staff.role,
+      products: hideProcurement ? snapshot.products.map((product) => ({
+        ...product,
+        unitCost: 0,
+        ...(staff.storeLocationId ? {
+          companyOnHand: undefined,
+          unallocatedOnHand: undefined,
+          // Keep only the assigned branch balance so Manager/Sales Staff inventory
+          // screens can render the scoped stock without exposing other stores.
+          locationBalances: (product.locationBalances || []).filter((balance) => balance.storeId === staff.storeLocationId),
+        } : {}),
+      })) : snapshot.products,
       customers: staff.role === "ADMIN" ? snapshot.customers : [],
     };
 

@@ -6,13 +6,13 @@ import type { FulfilmentStage } from "@/lib/operations/workflow";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 export const dynamic = "force-dynamic";
-const allowed = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
+const allowed = ["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
 
 export async function GET() {
   const staff = await getApiStaff([...allowed]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
   const viewer = await getCustomerByDocumentId(staff.customerId);
-  const manager = staff.role === "ADMIN" || staff.role === "STORE";
+  const manager = staff.role === "ADMIN" || staff.role === "STORE" || staff.role === "MANAGER";
   const stages = new Set<FulfilmentStage>();
   if (staff.role === "PRODUCTION_STAFF" || viewer?.permissions?.includes("PRODUCTION")) stages.add("PRODUCTION");
   if (staff.role === "PACKAGING_STAFF" || viewer?.permissions?.includes("PACKAGING")) stages.add("PACKAGING");

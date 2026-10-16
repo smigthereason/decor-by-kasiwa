@@ -1,11 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Activity, Clock3, LoaderCircle, LogIn, Plus, Save, UserCog, Wifi, WifiOff } from "lucide-react";
+import { Activity, ChevronDown, Clock3, LoaderCircle, LogIn, Plus, Save, UserCog, Wifi, WifiOff } from "lucide-react";
 
 const roles = [
   ["STORE_STAFF", "Sales Staff"], ["PRODUCTION_STAFF", "Production"], ["PACKAGING_STAFF", "Packaging"],
-  ["DELIVERY_STAFF", "Delivery"], ["STORE", "Store Manager"], ["ADMIN", "Admin / Owner"],
+  ["DELIVERY_STAFF", "Delivery"], ["MANAGER", "Manager"], ["STORE", "Store Manager"], ["ADMIN", "Admin / Owner"],
 ] as const;
 const permissions = [
   ["POS_SALES", "POS Sales"], ["WHATSAPP_SALES", "WhatsApp Sales"], ["TIKTOK_SALES", "TikTok Sales"],
@@ -14,8 +14,9 @@ const permissions = [
 ] as const;
 type Role = typeof roles[number][0];
 type Permission = typeof permissions[number][0];
-type Staff = { _id: string; name: string; email: string; role: Role; permissions?: Permission[]; status: "ACTIVE" | "SUSPENDED"; lastLoginAt?: string };
-type Editor = { name: string; email: string; role: Role; permissions: Permission[]; status: "ACTIVE" | "SUSPENDED" };
+type StoreLocation = { _id: string; name: string; code: string; active?: boolean };
+type Staff = { _id: string; name: string; email: string; role: Role; permissions?: Permission[]; assignedStore?: StoreLocation | null; status: "ACTIVE" | "SUSPENDED"; lastLoginAt?: string };
+type Editor = { name: string; email: string; role: Role; permissions: Permission[]; assignedStoreId: string; status: "ACTIVE" | "SUSPENDED" };
 type ActivitySummary = { online: boolean; lastSeenAt?: string; todayMinutes: number; sevenDayMinutes: number; loginCount: number };
 type StaffSession = {
   _id: string;
@@ -38,7 +39,7 @@ type ActivityItem = {
 };
 type ActivityPayload = { summary: ActivitySummary; sessions: StaffSession[]; activity: ActivityItem[] };
 
-const blank: Editor = { name: "", email: "", role: "STORE_STAFF", permissions: [], status: "ACTIVE" };
+const blank: Editor = { name: "", email: "", role: "STORE_STAFF", permissions: [], assignedStoreId: "", status: "ACTIVE" };
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -69,6 +70,7 @@ function eventLabel(value: string) {
 
 export default function StaffManagerPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [locations, setLocations] = useState<StoreLocation[]>([]);
   const [selected, setSelected] = useState<Staff | null>(null);
   const [editor, setEditor] = useState<Editor>(blank);
   const [loading, setLoading] = useState(true);
@@ -79,10 +81,16 @@ export default function StaffManagerPage() {
   const [activityError, setActivityError] = useState("");
 
   async function load() {
-    const response = await fetch("/api/backoffice/staff", { cache: "no-store" });
-    const payload = await response.json() as { staff?: Staff[]; message?: string };
-    if (!response.ok) throw new Error(payload.message || "Unable to load staff.");
+    const [staffResponse, locationResponse] = await Promise.all([
+      fetch("/api/backoffice/staff", { cache: "no-store" }),
+      fetch("/api/backoffice/store-locations", { cache: "no-store" }),
+    ]);
+    const payload = await staffResponse.json() as { staff?: Staff[]; message?: string };
+    if (!staffResponse.ok) throw new Error(payload.message || "Unable to load staff.");
+    const locationPayload = await locationResponse.json() as { locations?: StoreLocation[]; message?: string };
+    if (!locationResponse.ok) throw new Error(locationPayload.message || "Unable to load stores.");
     setStaff(payload.staff || []);
+    setLocations((locationPayload.locations || []).filter((item) => item.active !== false));
   }
 
   async function loadActivity(id: string) {
@@ -107,7 +115,7 @@ export default function StaffManagerPage() {
 
   function choose(item: Staff | null) {
     setSelected(item);
-    setEditor(item ? { name: item.name, email: item.email, role: item.role, permissions: item.permissions || [], status: item.status } : blank);
+    setEditor(item ? { name: item.name, email: item.email, role: item.role, permissions: item.permissions || [], assignedStoreId: item.assignedStore?._id || "", status: item.status } : blank);
     setMessage("");
     setActivity(null);
     setActivityError("");
@@ -157,7 +165,7 @@ export default function StaffManagerPage() {
               <button key={item._id} onClick={() => choose(item)} className={`w-full min-w-0 rounded-xl border p-3 text-left transition-colors ${selected?._id === item._id ? "border-[var(--brand-green)] bg-[var(--brand-green)]/5" : "hairline bg-[var(--paper)] hover:bg-white"}`}>
                 <p className="truncate text-sm font-semibold">{item.name}</p>
                 <p className="mt-1 break-all text-[10px] leading-4 text-[var(--muted)]">{item.email}</p>
-                <p className="mt-1 text-[10px] text-[var(--muted)]">{roles.find(([value]) => value === item.role)?.[1]} · {item.status}</p>
+                <p className="mt-1 text-[10px] text-[var(--muted)]">{roles.find(([value]) => value === item.role)?.[1]} · {item.status}{item.assignedStore?.name ? ` · ${item.assignedStore.name}` : ""}</p>
               </button>
             ))}
           </div>
@@ -170,8 +178,9 @@ export default function StaffManagerPage() {
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <label className="grid min-w-0 gap-2 text-xs font-semibold">Name<input required value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} className="min-w-0 rounded-lg border hairline px-3 py-3 font-normal"/></label>
               <label className="grid min-w-0 gap-2 text-xs font-semibold">Work email<input required type="email" value={editor.email} onChange={(event) => setEditor({ ...editor, email: event.target.value })} className="min-w-0 rounded-lg border hairline px-3 py-3 font-normal"/></label>
-              <label className="grid min-w-0 gap-2 text-xs font-semibold">Primary role<select value={editor.role} onChange={(event) => setEditor({ ...editor, role: event.target.value as Role })} className="min-w-0 rounded-lg border hairline px-3 py-3 font-normal">{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label className="grid min-w-0 gap-2 text-xs font-semibold">Status<select value={editor.status} onChange={(event) => setEditor({ ...editor, status: event.target.value as Editor["status"] })} className="min-w-0 rounded-lg border hairline px-3 py-3 font-normal"><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select></label>
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">Primary role<div className="relative"><select value={editor.role} onChange={(event) => setEditor({ ...editor, role: event.target.value as Role })} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-white pl-4 pr-11 font-normal">{roles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">Status<div className="relative"><select value={editor.status} onChange={(event) => setEditor({ ...editor, status: event.target.value as Editor["status"] })} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-white pl-4 pr-11 font-normal"><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
+              {(editor.role === "MANAGER" || editor.role === "STORE_STAFF") && <label className="grid min-w-0 gap-2 text-xs font-semibold md:col-span-2">Assigned store / location<span className="text-[10px] font-normal text-[var(--muted)]">Required for Manager. Optional for Sales Staff so POS stock can be deducted from the correct branch.</span><div className="relative"><select required={editor.role === "MANAGER"} value={editor.assignedStoreId} onChange={(event) => setEditor({ ...editor, assignedStoreId: event.target.value })} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-white pl-4 pr-11 font-normal"><option value="">{editor.role === "MANAGER" ? "Select a store" : "Not assigned"}</option>{locations.map((location) => <option key={location._id} value={location._id}>{location.name} ({location.code})</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>}
             </div>
             <div className="mt-6 rounded-xl border hairline bg-[var(--paper)] p-4">
               <p className="text-xs font-semibold">Additional responsibilities</p>

@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: staff.status === 401 ? "Authentication required." : "Access denied." }, { status: staff.status });
 
   try {
     const customer = await getCustomerByDocumentId(staff.customerId);
-    const manager = staff.role === "ADMIN" || staff.role === "STORE";
+    const manager = staff.role === "ADMIN" || staff.role === "STORE" || staff.role === "MANAGER";
     const stages: string[] = [];
     if (staff.role === "PRODUCTION_STAFF" || customer?.permissions?.includes("PRODUCTION")) stages.push("PRODUCTION");
     if (staff.role === "PACKAGING_STAFF" || customer?.permissions?.includes("PACKAGING")) stages.push("PACKAGING");

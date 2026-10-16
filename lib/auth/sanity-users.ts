@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createClient } from "@sanity/client";
 
-export type CustomerRole = "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
+export type CustomerRole = "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "MANAGER" | "STORE" | "ADMIN";
 export type StaffPermission = "POS_SALES" | "WHATSAPP_SALES" | "TIKTOK_SALES" | "GROUND_SALES" | "PRODUCTION" | "PRINTING" | "PACKAGING" | "DELIVERY";
 export type CustomerStatus = "ACTIVE" | "SUSPENDED";
 export type CustomerSource = "GOOGLE" | "EMAIL_PASSWORD" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
@@ -16,6 +16,7 @@ export type SanityCustomer = {
   googleId?: string | null;
   role: CustomerRole;
   permissions?: StaffPermission[];
+  assignedStore?: { _id: string; name?: string; code?: string } | null;
   status: CustomerStatus;
   source?: CustomerSource;
   phone?: string;
@@ -392,6 +393,7 @@ export async function getGoogleCustomer(googleId: string): Promise<SanityCustome
   return client.fetch<SanityCustomer | null>(
     `*[_type == "customerUser" && googleId == $googleId] | order(_updatedAt desc)[0]{
       _id,name,email,image,googleId,role,permissions,status,source,phone,address1,address2,
+      "assignedStore": assignedStore->{_id,name,code},
       city,region,country,firstPurchaseAt,lastPurchaseAt,createdAt,lastLoginAt,updatedAt
     }`,
     { googleId },
@@ -405,6 +407,7 @@ export async function getCustomerByDocumentId(documentId: string): Promise<Sanit
     `*[_type == "customerUser" && (_id == $baseId || _id == $draftId)]
       | order(_updatedAt desc)[0]{
         _id,name,email,image,googleId,role,permissions,status,source,phone,address1,address2,
+        "assignedStore": assignedStore->{_id,name,code},
         city,region,country,firstPurchaseAt,lastPurchaseAt,createdAt,lastLoginAt,updatedAt
       }`,
     { baseId, draftId: `drafts.${baseId}` },

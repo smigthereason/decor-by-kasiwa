@@ -7,7 +7,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 const reasons: RestockReason[] = ["out_of_stock", "low_stock", "needs_restock"];
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["STORE_STAFF", "STORE", "ADMIN"]);
+  const staff = await getApiStaff(["STORE_STAFF", "MANAGER", "STORE", "ADMIN"]);
 
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });

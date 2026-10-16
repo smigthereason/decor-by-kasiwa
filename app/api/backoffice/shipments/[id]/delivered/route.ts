@@ -7,7 +7,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["STORE_STAFF", "STORE", "ADMIN"]);
+  const staff = await getApiStaff(["STORE_STAFF", "MANAGER", "STORE", "ADMIN"]);
 
   if (!staff.ok) {
     return NextResponse.json({ message: "Access denied." }, { status: staff.status });

@@ -6,7 +6,7 @@ import { getPaymentReconciliation } from "@/lib/pos/operations";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   return NextResponse.json({ payments: await getPaymentReconciliation(500) });
 }

@@ -31,7 +31,7 @@ export function HeaderActions({ user, wishlist, cartCount }: HeaderActionsProps)
   const accountLabel =
     session?.user?.role === "ADMIN"
       ? "Open Admin workspace"
-      : session?.user?.role === "STORE" || session?.user?.role === "STORE_STAFF"
+      : session?.user?.role === "STORE" || session?.user?.role === "MANAGER" || session?.user?.role === "STORE_STAFF"
         ? "Open Store workspace"
         : user
           ? "Open my account"

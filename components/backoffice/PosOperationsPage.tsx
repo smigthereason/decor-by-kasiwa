@@ -43,7 +43,8 @@ function statusClass(status: string) {
 export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "/store" }) {
   const { data: session } = useSession();
   const role = session?.user?.role;
-  const manager = role === "ADMIN" || role === "STORE";
+  const manager = role === "ADMIN" || role === "STORE" || role === "MANAGER";
+  const canViewReports = role === "ADMIN" || role === "STORE";
   const salesStaff = role === "STORE_STAFF";
   const [tab, setTab] = useState<Tab>("history");
   const [orders, setOrders] = useState<HistoryOrder[]>([]);
@@ -108,12 +109,13 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   }, [appliedHistory, appliedReportFrom, appliedReportTo, period, tab]);
 
   useEffect(() => {
+    if (!canViewReports && tab === "reports") { setTab("history"); return; }
     if (salesStaff && tab !== "expenses") {
       setTab("expenses");
       return;
     }
     void load(tab);
-  }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo, salesStaff]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, period, appliedHistory, appliedReportFrom, appliedReportTo, canViewReports, salesStaff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reconciliationProviders = useMemo(() => [...new Set(payments.map((payment) => payment.provider).filter((value): value is string => Boolean(value)))].sort(), [payments]);
   const reconciliationChannels = useMemo(() => [...new Set(payments.map((payment) => payment.channel).filter((value): value is string => Boolean(value)))].sort(), [payments]);
@@ -167,14 +169,14 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     { id: "expenses" as const, label: "Expenditure", icon: WalletCards },
   ] : [
     { id: "history" as const, label: "Sales History", icon: ClipboardList },
-    { id: "reports" as const, label: "Reports", icon: ReceiptText },
+    ...(canViewReports ? [{ id: "reports" as const, label: "Reports", icon: ReceiptText }] : []),
     { id: "receivables" as const, label: "Receivables", icon: HandCoins },
     ...(manager ? [
       { id: "expenses" as const, label: "Expenditure", icon: WalletCards },
       { id: "reconciliation" as const, label: "Reconciliation", icon: CreditCard },
       { id: "audit" as const, label: "Audit Trail", icon: FileClock },
     ] : []),
-  ], [manager, salesStaff]);
+  ], [canViewReports, manager, salesStaff]);
 
   async function recordReceivable(order: HistoryOrder) {
     const raw = window.prompt(`Outstanding balance is ${formatMoney(order.balanceDue)}. Enter cash amount received:`, String(order.balanceDue));

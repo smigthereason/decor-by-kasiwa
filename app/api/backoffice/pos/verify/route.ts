@@ -6,7 +6,7 @@ import { markPosPaymentTimedOut, verifyPosPayment } from "@/lib/pos/server";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
   try {
@@ -24,14 +24,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
   try {
     const body = await request.json() as { reference?: string; action?: string };
     const reference = body.reference?.trim() || "";
     if (!reference || body.action !== "timeout") return NextResponse.json({ message: "Invalid timeout request." }, { status: 400 });
-    const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role };
+    const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role, storeLocationId: staff.storeLocationId, storeLocationName: staff.storeLocationName, storeLocationCode: staff.storeLocationCode };
     return NextResponse.json(await markPosPaymentTimedOut(reference, seller));
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to update payment timeout." }, { status: 400 });

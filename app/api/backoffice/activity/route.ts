@@ -5,7 +5,7 @@ import { endStaffSession, recordStaffActivity, touchStaffSession } from "@/lib/a
 
 export const dynamic = "force-dynamic";
 
-const allowed = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
+const allowed = ["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
 
 type ActivityInput = {
   action?: "HEARTBEAT" | "PAGE_VIEW" | "INTERACTION" | "CLIENT_ERROR" | "LOGOUT";

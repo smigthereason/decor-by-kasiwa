@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import type { PosSeller } from "@/lib/pos/server";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
+import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -65,6 +66,8 @@ export type PosHistoryOrder = {
   paymentReference: string;
   paymentProvider: string;
   providerReceiptNumber: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
   lineItems: Array<{ productId: string; name: string; variantId?: string; quantity: number; unitPrice: number; unitCost?: number }>;
 };
 
@@ -94,6 +97,8 @@ const historyProjection = `{
   "paymentReference": coalesce(paymentReference,""),
   "paymentProvider": coalesce(paymentProvider,""),
   "providerReceiptNumber": coalesce(providerReceiptNumber,paystackTransactionId,""),
+  "storeLocationId": storeLocation._ref,
+  "storeLocationName": coalesce(storeLocation->name,assignedStore,""),
   "lineItems": lineItems[]{"productId":coalesce(product._ref,productId),name,variantId,quantity,unitPrice,unitCost}
 }`;
 
@@ -426,7 +431,7 @@ export async function listExpenses(limit = 150) {
 }
 
 export async function createExpense(input: ExpenseInput, seller: PosSeller) {
-  if (seller.role !== "ADMIN" && seller.role !== "STORE") throw new Error("Only Admin or Store Manager can record expenditure.");
+  if (!["ADMIN", "STORE", "MANAGER"].includes(seller.role)) throw new Error("Only Admin, Store Manager or Manager can record expenditure.");
   const description = cleanText(input.description);
   const amount = Number(input.amount);
   if (!description) throw new Error("Expense description is required.");
@@ -476,7 +481,7 @@ function incrementVariantStock(variants: Array<Record<string, unknown>> | undefi
 }
 
 export async function processReturnRefund(input: RefundInput, seller: PosSeller) {
-  if (seller.role !== "ADMIN" && seller.role !== "STORE") throw new Error("Only Admin or Store Manager can process refunds or returns.");
+  if (!["ADMIN", "STORE", "MANAGER"].includes(seller.role)) throw new Error("Only Admin, Store Manager or Manager can process refunds or returns.");
   const order = await serverClient.fetch<RefundOrder | null>(
     `*[_type == "commerceOrder" && _id == $id][0]{
       _rev,${historyProjection.slice(1, -1)}
@@ -484,6 +489,9 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     { id: input.orderId }, { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
+  if (seller.role === "MANAGER" && order.storeLocationId && seller.storeLocationId !== order.storeLocationId) {
+    throw new Error("Managers can only process returns/refunds for their assigned store.");
+  }
   const reason = cleanText(input.reason);
   if (!reason) throw new Error("Refund / return reason is required.");
   const alreadyRefunded = Number(order.refundedAmount || 0);
@@ -515,8 +523,14 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
   }
 
   const productIds = [...new Set(requestedItems.map((row) => row.productId))];
-  const products = productIds.length ? await serverClient.fetch<Array<{ _id: string; _rev: string; name?: string; initialStock?: number; variants?: Array<Record<string, unknown>> }>>(
-    `*[_type == "product" && _id in $ids]{_id,_rev,name,initialStock,variants}`, { ids: productIds }, { cache: "no-store" },
+  const products = productIds.length ? await serverClient.fetch<Array<{ _id: string; _rev: string; name?: string; initialStock?: number; variants?: Array<Record<string, unknown>>; inventory?: { _id?: string; locationBalances?: LocationBalance[] } | null }>>(
+    `*[_type == "product" && _id in $ids]{
+      _id,_rev,name,initialStock,variants,
+      "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
+        _id,
+        "locationBalances": locationBalances[]{_key,store,"storeId":coalesce(store._ref,storeId),"storeName":coalesce(store->name,storeName),"storeCode":coalesce(store->code,storeCode),onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
+      }
+    }`, { ids: productIds }, { cache: "no-store" },
   ) : [];
 
   const now = new Date().toISOString();
@@ -524,7 +538,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
   const returnId = `returnTransaction.${hashId(key)}`;
   const returnNumber = `RET-${hashId(key).slice(0, 12).toUpperCase()}`;
   const transaction = serverClient.transaction();
-  const movements: Array<{ productId: string; productName: string; variantId?: string; quantityChange: number; stockBefore?: number; stockAfter?: number }> = [];
+  const movements: Array<{ productId: string; productName: string; variantId?: string; quantityChange: number; stockBefore?: number; stockAfter?: number; destinationStoreId?: string; destination?: string }> = [];
 
   if (input.restock) {
     for (const product of products) {
@@ -538,7 +552,18 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
         ? variantStockTotal(nextVariants || product.variants)
         : currentStock + qty;
       transaction.patch(product._id, (patch) => patch.ifRevisionId(product._rev).set({ initialStock: nextStock, available: nextStock > 0, ...(nextVariants ? { variants: nextVariants } : {}) }));
-      rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock }));
+
+      if (order.storeLocationId) {
+        if (!product.inventory?._id) throw new Error(`${product.name || "Product"} does not have a branch inventory record for this return.`);
+        const store = { id: order.storeLocationId, name: order.storeLocationName || "Original POS store" };
+        let nextBalances = product.inventory.locationBalances || [];
+        for (const row of rows) {
+          nextBalances = adjustLocationBalance(nextBalances, store, { onHandDelta: row.quantity, variantId: row.variantId });
+        }
+        transaction.patch(product.inventory._id, (patch) => patch.set({ location: "Multi-location", locationBalances: nextBalances }));
+      }
+
+      rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock, destinationStoreId: order.storeLocationId, destination: order.storeLocationName }));
     }
   }
 

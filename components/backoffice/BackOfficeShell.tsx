@@ -39,7 +39,7 @@ import StaffActivityTracker, { endTrackedStaffActivitySession } from "@/componen
 import { Logo } from "@/public/index";
 
 type Mode = "admin" | "store";
-type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
+type StaffRole = "ADMIN" | "STORE" | "MANAGER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 type BadgeKey = "newOrders" | "deliveries" | "restockRequests" | "workflowJobs";
 
 type NavigationItem = {
@@ -63,6 +63,7 @@ const adminNavigation: NavigationItem[] = [
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
   { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
+  { label: "Stores / Locations", href: "/admin/stores", icon: Warehouse },
   { label: "Categories", href: "/admin/categories", icon: FolderTree },
   { label: "Shop the Look", href: "/admin/shop-looks", icon: Layers3 },
   { label: "Customers", href: "/admin/customers", icon: ContactRound },
@@ -139,12 +140,13 @@ export default function BackOfficeShell({
           ? salesStaffNavigation
           : storeManagerNavigation;
 
-  const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : "Store Operations";
+  const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : staffRole === "MANAGER" ? "Manager Operations" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";
   const settingsHref = mode === "admin" ? "/admin/settings" : "/store/settings";
   const staffRoleLabel =
     staffRole === "ADMIN" ? "STORE OWNER / ADMIN"
       : staffRole === "STORE" ? "STORE MANAGER"
+        : staffRole === "MANAGER" ? "MANAGER"
         : staffRole === "PRODUCTION_STAFF" ? "PRODUCTION STAFF"
           : staffRole === "PACKAGING_STAFF" ? "PACKAGING STAFF"
             : staffRole === "DELIVERY_STAFF" ? "DELIVERY STAFF"

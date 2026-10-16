@@ -14,8 +14,12 @@ function monthKey(date: Date) {
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
+
+  if (staff.role === "MANAGER" || staff.role === "STORE_STAFF") {
+    return NextResponse.json({ restricted: true, months: [], stockValue: { cost: 0, retail: 0, potentialMargin: 0 } });
+  }
 
   const start = new Date();
   start.setDate(1);

@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { getCustomerByDocumentId } from "@/lib/auth/sanity-users";
 
-export type ApiStaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
+export type ApiStaffRole = "ADMIN" | "STORE" | "MANAGER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 
 export async function getApiStaff(
   allowedRoles: ApiStaffRole[],
@@ -16,6 +16,9 @@ export async function getApiStaff(
       customerId: string;
       customerName: string;
       customerEmail: string;
+      storeLocationId?: string;
+      storeLocationName?: string;
+      storeLocationCode?: string;
     }
   | { ok: false; status: 401 | 403 }
 > {
@@ -31,7 +34,7 @@ export async function getApiStaff(
     return { ok: false, status: 403 };
   }
 
-  const staffRoles: ApiStaffRole[] = ["ADMIN", "STORE", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"];
+  const staffRoles: ApiStaffRole[] = ["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"];
   if (!staffRoles.includes(customer.role as ApiStaffRole)) {
     return { ok: false, status: 403 };
   }
@@ -47,5 +50,8 @@ export async function getApiStaff(
     customerId: customer._id,
     customerName: customer.name || customer.email || "Staff",
     customerEmail: customer.email,
+    storeLocationId: customer.assignedStore?._id,
+    storeLocationName: customer.assignedStore?.name,
+    storeLocationCode: customer.assignedStore?.code,
   };
 }

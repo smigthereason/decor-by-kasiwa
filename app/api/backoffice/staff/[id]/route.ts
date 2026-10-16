@@ -4,10 +4,10 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import type { CustomerRole, StaffPermission } from "@/lib/auth/sanity-users";
 import { serverClient } from "@/sanity/lib/serverClient";
 
-const staffRoles: CustomerRole[] = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "STORE", "ADMIN"];
+const staffRoles: CustomerRole[] = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "MANAGER", "STORE", "ADMIN"];
 const permissionValues: StaffPermission[] = ["POS_SALES", "WHATSAPP_SALES", "TIKTOK_SALES", "GROUND_SALES", "PRODUCTION", "PRINTING", "PACKAGING", "DELIVERY"];
 
-type StaffInput = { name?: string; email?: string; role?: CustomerRole; permissions?: StaffPermission[]; status?: "ACTIVE" | "SUSPENDED" };
+type StaffInput = { name?: string; email?: string; role?: CustomerRole; permissions?: StaffPermission[]; assignedStoreId?: string; status?: "ACTIVE" | "SUSPENDED" };
 function normalizePermissions(value: unknown): StaffPermission[] { return Array.isArray(value) ? permissionValues.filter((permission) => value.includes(permission)) : []; }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +16,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json() as StaffInput;
+    const existing = await serverClient.fetch<{ role?: CustomerRole; assignedStoreId?: string } | null>(
+      `*[_type == "customerUser" && _id == $id][0]{role,"assignedStoreId":assignedStore._ref}`,
+      { id },
+      { cache: "no-store" },
+    );
+    if (!existing) return NextResponse.json({ message: "Staff member not found." }, { status: 404 });
+
     const role = body.role && staffRoles.includes(body.role) ? body.role : undefined;
+    const effectiveRole = role || existing.role;
+    const assignedStoreId = typeof body.assignedStoreId === "string" ? body.assignedStoreId.trim() : undefined;
+    const effectiveAssignedStoreId = assignedStoreId === undefined ? existing.assignedStoreId || "" : assignedStoreId;
     const name = body.name?.trim();
     const email = body.email?.trim().toLowerCase();
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid staff email.");
@@ -28,6 +38,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (name) set.name = name;
     if (email) set.email = email;
     if (role) set.role = role;
+    if (effectiveRole === "MANAGER" && !effectiveAssignedStoreId) {
+      return NextResponse.json({ message: "Manager must be assigned to a store/location." }, { status: 400 });
+    }
+    if (assignedStoreId !== undefined) {
+      if (assignedStoreId) {
+        const store = await serverClient.fetch<{ _id: string } | null>(
+          `*[_type == "storeLocation" && _id == $storeId && active != false][0]{_id}`,
+          { storeId: assignedStoreId },
+          { cache: "no-store" },
+        );
+        if (!store) return NextResponse.json({ message: "Select an active store/location." }, { status: 400 });
+        set.assignedStore = { _type: "reference", _ref: assignedStoreId };
+      } else {
+        set.assignedStore = null;
+      }
+    }
     if (body.permissions) set.permissions = normalizePermissions(body.permissions);
     if (body.status) set.status = body.status;
     await serverClient.patch(id).set(set).commit();

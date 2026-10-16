@@ -50,6 +50,8 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
 
   const basePath = mode === "admin" ? "/admin/products" : "/store/products";
   const limitedSalesStaff = mode === "store" && session?.user?.role === "STORE_STAFF";
+  const scopedManager = mode === "store" && session?.user?.role === "MANAGER";
+  const hideProcurement = mode === "store" && (session?.user?.role === "MANAGER" || session?.user?.role === "STORE_STAFF");
 
   if (!product || !draft) {
     return (
@@ -102,19 +104,21 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     payload.set("shortDescription", draft.shortDescription || "");
     payload.set("description", draft.description || "");
     if (!limitedSalesStaff) {
-      payload.set("onHand", String(draft.onHand));
-      payload.set("reserved", String(draft.reserved));
-      payload.set("incoming", String(draft.incoming));
-      payload.set("reorderPoint", String(draft.reorderPoint));
+      if (!scopedManager) {
+        payload.set("onHand", String(draft.onHand));
+        payload.set("reserved", String(draft.reserved));
+        payload.set("incoming", String(draft.incoming));
+        payload.set("reorderPoint", String(draft.reorderPoint));
+      }
       if (draft.ecommerceEnabled === false && draft.posEnabled === false) {
         setMessage("Select at least one sales channel: E-commerce or POS.");
         return;
       }
-      payload.set("unitCost", String(draft.unitCost));
+      if (!hideProcurement) payload.set("unitCost", String(draft.unitCost));
       payload.set("ecommerceEnabled", String(draft.ecommerceEnabled !== false));
       payload.set("posEnabled", String(draft.posEnabled !== false));
       payload.set("retailPrice", String(draft.retailPrice));
-      payload.set("location", draft.location);
+      if (!scopedManager) payload.set("location", draft.location);
       payload.set("available", String(draft.available !== false));
       payload.set("bestSeller", String(draft.bestSeller === true));
     }
@@ -304,7 +308,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               ]] as const).map(([label, field]) => (
                 <div key={field} className="rounded-lg border hairline p-4">
                   <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">{label}</p>
-                  {editing ? (
+                  {editing && !scopedManager ? (
                     <input type="number" min={0} value={draft[field]} onChange={(e) => setDraft({ ...draft, [field]: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                   ) : (
                     <p className="mt-2 text-2xl font-medium">{product[field]}</p>
@@ -313,15 +317,17 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
               ))}
             </div>
 
+            {scopedManager && editing ? <p className="mt-5 rounded-lg border hairline bg-[var(--paper-2)] p-3 text-xs text-[var(--muted)]">Branch stock is managed from Inventory so quantities stay tied to your assigned store/location.</p> : null}
+
             <div className="mt-6 grid gap-4 border-t hairline pt-5 sm:grid-cols-4">
-              <div>
+              {!hideProcurement && <div>
                 <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Cost of production / initial cost</p>
                 {editing ? (
                   <input type="number" min={0} value={draft.unitCost} onChange={(e) => setDraft({ ...draft, unitCost: Number(e.target.value) })} className="mt-2 w-full rounded-md border hairline px-3 py-2.5 text-sm outline-none transition focus:border-[var(--brand-green)]" />
                 ) : (
                   <p className="mt-2 text-lg font-semibold">{formatKes(product.unitCost)}</p>
                 )}
-              </div>
+              </div>}
               <div>
                 <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Available</p>
                 <p className="mt-2 text-lg font-semibold">{availableStock(product)}</p>

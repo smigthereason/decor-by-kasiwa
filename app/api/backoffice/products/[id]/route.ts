@@ -91,7 +91,7 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const { id } = await context.params;
@@ -150,6 +150,10 @@ export async function GET(
   );
 
   if (!product) return NextResponse.json({ message: "Product not found." }, { status: 404 });
+  if (staff.role === "MANAGER") {
+    const safe = { ...product, procurementCost: undefined, inventory: product.inventory ? { ...product.inventory, unitCost: undefined } : product.inventory };
+    return NextResponse.json({ product: safe });
+  }
   return NextResponse.json({ product });
 }
 
@@ -157,7 +161,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   const { id } = await context.params;
@@ -189,6 +193,13 @@ export async function PATCH(
       if (restrictedField) {
         return NextResponse.json({ message: "Sales Staff can edit catalogue descriptions only. Prices and inventory quantities are manager-only." }, { status: 403 });
       }
+    } else if (staff.role === "MANAGER") {
+      const managerEditableFields = new Set([
+        "name", "shortDescription", "description",
+        "ecommerceEnabled", "posEnabled", "retailPrice", "available", "bestSeller",
+      ]);
+      const restrictedField = Object.keys(body).find((key) => !managerEditableFields.has(key));
+      if (restrictedField) return NextResponse.json({ message: "Managers cannot view or edit procurement / production cost or owner-only catalogue settings." }, { status: 403 });
     } else if (staff.role !== "ADMIN") {
       const storeEditableFields = new Set([
         "name", "shortDescription", "description", "onHand", "reserved", "incoming", "reorderPoint",

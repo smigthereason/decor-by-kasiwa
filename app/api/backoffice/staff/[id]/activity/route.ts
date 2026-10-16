@@ -6,7 +6,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 
 export const dynamic = "force-dynamic";
 
-const staffRoles = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "STORE", "ADMIN"];
+const staffRoles = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "MANAGER", "STORE", "ADMIN"];
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await getApiStaff(["ADMIN"]);

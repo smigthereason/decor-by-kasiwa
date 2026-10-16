@@ -35,7 +35,7 @@ export default function MobileBottomNav() {
   const accountLabel =
     session?.user?.role === "ADMIN"
       ? "Admin"
-      : session?.user?.role === "STORE" || session?.user?.role === "STORE_STAFF"
+      : session?.user?.role === "STORE" || session?.user?.role === "MANAGER" || session?.user?.role === "STORE_STAFF"
         ? "Store"
         : "Account";
 

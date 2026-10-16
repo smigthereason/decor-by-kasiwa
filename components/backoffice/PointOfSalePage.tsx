@@ -88,7 +88,8 @@ function stockLabel(product: StoreProduct, variant?: ProductVariant) {
 
 export default function PointOfSalePage() {
   const { data: session } = useSession();
-  const manager = session?.user?.role === "ADMIN" || session?.user?.role === "STORE";
+  const manager = session?.user?.role === "ADMIN" || session?.user?.role === "STORE" || session?.user?.role === "MANAGER";
+  const canDiscount = manager || session?.user?.role === "STORE_STAFF";
   const basePath = session?.user?.role === "ADMIN" ? "/admin" : "/store";
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
@@ -289,7 +290,7 @@ export default function PointOfSalePage() {
 
   const subtotal = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const discountNumeric = Math.max(0, Number(discountValue || 0));
-  const discountAmount = manager
+  const discountAmount = canDiscount
     ? Math.round(
         Math.min(
           subtotal,
@@ -405,7 +406,7 @@ export default function PointOfSalePage() {
       setMessage("Enter a valid Kenyan customer phone number (+254...).");
       return;
     }
-    if (manager && discountNumeric > 0 && !discountReason.trim()) {
+    if (canDiscount && discountNumeric > 0 && !discountReason.trim()) {
       setMessage("Enter a reason for the authorised discount.");
       return;
     }
@@ -463,7 +464,7 @@ export default function PointOfSalePage() {
           manualPaymentReference: paymentMethod === "manual" ? manualPaymentReference.trim() : undefined,
           manualAmountReceived: paymentMethod === "manual" ? Number(manualAmountReceived) : undefined,
           manualPaymentConfirmed: paymentMethod === "manual" ? manualPaymentConfirmed : undefined,
-          discount: manager && discountNumeric > 0
+          discount: canDiscount && discountNumeric > 0
             ? { type: discountType, value: discountNumeric, reason: discountReason }
             : undefined,
           cart: cart.map((line) => ({
@@ -945,7 +946,7 @@ export default function PointOfSalePage() {
               </div>
             </div>
 
-            {manager && (
+            {canDiscount && (
               <div className="space-y-2 rounded-xl border hairline bg-[var(--paper)] p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--muted)]">Authorised Discount</span>

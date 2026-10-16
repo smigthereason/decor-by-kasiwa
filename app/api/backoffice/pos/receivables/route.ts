@@ -7,7 +7,7 @@ import { recordOutstandingCashPayment } from "@/lib/pos/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     return NextResponse.json({ receivables: await listReceivables() });
@@ -17,12 +17,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     const body = await request.json() as { orderId?: string; amount?: number };
     if (!body.orderId) return NextResponse.json({ message: "Order is required." }, { status: 400 });
-    const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role };
+    const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role, storeLocationId: staff.storeLocationId, storeLocationName: staff.storeLocationName, storeLocationCode: staff.storeLocationCode };
     return NextResponse.json(await recordOutstandingCashPayment({ orderId: body.orderId, amount: Number(body.amount || 0), seller }));
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to record receivable payment." }, { status: 400 });

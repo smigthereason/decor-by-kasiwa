@@ -11,7 +11,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
   try {
@@ -25,6 +25,9 @@ export async function POST(request: Request) {
       name: staff.customerName,
       email: staff.customerEmail,
       role: staff.role,
+      storeLocationId: staff.storeLocationId,
+      storeLocationName: staff.storeLocationName,
+      storeLocationCode: staff.storeLocationCode,
     };
 
     const result = body.paymentMethod === "mpesa"

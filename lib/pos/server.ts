@@ -6,6 +6,7 @@ import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
+import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { createShortOrderNumber } from "@/lib/order-number";
@@ -35,6 +36,9 @@ export type PosSeller = {
   name: string;
   email: string;
   role: ApiStaffRole;
+  storeLocationId?: string;
+  storeLocationName?: string;
+  storeLocationCode?: string;
 };
 
 export type PosDiscountInput = {
@@ -81,6 +85,10 @@ type RawProduct = {
   available?: boolean;
   posEnabled?: boolean;
   category?: string;
+  inventory?: {
+    _id?: string;
+    locationBalances?: LocationBalance[];
+  } | null;
   variants?: Array<{
     _key?: string;
     _type?: string;
@@ -148,6 +156,8 @@ type PosOrder = {
   inventoryReconciliationReason?: string;
   inventoryReviewRaisedAt?: string;
   inventoryReconciledAt?: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
   customerId?: string;
   customerName?: string;
   customerEmail?: string;
@@ -344,7 +354,11 @@ async function fetchProducts(productIds: string[]) {
       available,
       posEnabled,
       "category": primaryCategory->title,
-      variants
+      variants,
+      "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
+        _id,
+        "locationBalances": locationBalances[]{_key,store,"storeId":coalesce(store._ref,storeId),"storeName":coalesce(store->name,storeName),"storeCode":coalesce(store->code,storeCode),onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
+      }
     }`,
     { ids: productIds },
     { cache: "no-store" },
@@ -380,7 +394,7 @@ function normalizeCart(cart: PosCartLine[]) {
   return [...merged.values()];
 }
 
-async function buildLines(cart: PosCartLine[]) {
+async function buildLines(cart: PosCartLine[], seller: PosSeller) {
   const normalized = normalizeCart(cart);
   const ids = [...new Set(normalized.map((line) => line.productId))];
   const products = await fetchProducts(ids);
@@ -392,9 +406,6 @@ async function buildLines(cart: PosCartLine[]) {
     if (product.available === false || product.posEnabled === false) throw new Error(`${product.name || "Product"} is not available on POS.`);
     if (typeof product.price !== "number" || product.price <= 0) throw new Error(`${product.name || "Product"} has no valid price.`);
     const variantProduct = hasVariants(product.variants);
-    if (!variantProduct && typeof product.initialStock === "number" && product.initialStock < line.quantity) {
-      throw new Error(`${product.name || "Product"} only has ${Math.max(product.initialStock, 0)} unit(s) available.`);
-    }
 
     const variant = line.variantId
       ? product.variants?.find((item) => item._key === line.variantId)
@@ -405,7 +416,19 @@ async function buildLines(cart: PosCartLine[]) {
         );
 
     if (line.variantId && !variant) throw new Error(`${product.name || "Product"} variant is no longer available.`);
-    if (variant && typeof variant.stockQuantity === "number" && variant.stockQuantity < line.quantity) {
+    if (variantProduct && !variant) throw new Error(`Select a valid ${product.name || "product"} variant before adding it to the sale.`);
+
+    if (seller.storeLocationId) {
+      const balance = findLocationBalance(product.inventory?.locationBalances, seller.storeLocationId);
+      const available = locationOnHand(balance, variant?._key);
+      if (available < line.quantity) {
+        const storeName = seller.storeLocationName || "assigned store";
+        const variantName = variant?.title || [variant?.colour, variant?.size].filter(Boolean).join(" · ");
+        throw new Error(`${product.name || "Product"}${variantName ? ` (${variantName})` : ""} only has ${available} unit(s) available at ${storeName}.`);
+      }
+    } else if (!variantProduct && typeof product.initialStock === "number" && product.initialStock < line.quantity) {
+      throw new Error(`${product.name || "Product"} only has ${Math.max(product.initialStock, 0)} unit(s) available.`);
+    } else if (variant && typeof variant.stockQuantity === "number" && variant.stockQuantity < line.quantity) {
       throw new Error(`${product.name || "Product"} selected variant only has ${Math.max(variant.stockQuantity, 0)} unit(s) available.`);
     }
 
@@ -460,8 +483,8 @@ function calculateDiscount(
   seller: PosSeller,
 ): PosDiscountResult {
   if (!input || !Number(input.value)) return { discountAmount: 0 };
-  if (seller.role !== "ADMIN" && seller.role !== "STORE") {
-    throw new Error("Only an Admin or Store Manager can authorise POS discounts.");
+  if (!["ADMIN", "STORE", "MANAGER", "STORE_STAFF"].includes(seller.role)) {
+    throw new Error("This staff role cannot authorise POS discounts.");
   }
 
   const value = Number(input.value);
@@ -579,6 +602,8 @@ async function fetchPosOrder(reference: string) {
       customerEmail,
       customerPhone,
       soldByName,
+      "storeLocationId": storeLocation._ref,
+      "storeLocationName": coalesce(storeLocation->name, assignedStore, ""),
       soldAt,
       "lineItems": lineItems[]{
         _key,
@@ -604,7 +629,7 @@ async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
       _id,_rev,orderNumber,paymentStatus,status,subtotal,discountAmount,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
-      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
+      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,"storeLocationId":storeLocation._ref,"storeLocationName":coalesce(storeLocation->name,assignedStore,""),soldAt,
       "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
     }`,
     { checkoutRequestId },
@@ -620,7 +645,7 @@ async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
       _id,_rev,orderNumber,paymentStatus,status,subtotal,discountAmount,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
-      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,soldAt,
+      mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,"storeLocationId":storeLocation._ref,"storeLocationName":coalesce(storeLocation->name,assignedStore,""),soldAt,
       "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
     }`,
     { checkoutRequestId },
@@ -686,7 +711,7 @@ function addSaleInventoryMutations(
   seller: PosSeller,
   now: string,
 ) {
-  const movements: Array<{ productId: string; productName: string; variantId?: string; quantityChange: number; stockBefore?: number; stockAfter?: number }> = [];
+  const movements: Array<{ productId: string; productName: string; variantId?: string; quantityChange: number; stockBefore?: number; stockAfter?: number; sourceStoreId?: string; sourceLocation?: string }> = [];
 
   for (const product of products) {
     const productLines = lines.filter((line) => line.productId === product._id);
@@ -695,8 +720,32 @@ function addSaleInventoryMutations(
 
     const variantProduct = hasVariants(product.variants);
     const currentStock = variantProduct ? variantStockTotal(product.variants) : Math.max(0, Number(product.initialStock || 0));
+    let nextLocationBalances = product.inventory?.locationBalances || [];
+
+    if (seller.storeLocationId) {
+      const store = { id: seller.storeLocationId, name: seller.storeLocationName || "Assigned store", code: seller.storeLocationCode };
+      const currentBalance = findLocationBalance(nextLocationBalances, seller.storeLocationId);
+      for (const line of productLines) {
+        const variantId = variantProduct ? line.variantId : undefined;
+        const available = locationOnHand(currentBalance, variantId);
+        if (available < line.quantity) {
+          throw new Error(`${product.name || "Product"} no longer has enough stock at ${store.name}. Available: ${available}.`);
+        }
+      }
+      for (const line of productLines) {
+        nextLocationBalances = adjustLocationBalance(nextLocationBalances, store, {
+          onHandDelta: -line.quantity,
+          variantId: variantProduct ? line.variantId : undefined,
+          variantLabel: line.finish || line.size,
+        });
+      }
+      const inventoryId = product.inventory?._id;
+      if (!inventoryId) throw new Error(`${product.name || "Product"} does not have a branch inventory record.`);
+      transaction.patch(inventoryId, (patch) => patch.set({ location: "Multi-location", locationBalances: nextLocationBalances }));
+    }
+
     const nextVariants = variantProduct ? decrementVariantStock(product, lines) : undefined;
-    if (!variantProduct && currentStock < soldQuantity) throw new Error(`${product.name || "Product"} no longer has enough stock.`);
+    if (!seller.storeLocationId && !variantProduct && currentStock < soldQuantity) throw new Error(`${product.name || "Product"} no longer has enough stock.`);
     const nextStock = variantProduct
       ? variantStockTotal(nextVariants || product.variants)
       : Math.max(0, currentStock - soldQuantity);
@@ -708,14 +757,22 @@ function addSaleInventoryMutations(
         available: nextStock > 0,
       }),
     );
-    productLines.forEach((line) => movements.push({
-      productId: product._id,
-      productName: product.name || "Product",
-      variantId: line.variantId,
-      quantityChange: -line.quantity,
-      stockBefore: currentStock,
-      stockAfter: nextStock,
-    }));
+
+    productLines.forEach((line) => {
+      const branchBefore = seller.storeLocationId
+        ? locationOnHand(findLocationBalance(product.inventory?.locationBalances, seller.storeLocationId), variantProduct ? line.variantId : undefined)
+        : currentStock;
+      movements.push({
+        productId: product._id,
+        productName: product.name || "Product",
+        variantId: line.variantId,
+        quantityChange: -line.quantity,
+        stockBefore: branchBefore,
+        stockAfter: Math.max(0, branchBefore - line.quantity),
+        sourceStoreId: seller.storeLocationId,
+        sourceLocation: seller.storeLocationName,
+      });
+    });
   }
 
   addInventoryMovementsToTransaction({
@@ -726,7 +783,9 @@ function addSaleInventoryMutations(
     orderNumber,
     actor: seller,
     movements,
-    note: "Inventory deducted after confirmed POS sale/payment.",
+    note: seller.storeLocationName
+      ? `Inventory deducted from ${seller.storeLocationName} after confirmed POS sale/payment.`
+      : "Inventory deducted after confirmed POS sale/payment.",
     createdAt: now,
   });
 }
@@ -865,7 +924,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   const existing = await fetchPosOrder(reference);
   if (existing && ["paid", "partially_paid"].includes(existing.paymentStatus || "")) return summary(existing);
 
-  const { lines, products } = await buildLines(input.cart);
+  const { lines, products } = await buildLines(input.cart, seller);
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
   const delivery = deliveryPayable(input);
@@ -919,6 +978,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
     soldBy: { _type: "reference", _ref: seller.id },
     soldByName: seller.name,
     soldByRole: seller.role,
+    ...(seller.storeLocationId ? { storeLocation: { _type: "reference", _ref: seller.storeLocationId }, assignedStore: seller.storeLocationName || seller.storeLocationCode || "Store" } : {}),
     ...(discount.discountAmount > 0 ? {
       discountAuthorizedBy: { _type: "reference", _ref: seller.id },
       discountAuthorizedByName: seller.name,
@@ -952,7 +1012,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
   const existing = await fetchPosOrder(reference);
   if (existing) return { existing, customer };
 
-  const { lines } = await buildLines(input.cart);
+  const { lines } = await buildLines(input.cart, seller);
   const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
@@ -999,6 +1059,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     soldBy: { _type: "reference", _ref: seller.id },
     soldByName: seller.name,
     soldByRole: seller.role,
+    ...(seller.storeLocationId ? { storeLocation: { _type: "reference", _ref: seller.storeLocationId }, assignedStore: seller.storeLocationName || seller.storeLocationCode || "Store" } : {}),
     ...(discount.discountAmount > 0 ? {
       discountAuthorizedBy: { _type: "reference", _ref: seller.id },
       discountAuthorizedByName: seller.name,
@@ -1039,7 +1100,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
   const existing = await fetchPosOrder(reference);
   if (existing) return { existing, customer };
 
-  const { lines } = await buildLines(input.cart);
+  const { lines } = await buildLines(input.cart, seller);
   const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
@@ -1088,6 +1149,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
     soldBy: { _type: "reference", _ref: seller.id },
     soldByName: seller.name,
     soldByRole: seller.role,
+    ...(seller.storeLocationId ? { storeLocation: { _type: "reference", _ref: seller.storeLocationId }, assignedStore: seller.storeLocationName || seller.storeLocationCode || "Store" } : {}),
     ...(discount.discountAmount > 0 ? {
       discountAuthorizedBy: { _type: "reference", _ref: seller.id },
       discountAuthorizedByName: seller.name,
@@ -1289,14 +1351,17 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   };
 
   // Use the stored seller reference when adding movements/audit where available is not required for correctness.
-  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string } | null>(
-    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email}`,
+  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string; storeLocationId?: string; storeLocationName?: string; storeLocationCode?: string } | null>(
+    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email, "storeLocationId": coalesce(storeLocation._ref, soldBy->assignedStore._ref), "storeLocationName": coalesce(storeLocation->name, assignedStore, soldBy->assignedStore->name), "storeLocationCode": coalesce(storeLocation->code, soldBy->assignedStore->code)}`,
     { id: order._id },
     { cache: "no-store" },
   );
   seller.id = storedSeller?.id || "";
   seller.role = storedSeller?.role || "STORE_STAFF";
   seller.email = storedSeller?.email || "";
+  seller.storeLocationId = storedSeller?.storeLocationId || order.storeLocationId;
+  seller.storeLocationName = storedSeller?.storeLocationName || order.storeLocationName;
+  seller.storeLocationCode = storedSeller?.storeLocationCode;
 
   const firstFulfilmentStage = order.fulfilmentStages?.[0];
   addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
@@ -1360,8 +1425,8 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
 
 
 async function sellerForPosOrder(order: PosOrder): Promise<PosSeller> {
-  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string } | null>(
-    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email}`,
+  const storedSeller = await serverClient.fetch<{ id?: string; role?: ApiStaffRole; email?: string; storeLocationId?: string; storeLocationName?: string; storeLocationCode?: string } | null>(
+    `*[_id == $id][0]{"id": soldBy._ref, "role": soldByRole, "email": soldBy->email, "storeLocationId": coalesce(storeLocation._ref, soldBy->assignedStore._ref), "storeLocationName": coalesce(storeLocation->name, assignedStore, soldBy->assignedStore->name), "storeLocationCode": coalesce(storeLocation->code, soldBy->assignedStore->code)}`,
     { id: order._id },
     { cache: "no-store" },
   );
@@ -1370,6 +1435,9 @@ async function sellerForPosOrder(order: PosOrder): Promise<PosSeller> {
     name: order.soldByName || "POS Staff",
     email: storedSeller?.email || "",
     role: storedSeller?.role || "STORE_STAFF",
+    storeLocationId: storedSeller?.storeLocationId || order.storeLocationId,
+    storeLocationName: storedSeller?.storeLocationName || order.storeLocationName,
+    storeLocationCode: storedSeller?.storeLocationCode,
   };
 }
 

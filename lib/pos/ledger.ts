@@ -162,6 +162,10 @@ export function addInventoryMovementsToTransaction({
     quantityChange: number;
     stockBefore?: number;
     stockAfter?: number;
+    sourceStoreId?: string;
+    sourceLocation?: string;
+    destinationStoreId?: string;
+    destination?: string;
   }>;
   note?: string;
   createdAt?: string;
@@ -181,6 +185,10 @@ export function addInventoryMovementsToTransaction({
       quantityChange: movement.quantityChange,
       stockBefore: movement.stockBefore,
       stockAfter: movement.stockAfter,
+      ...(movement.sourceStoreId ? { sourceStore: { _type: "reference", _ref: movement.sourceStoreId } } : {}),
+      ...(movement.sourceLocation ? { sourceLocation: movement.sourceLocation } : {}),
+      ...(movement.destinationStoreId ? { destinationStore: { _type: "reference", _ref: movement.destinationStoreId } } : {}),
+      ...(movement.destination ? { destination: movement.destination } : {}),
       ...(orderId ? { order: { _type: "reference", _ref: orderId } } : {}),
       orderNumber,
       ...(actor ? {

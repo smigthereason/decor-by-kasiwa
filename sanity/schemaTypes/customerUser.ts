@@ -28,9 +28,18 @@ export const customerUser = defineType({
         { title: "Production Staff", value: "PRODUCTION_STAFF" },
         { title: "Packaging Staff", value: "PACKAGING_STAFF" },
         { title: "Delivery Staff", value: "DELIVERY_STAFF" },
+        { title: "Manager", value: "MANAGER" },
         { title: "Store Manager", value: "STORE" },
         { title: "Admin / Store Owner", value: "ADMIN" },
       ], layout: "radio" }, validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "assignedStore", title: "Assigned store / location", type: "reference", to: [{ type: "storeLocation" }], options: { filter: "active != false" },
+      description: "Required for the Manager role. It can also be used to scope Sales Staff or other operational staff to a branch.",
+      validation: (Rule) => Rule.custom((value, context) => {
+        const parent = context.parent as { role?: string } | undefined;
+        return parent?.role === "MANAGER" && !value ? "Manager must be assigned to a store/location." : true;
+      }),
     }),
     defineField({
       name: "permissions", title: "Operational permissions", type: "array", of: [{ type: "string" }],

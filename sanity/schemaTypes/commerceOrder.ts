@@ -197,6 +197,13 @@ export const commerceOrder = defineType({
       type: "string",
     }),
     defineField({
+      name: "storeLocation",
+      title: "POS Store / Location",
+      type: "reference",
+      to: [{ type: "storeLocation" }],
+      description: "Branch/location snapshot used for POS stock deduction and returns.",
+    }),
+    defineField({
       name: "salesChannel",
       title: "Sales Channel",
       type: "string",

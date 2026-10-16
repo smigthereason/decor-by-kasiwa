@@ -6,7 +6,7 @@ import { findPosCustomers } from "@/lib/auth/sanity-users";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "STORE_STAFF"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   const query = new URL(request.url).searchParams.get("q")?.trim() || "";
   try {

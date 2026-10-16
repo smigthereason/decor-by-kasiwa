@@ -1,4 +1,4 @@
-export type StaffRole = "ADMIN" | "STORE" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
+export type StaffRole = "ADMIN" | "STORE" | "MANAGER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 
 export type OrderStatus =
   | "pending"
@@ -42,7 +42,7 @@ export type Customer = {
   orders: number;
   lifetimeValue: number;
   lastOrderAt: string;
-  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "STORE" | "ADMIN";
+  role?: "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "MANAGER" | "STORE" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   source?: "GOOGLE" | "EMAIL_PASSWORD" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
   authenticated?: boolean;
@@ -119,6 +119,16 @@ export type InventoryItem = {
   incoming: number;
   reorderPoint: number;
   unitCost: number;
+  companyOnHand?: number;
+  unallocatedOnHand?: number;
+  locationBalances?: Array<{
+    storeId: string;
+    storeName: string;
+    storeCode?: string;
+    onHand: number;
+    incoming: number;
+    variants?: Array<{ variantId: string; variantLabel?: string; onHand: number; incoming: number }>;
+  }>;
   retailPrice: number;
   image?: string;
   shortDescription?: string;
