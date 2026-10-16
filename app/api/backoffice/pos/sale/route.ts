@@ -60,9 +60,13 @@ export async function POST(request: Request) {
   } catch (cause) {
     console.error("[POS sale] failed", cause);
     const failure = toSanityServiceError(cause, "Unable to complete POS sale.");
+    // Preserve actionable stock, payment, and configuration validation failures.
+    // Unexpected server failures must not be disguised as invalid cashier input.
+    const message = cause instanceof Error && cause.message ? cause.message : failure.message;
+    const isOperationalError = /stock|unit\(s\)|store|location|customer|phone|M-PESA|Daraja|MPESA_|Safaricom|cart|variant|price|quantity|discount|payment/i.test(message);
     return NextResponse.json(
-      { message: failure.message },
-      { status: failure.status === 500 ? 400 : failure.status },
+      { message: isOperationalError && failure.status === 500 ? message : failure.message },
+      { status: failure.status === 500 && isOperationalError ? 400 : failure.status },
     );
   }
 }

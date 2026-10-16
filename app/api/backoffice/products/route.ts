@@ -131,14 +131,25 @@ export async function POST(request: Request) {
     if (!primaryCategory) return NextResponse.json({ message: "Primary category is required." }, { status: 400 });
 
     const storeLocationId = clean(form.get("storeLocationId"));
-    const storeLocation = storeLocationId
+    const selectedLocation = storeLocationId
       ? await serverClient.fetch<StoreLocationOption | null>(
           `*[_type == "storeLocation" && _id == $storeLocationId && active != false][0]{_id,name,code,locationType}`,
           { storeLocationId },
           { cache: "no-store" },
         )
       : null;
-    if (storeLocationId && !storeLocation) return NextResponse.json({ message: "Select an active inventory location." }, { status: 400 });
+    if (storeLocationId && !selectedLocation) return NextResponse.json({ message: "Select an active inventory location." }, { status: 400 });
+    const mainLocations = !storeLocationId
+      ? await serverClient.fetch<StoreLocationOption[]>(
+          `*[_type == "storeLocation" && active != false && locationType == "MAIN"]{_id,name,code,locationType}`,
+          {}, { cache: "no-store" },
+        ) : [];
+    // Only auto-select when the client has created exactly one MAIN store.
+    // Multiple MAIN stores are valid, so require an explicit choice then.
+    const storeLocation = selectedLocation || (mainLocations.length === 1 ? mainLocations[0] : null);
+    if (!storeLocation && mainLocations.length > 1) {
+      return NextResponse.json({ message: "Select the Main inventory location for this product." }, { status: 400 });
+    }
 
     const productId = `product.${randomUUID().replaceAll("-", "")}`;
     const slug = await uniqueSlug(name);
@@ -254,7 +265,25 @@ export async function POST(request: Request) {
       _type: "inventoryRecord",
       product: { _type: "reference", _ref: productId },
       location: storeLocation?.name || "Unassigned",
-      ...(storeLocation ? { defaultStore: { _type: "reference", _ref: storeLocation._id } } : {}),
+      ...(storeLocation ? {
+        defaultStore: { _type: "reference", _ref: storeLocation._id },
+        locationBalances: [{
+          _key: `store-${storeLocation._id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
+          store: { _type: "reference", _ref: storeLocation._id },
+          storeId: storeLocation._id,
+          storeName: storeLocation.name,
+          storeCode: storeLocation.code,
+          onHand: initialStock,
+          incoming: Math.max(0, numberValue(form.get("incoming"))),
+          ...(variantDocuments.length ? { variants: variantDocuments.map((variant) => ({
+            _key: `variant-${String(variant._key).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
+            variantId: variant._key,
+            variantLabel: variant.title || [variant.colour, variant.size].filter(Boolean).join(" / "),
+            onHand: Math.max(0, Number(variant.stockQuantity || 0)),
+            incoming: 0,
+          })) } : {}),
+        }],
+      } : {}),
       reserved: 0,
       incoming: Math.max(0, numberValue(form.get("incoming"))),
       reorderPoint: Math.max(0, numberValue(form.get("reorderPoint"), 5)),
