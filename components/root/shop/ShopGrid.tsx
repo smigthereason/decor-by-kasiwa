@@ -27,6 +27,48 @@ function matchesPrice(price: number, range: string | null) {
   return true;
 }
 
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function productMatchesQuery(product: StoreProduct, rawQuery: string) {
+  const normalizedQuery = normalizeSearchText(rawQuery);
+  if (!normalizedQuery) return true;
+
+  const searchable = normalizeSearchText([
+    product.name,
+    product.category,
+    product.categoryParent?.title || "",
+    product.description,
+    product.story,
+    product.sku || "",
+    ...(product.materials || []),
+    ...(product.colours || []),
+    ...(product.categories || []).flatMap((item) => [item.title, item.slug]),
+    ...(product.spaces || []).flatMap((item) => [item.title, item.slug]),
+    ...(product.styles || []).flatMap((item) => [item.title, item.slug]),
+    ...(product.collections || []).flatMap((item) => [item.title, item.slug]),
+    ...(product.variants || []).flatMap((variant) => [
+      variant.title || "",
+      variant.colour || "",
+      variant.size || "",
+      variant.sku || "",
+    ]),
+  ].join(" "));
+
+  return normalizedQuery
+    .split(" ")
+    .filter(Boolean)
+    .every((term) => searchable.includes(term));
+}
+
 export default function ShopGrid({ products, navigation }: { products: StoreProduct[]; navigation: ShopNavigation }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,7 +79,7 @@ export default function ShopGrid({ products, navigation }: { products: StoreProd
   const space = searchParams.get("space");
   const style = searchParams.get("style");
   const price = searchParams.get("price");
-  const query = (searchParams.get("q") || "").trim().toLowerCase();
+  const query = searchParams.get("q") || "";
 
   function setFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -62,8 +104,7 @@ export default function ShopGrid({ products, navigation }: { products: StoreProd
     const spaceMatch = !space || product.spaces?.some((item) => item.slug === space);
     const styleMatch = !style || product.styles?.some((item) => item.slug === style);
     const priceMatch = matchesPrice(product.price, price);
-    const searchable = [product.name, product.category, product.categoryParent?.title || "", product.description, product.sku || "", ...(product.materials || []), ...(product.colours || [])].join(" ").toLowerCase();
-    return categoryMatch && collectionMatch && spaceMatch && styleMatch && priceMatch && (!query || searchable.includes(query));
+    return categoryMatch && collectionMatch && spaceMatch && styleMatch && priceMatch && productMatchesQuery(product, query);
   }), [products, category, collection, space, style, price, query]);
 
   const hasFilters = Boolean(category || collection || space || style || price || query);

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -21,6 +22,10 @@ type VariantInput = {
 
 function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanProductName(value: FormDataEntryValue | null) {
+  return clean(value).replace(/\s+/g, " ");
 }
 
 function numberValue(value: FormDataEntryValue | null, fallback = 0) {
@@ -106,7 +111,7 @@ export async function POST(request: Request) {
 
   try {
     const form = await request.formData();
-    const name = clean(form.get("name"));
+    const name = cleanProductName(form.get("name"));
     const price = numberValue(form.get("price"));
     const wholesalePriceText = clean(form.get("wholesalePrice"));
     const wholesaleQuantityText = clean(form.get("wholesaleMinQuantity"));
@@ -245,6 +250,8 @@ export async function POST(request: Request) {
       updatedAt: now,
     });
     await transaction.commit();
+    revalidatePath("/");
+    revalidatePath("/shop");
 
     return NextResponse.json({ ok: true, productId, slug, sku }, { status: 201 });
   } catch (cause) {

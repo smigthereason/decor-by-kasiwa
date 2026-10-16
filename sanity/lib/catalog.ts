@@ -1249,7 +1249,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
   }
 
   const records =
-    await (channel === "pos" ? serverClient : client).fetch<
+    await serverClient.fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1281,7 +1281,7 @@ export async function getStoreProductBySlug(
   }
 
   const record =
-    await client.fetch<
+    await serverClient.fetch<
       SanityProductRecord | null
     >(
       `*[

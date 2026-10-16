@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -13,6 +14,10 @@ function inventoryDocumentId(productId: string) {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanProductName(value: unknown) {
+  return cleanString(value).replace(/\s+/g, " ");
 }
 
 function numericValue(value: unknown) {
@@ -199,7 +204,7 @@ export async function PATCH(
     const productUnset: string[] = [];
 
     if (body.name !== undefined) {
-      const name = cleanString(body.name);
+      const name = cleanProductName(body.name);
       if (!name) return NextResponse.json({ message: "Product name cannot be empty." }, { status: 400 });
       productPatch.name = name;
     }
@@ -431,6 +436,8 @@ export async function PATCH(
     }
 
     await transaction.commit();
+    revalidatePath("/");
+    revalidatePath("/shop");
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -478,6 +485,8 @@ export async function DELETE(
     transaction.delete(productId);
     transaction.delete(`drafts.${productId}`);
     await transaction.commit();
+    revalidatePath("/");
+    revalidatePath("/shop");
 
     return NextResponse.json({ ok: true });
   } catch (cause) {
