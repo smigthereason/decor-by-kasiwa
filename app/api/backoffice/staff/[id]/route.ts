@@ -38,8 +38,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (name) set.name = name;
     if (email) set.email = email;
     if (role) set.role = role;
-    if (effectiveRole === "MANAGER" && !effectiveAssignedStoreId) {
-      return NextResponse.json({ message: "Manager must be assigned to a store/location." }, { status: 400 });
+    if ((effectiveRole === "MANAGER" || effectiveRole === "STORE_STAFF") && !effectiveAssignedStoreId) {
+      return NextResponse.json({ message: `${effectiveRole === "MANAGER" ? "Manager" : "Sales Staff"} must be assigned to a store/location.` }, { status: 400 });
     }
     if (assignedStoreId !== undefined) {
       if (assignedStoreId) {

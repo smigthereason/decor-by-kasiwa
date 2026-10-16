@@ -13,8 +13,9 @@ export async function GET(request: Request) {
   const period = raw === "week" || raw === "month" ? raw : "day";
   const from = params.get("from")?.trim() || undefined;
   const to = params.get("to")?.trim() || undefined;
+  const storeId = params.get("store")?.trim() || undefined;
   try {
-    return NextResponse.json({ report: await getSalesReport(period, { from, to }) });
+    return NextResponse.json({ report: await getSalesReport(period, { from, to, storeId }) });
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to build sales report." }, { status: 400 });
   }

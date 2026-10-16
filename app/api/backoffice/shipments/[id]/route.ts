@@ -57,14 +57,18 @@ export async function PATCH(
   }
 
   try {
-    const shipment = await serverClient.fetch<{ orderId?: string; dispatchedAt?: string; status?: ShipmentStatus } | null>(
-      `*[_type == "shipment" && _id == $id][0]{"orderId": order._ref, dispatchedAt, status}`,
+    const shipment = await serverClient.fetch<{ orderId?: string; dispatchedAt?: string; status?: ShipmentStatus; storeLocationId?: string } | null>(
+      `*[_type == "shipment" && _id == $id][0]{"orderId": order._ref, dispatchedAt, status,"storeLocationId":coalesce(storeLocation._ref,order->storeLocation._ref)}`,
       { id: shipmentId },
       { cache: "no-store" },
     );
 
     if (!shipment) {
       return NextResponse.json({ message: "Shipment not found." }, { status: 404 });
+    }
+
+    if (staff.role === "MANAGER" && shipment.storeLocationId !== staff.storeLocationId) {
+      return NextResponse.json({ message: "Managers can only update shipments for their assigned store/location." }, { status: 403 });
     }
 
     if (shipment.dispatchedAt || shipment.status === "dispatched" || shipment.status === "delivered") {

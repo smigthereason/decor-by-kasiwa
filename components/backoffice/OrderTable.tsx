@@ -72,6 +72,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
                     ? order.soldByName || "Staff"
                     : "Online checkout"}
                 </p>
+                <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{order.storeLocationName || "Unassigned store"}</p>
               </div>
             </div>
           </article>
@@ -85,6 +86,7 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
               {[
                 "Order",
                 "Channel",
+                "Store",
                 "Customer",
                 "Sold by",
                 "Placed",
@@ -124,6 +126,8 @@ export default function OrderTable({ orders, mode = "admin", compact = false }: 
                     {channelLabel(order)}
                   </span>
                 </td>
+
+                <td className="px-4 py-4 text-[10px] font-medium">{order.storeLocationName || "Unassigned"}</td>
 
                 <td className="px-4 py-4">
                   <p className="text-[10px] font-medium">{order.customerName}</p>

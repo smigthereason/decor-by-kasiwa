@@ -167,9 +167,9 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
   });
 }
 
-export async function getLiveOrders(): Promise<Order[]> {
+export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> {
   const rows = await serverClient.fetch<Order[]>(
-    `*[_type == "commerceOrder"] | order(createdAt desc) {
+    `*[_type == "commerceOrder" && (!defined($storeId) || storeLocation._ref == $storeId)] | order(createdAt desc) {
       "id": _id,
       orderNumber,
       "customerId": coalesce(customer._ref, ""),
@@ -186,6 +186,9 @@ export async function getLiveOrders(): Promise<Order[]> {
       deliveryFee,
       total,
       assignedStore,
+      "storeLocationId": storeLocation._ref,
+      "storeLocationName": coalesce(storeLocation->name, assignedStore, ""),
+      "storeLocationCode": coalesce(storeLocation->code, ""),
       paymentReference,
       paymentProvider,
       providerReceiptNumber,
@@ -222,7 +225,7 @@ export async function getLiveOrders(): Promise<Order[]> {
         "image": product->heroImage.asset->url
       }
     }`,
-    {},
+    { storeId: storeLocationId || null },
     { cache: "no-store" },
   );
 
@@ -249,15 +252,18 @@ export async function getLiveOrders(): Promise<Order[]> {
   }));
 }
 
-export async function getLiveShipments(): Promise<Shipment[]> {
+export async function getLiveShipments(storeLocationId?: string): Promise<Shipment[]> {
   const rows = await serverClient.fetch<Shipment[]>(
-    `*[_type == "shipment"] | order(updatedAt desc) {
+    `*[_type == "shipment" && (!defined($storeId) || coalesce(storeLocation._ref, order->storeLocation._ref) == $storeId)] | order(updatedAt desc) {
       "id": _id,
       shipmentNumber,
       "orderId": order._ref,
       orderNumber,
       customerName,
       destination,
+      "storeLocationId": coalesce(storeLocation._ref, order->storeLocation._ref),
+      "storeLocationName": coalesce(storeLocation->name, order->storeLocation->name, order->assignedStore, ""),
+      "storeLocationCode": coalesce(storeLocation->code, order->storeLocation->code, ""),
       carrier,
       trackingNumber,
       createdAt,
@@ -272,7 +278,7 @@ export async function getLiveShipments(): Promise<Shipment[]> {
       deliveredByName,
       deliveryConfirmationNote
     }`,
-    {},
+    { storeId: storeLocationId || null },
     { cache: "no-store" },
   );
 
@@ -454,8 +460,8 @@ function buildActivity({
 export async function getLiveOperationsSnapshot(storeLocationId?: string): Promise<OperationsSnapshot> {
   const [products, orders, shipments, restockRequests] = await Promise.all([
     getLiveProducts(storeLocationId),
-    getLiveOrders(),
-    getLiveShipments(),
+    getLiveOrders(storeLocationId),
+    getLiveShipments(storeLocationId),
     getLiveRestockRequests(),
   ]);
 

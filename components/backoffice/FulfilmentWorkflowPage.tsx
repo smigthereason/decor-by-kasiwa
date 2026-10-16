@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, LoaderCircle, PackageCheck, RefreshCcw, Search, UserCheck, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, LoaderCircle, PackageCheck, RefreshCcw, Search, UserCheck, X } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 
 type Stage = "PRODUCTION" | "PACKAGING" | "DELIVERY";
@@ -22,10 +22,14 @@ type Job = {
   currentFulfilmentStage: Stage;
   assignedStaffId?: string;
   assignedFulfilmentStaffName?: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
+  storeLocationCode?: string;
   items: Array<{ name: string; category?: string; quantity: number; image?: string }>;
 };
-type Staff = { _id: string; name: string; email: string; role: string; permissions?: string[] };
-type Viewer = { role: string; customerId: string; stages: Stage[]; manager: boolean };
+type Staff = { _id: string; name: string; email: string; role: string; permissions?: string[]; assignedStoreId?: string; assignedStoreName?: string };
+type StoreLocation = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
+type Viewer = { role: string; customerId: string; stages: Stage[]; manager: boolean; assignedStoreId?: string; assignedStoreName?: string; storeLocked?: boolean };
 
 const roleFor: Record<Stage, string> = {
   PRODUCTION: "PRODUCTION_STAFF",
@@ -64,22 +68,30 @@ export default function FulfilmentWorkflowPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [appliedDateRange, setAppliedDateRange] = useState({ from: "", to: "" });
+  const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
+  const [storeFilter, setStoreFilter] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/backoffice/workflow", { cache: "no-store" });
-      const payload = await response.json() as { orders?: Job[]; availableStaff?: Staff[]; viewer?: Viewer; message?: string };
+      const params = new URLSearchParams();
+      if (storeFilter) params.set("store", storeFilter);
+      const response = await fetch(`/api/backoffice/workflow${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
+      const payload = await response.json() as { orders?: Job[]; availableStaff?: Staff[]; storeLocations?: StoreLocation[]; viewer?: Viewer; message?: string };
       if (!response.ok) throw new Error(payload.message || "Unable to load workflow.");
       setJobs(payload.orders || []);
       setStaff(payload.availableStaff || []);
+      setStoreLocations(payload.storeLocations || []);
       setViewer(payload.viewer || null);
+      if (payload.viewer?.storeLocked && payload.viewer.assignedStoreId && storeFilter !== payload.viewer.assignedStoreId) {
+        setStoreFilter(payload.viewer.assignedStoreId);
+      }
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Unable to load workflow.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [storeFilter]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -88,9 +100,12 @@ export default function FulfilmentWorkflowPage() {
     return order.slice(index + 1).find((stage) => job.fulfilmentStages.includes(stage));
   }
 
-  function candidates(stage: Stage | undefined) {
+  function candidates(stage: Stage | undefined, storeLocationId?: string) {
     if (!stage) return [];
-    return staff.filter((item) => item.role === roleFor[stage] || item.permissions?.includes(permissionFor[stage]));
+    return staff.filter((item) =>
+      (item.role === roleFor[stage] || item.permissions?.includes(permissionFor[stage])) &&
+      (!storeLocationId || !item.assignedStoreId || item.assignedStoreId === storeLocationId),
+    );
   }
 
   function applyDateRange() {
@@ -236,7 +251,16 @@ export default function FulfilmentWorkflowPage() {
               </button>
             )}
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_auto] xl:items-end">
+            <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Store / location
+              <span className="relative block">
+                <select value={storeFilter} disabled={Boolean(viewer?.storeLocked)} onChange={(event) => setStoreFilter(event.target.value)} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-70">
+                  <option value="">All stores / unassigned</option>
+                  {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+              </span>
+            </label>
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={applyDateRange} className="min-h-11 rounded-full bg-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.05em] text-white">Apply dates</button>{(appliedDateRange.from || appliedDateRange.to) && <button type="button" onClick={clearDateRange} className="min-h-11 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear dates</button>}</div>
@@ -267,8 +291,8 @@ export default function FulfilmentWorkflowPage() {
                     <p className="rounded-xl bg-[var(--paper)] p-4 text-xs text-[var(--muted)]">No jobs waiting.</p>
                   ) : group.jobs.map((job) => {
                     const next = nextStage(job);
-                    const nextOptions = candidates(next);
-                    const currentOptions = candidates(job.currentFulfilmentStage);
+                    const nextOptions = candidates(next, job.storeLocationId);
+                    const currentOptions = candidates(job.currentFulfilmentStage, job.storeLocationId);
                     const needsInitialAssignment = viewer?.manager && !job.assignedStaffId;
                     return (
                       <article key={job.id} className="min-w-0 rounded-xl border hairline bg-[var(--paper)] p-3.5 sm:p-4">
@@ -276,6 +300,7 @@ export default function FulfilmentWorkflowPage() {
                           <div className="min-w-0">
                             <p className="truncate text-xs font-semibold">{job.orderNumber}</p>
                             <p className="mt-1 break-words text-[11px] text-[var(--muted)]">{job.customerName} · {job.salesChannel}</p>
+                            <p className="mt-1 text-[10px] font-medium text-[var(--brand-green)]">{job.storeLocationName || "Unassigned store"}</p>
                           </div>
                           <span className="shrink-0 text-xs font-semibold">{formatMoney(job.total)}</span>
                         </div>

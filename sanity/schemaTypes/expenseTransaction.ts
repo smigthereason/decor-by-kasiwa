@@ -30,6 +30,7 @@ export const expenseTransaction = defineType({
       { title: "Cash", value: "cash" }, { title: "M-PESA", value: "mpesa" }, { title: "Bank / Paystack", value: "paystack" }, { title: "Other", value: "other" },
     ] } }),
     defineField({ name: "transactionReference", title: "Transaction Reference", type: "string" }),
+    defineField({ name: "storeLocation", title: "Store / Location", type: "reference", to: [{ type: "storeLocation" }], description: "Optional for company-wide expenditure. Store-specific expenditure is included in that store's filtered reports and P&L." }),
     defineField({ name: "expenseDate", title: "Expense Date", type: "datetime", validation: (Rule) => Rule.required() }),
     defineField({ name: "createdBy", title: "Created By", type: "reference", to: [{ type: "customerUser" }] }),
     defineField({ name: "createdByName", title: "Created By Name", type: "string" }),

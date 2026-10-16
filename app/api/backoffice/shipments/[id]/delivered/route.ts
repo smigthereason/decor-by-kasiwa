@@ -24,11 +24,13 @@ export async function POST(
       orderId?: string;
       status?: string;
       deliveredAt?: string;
+      storeLocationId?: string;
     } | null>(
       `*[_type == "shipment" && _id == $id][0]{
         _id,
         _rev,
         "orderId": order._ref,
+        "storeLocationId": coalesce(storeLocation._ref, order->storeLocation._ref),
         status,
         deliveredAt
       }`,
@@ -38,6 +40,10 @@ export async function POST(
 
     if (!shipment) {
       return NextResponse.json({ message: "Delivery not found." }, { status: 404 });
+    }
+
+    if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") && staff.storeLocationId && shipment.storeLocationId !== staff.storeLocationId) {
+      return NextResponse.json({ message: "This delivery belongs to a different store/location." }, { status: 403 });
     }
 
     if (shipment.deliveredAt || shipment.status === "delivered") {

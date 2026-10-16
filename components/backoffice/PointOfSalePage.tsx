@@ -76,6 +76,13 @@ type CustomerMatch = {
   outstandingBalance?: number;
 };
 
+type StoreLocationOption = {
+  _id: string;
+  name: string;
+  code?: string;
+  locationType?: "MAIN" | "BRANCH";
+};
+
 function variantLabel(variant: ProductVariant) {
   return variant.title || [variant.colour, variant.size].filter(Boolean).join(" · ") || "Variant";
 }
@@ -88,13 +95,17 @@ function stockLabel(product: StoreProduct, variant?: ProductVariant) {
 
 export default function PointOfSalePage() {
   const { data: session } = useSession();
-  const manager = session?.user?.role === "ADMIN" || session?.user?.role === "STORE" || session?.user?.role === "MANAGER";
-  const canDiscount = manager || session?.user?.role === "STORE_STAFF";
-  const basePath = session?.user?.role === "ADMIN" ? "/admin" : "/store";
+  const role = session?.user?.role;
+  const manager = role === "ADMIN" || role === "STORE" || role === "MANAGER";
+  const canDiscount = manager || role === "STORE_STAFF";
+  const basePath = role === "ADMIN" ? "/admin" : "/store";
+  const storeLocked = role === "MANAGER" || role === "STORE_STAFF";
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+  const [saleStoreId, setSaleStoreId] = useState("");
   const [search, setSearch] = useState("");
   const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<PosLine[]>([]);
@@ -142,6 +153,29 @@ export default function PointOfSalePage() {
       if (background) setCatalogRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!role) return;
+    let cancelled = false;
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[]; assignedStoreId?: string; message?: string };
+        if (!response.ok) throw new Error(payload.message || "Unable to load store locations.");
+        if (cancelled) return;
+        const locations = payload.locations || [];
+        const assigned = payload.assignedStoreId || "";
+        setStoreLocations(locations);
+        setSaleStoreId((current) => {
+          if (storeLocked) return assigned;
+          if (current && locations.some((location) => location._id === current)) return current;
+          return assigned || (locations.length === 1 ? locations[0]._id : "");
+        });
+      })
+      .catch((cause) => {
+        if (!cancelled) setMessage(cause instanceof Error ? cause.message : "Unable to load store locations.");
+      });
+    return () => { cancelled = true; };
+  }, [role, storeLocked]);
 
   useEffect(() => {
     void loadProducts();
@@ -398,6 +432,13 @@ export default function PointOfSalePage() {
   async function completeSale() {
     if (!cart.length || processing) return;
 
+    if (!saleStoreId) {
+      setMessage(storeLocked
+        ? "This POS user is not assigned to a store/location. Ask Admin to assign one under Staff."
+        : "Select the store/location running this POS sale.");
+      return;
+    }
+
     if (!customerName.trim()) {
       setMessage("Customer name is required before completing a sale.");
       return;
@@ -451,6 +492,7 @@ export default function PointOfSalePage() {
         body: JSON.stringify({
           requestId,
           paymentMethod,
+          storeLocationId: saleStoreId,
           deliveryLocation: deliveryEnabled ? deliveryLocation.trim() : undefined,
           deliveryAddressLine: deliveryEnabled ? deliveryAddressLine.trim() : undefined,
           deliveryRecipientName: deliveryEnabled ? deliveryRecipientName.trim() : undefined,
@@ -526,6 +568,23 @@ export default function PointOfSalePage() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative min-w-44 flex-1 sm:flex-none sm:min-w-48">
+            <select
+              value={saleStoreId}
+              disabled={storeLocked}
+              onChange={(event) => setSaleStoreId(event.target.value)}
+              aria-label="POS store / location"
+              className="h-10 w-full appearance-none rounded-full border hairline bg-[var(--paper)] pl-4 pr-11 text-[10px] font-semibold uppercase tracking-wider outline-none disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <option value="">Select store</option>
+              {storeLocations.map((location) => (
+                <option key={location._id} value={location._id}>
+                  {location.name}{location.code ? ` · ${location.code}` : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
           <Link
             href={`${basePath}/pos/operations`}
             className="hidden h-10 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-[10px] font-bold uppercase tracking-wider text-[var(--brand-green)] transition hover:bg-[var(--paper-2)] md:inline-flex"
@@ -744,7 +803,12 @@ export default function PointOfSalePage() {
           <div className="flex items-center justify-between border-b hairline p-4 sm:px-6">
             <div className="flex items-center gap-2">
               <ShoppingCart size={18} className="text-[var(--brand-green)]" />
-              <h2 className="text-sm font-semibold tracking-tight">Current Sale</h2>
+              <div>
+                <h2 className="text-sm font-semibold tracking-tight">Current Sale</h2>
+                <p className="mt-0.5 text-[10px] text-[var(--muted)]">
+                  {storeLocations.find((location) => location._id === saleStoreId)?.name || "Select store/location"}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-[var(--paper-2)] px-2.5 py-1 text-[11px] font-bold tabular-nums text-[var(--brand-green)]">

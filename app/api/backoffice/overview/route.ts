@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   try {
-    const scopeStoreId = staff.storeLocationId || undefined;
+    const scopeStoreId = (staff.role === "MANAGER" || staff.role === "STORE_STAFF") ? staff.storeLocationId || undefined : undefined;
     const snapshot = await getLiveOperationsSnapshot(scopeStoreId);
     const hideProcurement = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
 
@@ -25,6 +25,8 @@ export async function GET() {
     const payload = {
       ...snapshot,
       viewerRole: staff.role,
+      viewerStoreId: staff.storeLocationId || "",
+      viewerStoreName: staff.storeLocationName || "",
       products: hideProcurement ? snapshot.products.map((product) => ({
         ...product,
         unitCost: 0,

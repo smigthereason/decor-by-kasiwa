@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, Send, ShieldCheck } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
@@ -13,6 +13,7 @@ import type { OrderStatus, PaymentStatus } from "@/lib/operations/types";
 import { formatDateTime, formatKes } from "@/lib/operations/selectors";
 
 type Mode = "admin" | "store";
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 const adminStatuses: OrderStatus[] = [
   "pending",
@@ -34,7 +35,17 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
   const order = data?.orders.find((item) => item.id === id);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
   const basePath = mode === "admin" ? "/admin/orders" : "/store/orders";
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[] };
+        if (response.ok) setStoreLocations(payload.locations || []);
+      })
+      .catch(() => undefined);
+  }, []);
 
   if (!data) {
     return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;
@@ -50,12 +61,14 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
   }
 
   const liveOrderId = order.id;
+  const viewerRole = data.viewerRole;
   const isPosSale = order.salesChannel === "POS";
+  const canAssignStore = viewerRole === "ADMIN" || viewerRole === "STORE";
   const dispatched = !isPosSale && (Boolean(order.dispatchedAt) || ["dispatched", "delivered"].includes(order.status));
   const canDispatch = !isPosSale && order.paymentStatus === "paid" && !dispatched && order.status !== "cancelled";
   const availableStatuses = mode === "admin" ? adminStatuses : storeStatuses;
 
-  async function update(values: { status?: OrderStatus; paymentStatus?: PaymentStatus }) {
+  async function update(values: { status?: OrderStatus; paymentStatus?: PaymentStatus; storeLocationId?: string }) {
     if (saving) return;
     setSaving(true);
     setMessage(null);
@@ -175,6 +188,25 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
 
             {!isPosSale && !dispatched && (
               <>
+                <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Fulfilment store / location</label>
+                <div className="relative mt-2 w-full">
+                  <select
+                    disabled={saving || !canAssignStore}
+                    value={order.storeLocationId || ""}
+                    onChange={(e) => void update({ storeLocationId: e.target.value })}
+                    className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm font-medium outline-none transition-colors focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Unassigned</option>
+                    {storeLocations.map((location) => (
+                      <option key={location._id} value={location._id}>
+                        {location.name}{location.code ? ` · ${location.code}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+                </div>
+                {!canAssignStore && <p className="mt-2 text-[10px] text-[var(--muted)]">This order is locked to {order.storeLocationName || "your assigned store"}. Admin or Store Manager controls cross-store assignment.</p>}
+
                 <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Preparation status</label>
                 <div className="relative mt-2 w-full">
                   <select

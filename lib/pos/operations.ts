@@ -109,9 +109,10 @@ export type SalesHistoryFilters = {
   query?: string;
   from?: string;
   to?: string;
+  storeId?: string;
 };
 
-export async function listSalesHistory({ limit = 100, channel, cashier, query, from, to }: SalesHistoryFilters = {}) {
+export async function listSalesHistory({ limit = 100, channel, cashier, query, from, to, storeId }: SalesHistoryFilters = {}) {
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
   let start: string | null = null;
   let end: string | null = null;
@@ -130,28 +131,29 @@ export async function listSalesHistory({ limit = 100, channel, cashier, query, f
     `*[_type == "commerceOrder"
       && (!defined($channel) || salesChannel == $channel)
       && (!defined($cashier) || soldByName == $cashier)
+      && (!defined($storeId) || storeLocation._ref == $storeId)
       && (!defined($searchPattern) || [orderNumber,receiptNumber,customerName,customerPhone,customerEmail,providerReceiptNumber,paymentReference] match $searchPattern)
       && (!defined($start) || coalesce(soldAt,paidAt,createdAt) >= $start)
       && (!defined($end) || coalesce(soldAt,paidAt,createdAt) <= $end)
     ] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
-    { limit: safeLimit, channel: channel || null, cashier: cashierName, searchPattern, start, end },
+    { limit: safeLimit, channel: channel || null, cashier: cashierName, storeId: cleanText(storeId) || null, searchPattern, start, end },
     { cache: "no-store" },
   );
 }
 
-export async function listSalesCashiers() {
+export async function listSalesCashiers(storeId?: string) {
   const names = await serverClient.fetch<string[]>(
-    `array::unique(*[_type == "commerceOrder" && salesChannel == "POS" && defined(soldByName)].soldByName)`,
-    {},
+    `array::unique(*[_type == "commerceOrder" && salesChannel == "POS" && defined(soldByName) && (!defined($storeId) || storeLocation._ref == $storeId)].soldByName)`,
+    { storeId: cleanText(storeId) || null },
     { cache: "no-store" },
   );
   return (names || []).filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
-export async function listReceivables() {
+export async function listReceivables(storeId?: string) {
   return serverClient.fetch<PosHistoryOrder[]>(
-    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && paymentStatus in ["partially_paid","pending"]] | order(coalesce(soldAt,createdAt) desc)[0...250]${historyProjection}`,
-    {},
+    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && paymentStatus in ["partially_paid","pending"] && (!defined($storeId) || storeLocation._ref == $storeId)] | order(coalesce(soldAt,createdAt) desc)[0...250]${historyProjection}`,
+    { storeId: cleanText(storeId) || null },
     { cache: "no-store" },
   );
 }
@@ -215,7 +217,7 @@ function cleanLedgerAccount(value: unknown, legacyCategory?: unknown, expenseTyp
   return provided || legacyLedgerAccount(legacyCategory, expenseType);
 }
 
-type SalesReportRange = { from?: string; to?: string };
+type SalesReportRange = { from?: string; to?: string; storeId?: string };
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -252,26 +254,27 @@ function reportWindow(period: "day" | "week" | "month", range: SalesReportRange 
 
 export async function getSalesReport(period: "day" | "week" | "month", range: SalesReportRange = {}): Promise<SalesReport> {
   const { period: reportPeriod, start, end } = reportWindow(period, range);
+  const storeId = cleanText(range.storeId) || null;
   const [orders, returnRows, failedPending, globalReceivables, expenseRows] = await Promise.all([
     serverClient.fetch<PosHistoryOrder[]>(
-      `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"]]${historyProjection}`,
-      { start, end }, { cache: "no-store" },
+      `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"] && (!defined($storeId) || storeLocation._ref == $storeId)]${historyProjection}`,
+      { start, end, storeId }, { cache: "no-store" },
     ),
     serverClient.fetch<Array<{ amount?: number; restock?: boolean; items?: Array<{ productId?: string; quantity?: number; unitCost?: number }> }>>(
-      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed"]{
+      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed" && (!defined($storeId) || order->storeLocation._ref == $storeId)]{
         "amount":coalesce(refundAmount,0),restock,
         "items":items[]{"productId":coalesce(product._ref,productId),quantity,unitCost}
       }`,
-      { start, end }, { cache: "no-store" },
+      { start, end, storeId }, { cache: "no-store" },
     ),
     serverClient.fetch<Array<{ status?: string }>>(
-      `*[_type == "paymentTransaction" && createdAt >= $start && createdAt <= $end && status in ["failed","pending","timed_out"]]{status}`,
-      { start, end }, { cache: "no-store" },
+      `*[_type == "paymentTransaction" && createdAt >= $start && createdAt <= $end && status in ["failed","pending","timed_out"] && (!defined($storeId) || order->storeLocation._ref == $storeId)]{status}`,
+      { start, end, storeId }, { cache: "no-store" },
     ),
-    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0].balanceDue),0)`, {}, { cache: "no-store" }),
+    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && (!defined($storeId) || storeLocation._ref == $storeId)].balanceDue),0)`, { storeId }, { cache: "no-store" }),
     serverClient.fetch<Array<{ ledgerAccount?: string; expenseCategory?: string; expenseType?: string; amount?: number }>>(
-      `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end]{ledgerAccount,expenseCategory,expenseType,amount}`,
-      { start, end }, { cache: "no-store" },
+      `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end && (!defined($storeId) || storeLocation._ref == $storeId)]{ledgerAccount,expenseCategory,expenseType,amount}`,
+      { start, end, storeId }, { cache: "no-store" },
     ),
   ]);
 
@@ -410,6 +413,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
 
 export type ExpenseInput = {
   expenseType: "EXPENSE" | "PETTY_CASH" | "STAFF_PAYMENT" | "SALARY";
+  storeLocationId?: string;
   ledgerAccount?: string;
   expenseCategory?: LegacyExpenseCategory;
   staffName?: string;
@@ -420,12 +424,12 @@ export type ExpenseInput = {
   expenseDate?: string;
 };
 
-export async function listExpenses(limit = 150) {
+export async function listExpenses(limit = 150, storeId?: string) {
   const rows = await serverClient.fetch<Array<{
-    id: string; expenseNumber: string; expenseType: string; ledgerAccount?: string; expenseCategory?: LegacyExpenseCategory; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string;
+    id: string; expenseNumber: string; expenseType: string; ledgerAccount?: string; expenseCategory?: LegacyExpenseCategory; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string; storeLocationId?: string; storeLocationName?: string; storeLocationCode?: string;
   }>>(
-    `*[_type == "expenseTransaction"] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,ledgerAccount,expenseCategory,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName}`,
-    { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
+    `*[_type == "expenseTransaction" && (!defined($storeId) || storeLocation._ref == $storeId)] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,ledgerAccount,expenseCategory,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName,"storeLocationId":storeLocation._ref,"storeLocationName":storeLocation->name,"storeLocationCode":storeLocation->code}`,
+    { limit: Math.max(1, Math.min(500, limit)), storeId: cleanText(storeId) || null }, { cache: "no-store" },
   );
   return rows.map((row) => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }));
 }
@@ -439,18 +443,29 @@ export async function createExpense(input: ExpenseInput, seller: PosSeller) {
   if (!input.expenseType || !["EXPENSE", "PETTY_CASH", "STAFF_PAYMENT", "SALARY"].includes(input.expenseType)) throw new Error("Select a valid expense type.");
   const ledgerAccount = cleanText(input.ledgerAccount) || (input.expenseType === "SALARY" ? "Salaries" : "");
   if (!ledgerAccount) throw new Error("Ledger account is required so this expenditure can be reported correctly in Profit & Loss.");
+  const requestedStoreId = seller.role === "MANAGER" ? cleanText(seller.storeLocationId) : cleanText(input.storeLocationId);
+  const storeLocation = requestedStoreId
+    ? await serverClient.fetch<{ _id: string; name?: string; code?: string } | null>(
+        `*[_type == "storeLocation" && _id == $storeId && active != false][0]{_id,name,code}`,
+        { storeId: requestedStoreId },
+        { cache: "no-store" },
+      )
+    : null;
+  if (seller.role === "MANAGER" && !storeLocation) throw new Error("Manager expenditure must be tied to the Manager's assigned store.");
+  if (requestedStoreId && !storeLocation) throw new Error("Select an active store/location for this expenditure.");
   const now = new Date().toISOString();
   const expenseDate = input.expenseDate && !Number.isNaN(Date.parse(input.expenseDate)) ? new Date(input.expenseDate).toISOString() : now;
-  const key = `${seller.id}|${expenseDate}|${description}|${amount}`;
+  const key = `${seller.id}|${expenseDate}|${description}|${amount}|${storeLocation?._id || "company"}`;
   const id = `expenseTransaction.${hashId(key)}`;
   const expenseNumber = `EXP-${hashId(key).slice(0, 12).toUpperCase()}`;
   await serverClient.createIfNotExists({
     _id: id, _type: "expenseTransaction", expenseNumber, expenseType: input.expenseType, ledgerAccount,
     staffName: cleanText(input.staffName) || undefined, description, amount, currency: "KES",
     paymentMethod: input.paymentMethod || "other", transactionReference: cleanText(input.transactionReference) || undefined,
+    ...(storeLocation ? { storeLocation: { _type: "reference", _ref: storeLocation._id } } : {}),
     expenseDate, createdBy: { _type: "reference", _ref: seller.id }, createdByName: seller.name, createdByRole: seller.role, createdAt: now,
   });
-  await recordAuditEvent({ key: `expense|${id}`, eventType: "EXPENSE_RECORDED", entityType: "expenseTransaction", entityId: id, entityLabel: expenseNumber, actor: seller, detail: `${ledgerAccount} · ${input.expenseType} · KES ${amount.toLocaleString("en-KE")} · ${description}` });
+  await recordAuditEvent({ key: `expense|${id}`, eventType: "EXPENSE_RECORDED", entityType: "expenseTransaction", entityId: id, entityLabel: expenseNumber, actor: seller, detail: `${storeLocation?.name || "Company-wide"} · ${ledgerAccount} · ${input.expenseType} · KES ${amount.toLocaleString("en-KE")} · ${description}` });
   return { id, expenseNumber };
 }
 
@@ -638,9 +653,9 @@ export async function getDeveloperAuditTrail(days = 31) {
   return { events, total };
 }
 
-export async function getPaymentReconciliation(limit = 200) {
-  return serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; paidAt?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string }>>(
-    `*[_type == "paymentTransaction"] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,customerName,customerPhone,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,failureReason,createdAt,paidAt,"inventoryReviewRequired":coalesce(order->inventoryReviewRequired,false),"inventoryReconciliationReason":coalesce(order->inventoryReconciliationReason,"")}`,
-    { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
+export async function getPaymentReconciliation(limit = 200, storeId?: string) {
+  return serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; paidAt?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string; storeLocationId?: string; storeLocationName?: string }>>(
+    `*[_type == "paymentTransaction" && (!defined($storeId) || order->storeLocation._ref == $storeId)] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,customerName,customerPhone,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,failureReason,createdAt,paidAt,"storeLocationId":order->storeLocation._ref,"storeLocationName":coalesce(order->storeLocation->name,order->assignedStore,""),"inventoryReviewRequired":coalesce(order->inventoryReviewRequired,false),"inventoryReconciliationReason":coalesce(order->inventoryReconciliationReason,"")}`,
+    { limit: Math.max(1, Math.min(500, limit)), storeId: cleanText(storeId) || null }, { cache: "no-store" },
   );
 }

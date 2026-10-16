@@ -31,6 +31,8 @@ export async function POST(
       paymentStatus?: string;
       dispatchedAt?: string;
       lineItems?: { quantity?: number }[];
+      storeLocationId?: string;
+      storeLocationName?: string;
     } | null>(
       `*[_type == "commerceOrder" && _id == $id][0]{
         _id,
@@ -41,6 +43,8 @@ export async function POST(
         status,
         paymentStatus,
         dispatchedAt,
+        "storeLocationId": storeLocation._ref,
+        "storeLocationName": coalesce(storeLocation->name,assignedStore,""),
         lineItems[]{quantity}
       }`,
       { id: orderId },
@@ -49,6 +53,13 @@ export async function POST(
 
     if (!order) {
       return NextResponse.json({ message: "Order not found." }, { status: 404 });
+    }
+
+    if (!order.storeLocationId) {
+      return NextResponse.json({ message: "Assign a fulfilment store/location before dispatching this order." }, { status: 409 });
+    }
+    if (staff.role === "MANAGER" && order.storeLocationId !== staff.storeLocationId) {
+      return NextResponse.json({ message: "Managers can only dispatch orders assigned to their store/location." }, { status: 403 });
     }
 
     if (order.paymentStatus !== "paid") {
@@ -119,6 +130,7 @@ export async function POST(
       transaction.patch(shipment._id, (patch) =>
         patch.ifRevisionId(shipment._rev).set({
           status: "dispatched",
+          storeLocation: { _type: "reference", _ref: order.storeLocationId },
           dispatchedAt: now,
           dispatchedBy: { _type: "reference", _ref: staff.customerId },
           dispatchedByName: staff.customerName,
@@ -131,6 +143,7 @@ export async function POST(
         _type: "shipment",
         shipmentNumber: `SHP-${order.orderNumber || Date.now().toString().slice(-6)}`,
         order: { _type: "reference", _ref: order._id },
+        storeLocation: { _type: "reference", _ref: order.storeLocationId },
         orderNumber: order.orderNumber || order._id,
         customerName: order.customerName || "Customer",
         destination: order.deliveryLocation || "Not supplied",

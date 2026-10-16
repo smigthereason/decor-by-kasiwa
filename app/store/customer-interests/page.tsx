@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, LoaderCircle, Search, UserRound } from "lucide-react";
+import { ChevronDown, Eye, LoaderCircle, Search, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type ViewedProduct = {
@@ -12,6 +12,8 @@ type ViewedProduct = {
   imageUrl?: string;
   viewedAt: string;
 };
+
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 type CustomerInsight = {
   id: string;
@@ -29,6 +31,9 @@ export default function CustomerInterestsPage() {
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocked, setStoreLocked] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,13 +42,17 @@ export default function CustomerInterestsPage() {
       setError("");
       const params = new URLSearchParams();
       if (query.trim()) params.set("q", query.trim());
+      if (storeFilter) params.set("store", storeFilter);
       fetch(`/api/backoffice/customer-insights${params.size ? `?${params.toString()}` : ""}`, {
         cache: "no-store",
         signal: controller.signal,
       })
         .then(async (response) => {
-          const body = (await response.json().catch(() => ({}))) as { customers?: CustomerInsight[]; message?: string };
+          const body = (await response.json().catch(() => ({}))) as { customers?: CustomerInsight[]; storeLocations?: StoreLocationOption[]; assignedStoreId?: string; storeLocked?: boolean; message?: string };
           if (!response.ok) throw new Error(body.message || "Unable to load customer interests.");
+          setStoreLocations(body.storeLocations || []);
+          setStoreLocked(Boolean(body.storeLocked));
+          if (body.storeLocked && body.assignedStoreId && storeFilter !== body.assignedStoreId) setStoreFilter(body.assignedStoreId);
           const next = body.customers || [];
           setCustomers(next);
           setSelectedId((current) => (current && next.some((customer) => customer.id === current) ? current : next[0]?.id || ""));
@@ -61,7 +70,7 @@ export default function CustomerInterestsPage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, storeFilter]);
 
   const selected = customers.find((customer) => customer.id === selectedId) || null;
 
@@ -80,6 +89,16 @@ export default function CustomerInterestsPage() {
             placeholder="Search name, email or phone"
             className="min-h-12 w-full rounded-xl border hairline bg-[var(--paper)] pl-11 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)]"
           />
+        </label>
+        <label className="mt-3 block max-w-sm text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+          Store / location
+          <span className="relative mt-1.5 block">
+            <select value={storeFilter} disabled={storeLocked} onChange={(event) => setStoreFilter(event.target.value)} className="min-h-11 w-full appearance-none rounded-xl border hairline bg-[var(--paper)] pl-4 pr-11 text-sm font-normal normal-case tracking-normal text-[var(--ink)] outline-none disabled:cursor-not-allowed disabled:opacity-70">
+              <option value="">All stores</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </span>
         </label>
       </div>
 

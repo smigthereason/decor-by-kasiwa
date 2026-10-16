@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Trash2, X } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
+import ProductCreatePage from "@/components/backoffice/ProductCreatePage";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { useLiveOperations } from "@/lib/operations/client";
 import type { InventoryItem } from "@/lib/operations/types";
@@ -43,6 +44,10 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     setHeroPreviewUrl(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [heroImageFile]);
+
+  if (mode === "store" && session?.user?.role === "MANAGER") {
+    return <ProductCreatePage productId={productId} mode="manager" />;
+  }
 
   if (!data) {
     return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;

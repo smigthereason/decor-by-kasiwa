@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Package, Search, Truck } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 import type { ShipmentStatus } from "@/lib/operations/types";
+
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 const preparationWorkflow: ShipmentStatus[] = [
   "awaiting_store",
@@ -23,9 +25,25 @@ export default function StoreShipmentsPage() {
   const [status, setStatus] = useState("All");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+  const storeLocked = Boolean(data?.viewerStoreId);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[]; assignedStoreId?: string };
+        if (!response.ok) return;
+        setStoreLocations(payload.locations || []);
+        if (payload.assignedStoreId) setStoreFilter(payload.assignedStoreId);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const shipments = data?.shipments || [];
   const statuses = useMemo(() => ["All", ...Array.from(new Set(shipments.map((item) => item.status)))], [shipments]);
   const filtered = shipments.filter((shipment) => {
+    if (storeFilter && shipment.storeLocationId !== storeFilter) return false;
     if (status !== "All" && shipment.status !== status) return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -67,6 +85,13 @@ export default function StoreShipmentsPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
+          <div className="relative min-w-56">
+            <select value={storeFilter} disabled={storeLocked} onChange={(e) => setStoreFilter(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10 disabled:cursor-not-allowed disabled:opacity-70">
+              <option value="">All stores / unassigned</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
         </div>
       </div>
       <section className="p-4 sm:p-6 lg:p-8">
@@ -76,7 +101,7 @@ export default function StoreShipmentsPage() {
               const editable = preparationWorkflow.includes(shipment.status);
               return (
                 <article key={shipment.id} className="rounded-xl border hairline bg-[var(--paper)] p-5">
-                  <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{shipment.shipmentNumber}</p><h2 className="mt-1 text-base font-semibold">{shipment.customerName}</h2><p className="mt-1 text-xs text-[var(--muted)]">{shipment.orderNumber}</p></div><StatusPill value={shipment.status} /></div>
+                  <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{shipment.shipmentNumber}</p><h2 className="mt-1 text-base font-semibold">{shipment.customerName}</h2><p className="mt-1 text-xs text-[var(--muted)]">{shipment.orderNumber}</p><p className="mt-1 text-[10px] font-medium text-[var(--brand-green)]">{shipment.storeLocationName || "Unassigned store"}</p></div><StatusPill value={shipment.status} /></div>
                   <div className="mt-4 border-t hairline pt-4"><p className="text-xs">{shipment.destination}</p><p className="mt-2 flex items-center gap-2 text-[10px] text-[var(--muted)]"><Package size={12} /> {shipment.totalUnits} units</p></div>
                   {editable ? (
                     <>

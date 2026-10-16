@@ -15,10 +15,12 @@ export async function GET(request: Request) {
   const from = params.get("from")?.trim() || undefined;
   const to = params.get("to")?.trim() || undefined;
   const limit = Number(params.get("limit") || 150);
+  const requestedStoreId = params.get("store")?.trim() || undefined;
+  const storeId = staff.role === "MANAGER" ? staff.storeLocationId : requestedStoreId;
   try {
     const [orders, cashiers] = await Promise.all([
-      listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to }),
-      listSalesCashiers(),
+      listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to, storeId }),
+      listSalesCashiers(storeId),
     ]);
     return NextResponse.json({ orders, cashiers });
   } catch (cause) {

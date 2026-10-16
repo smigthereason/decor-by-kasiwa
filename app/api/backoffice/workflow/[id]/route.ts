@@ -10,17 +10,20 @@ import { serverClient } from "@/sanity/lib/serverClient";
 const allowed = ["ADMIN", "STORE", "MANAGER", "STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"] as const;
 const permissionFor: Record<FulfilmentStage, StaffPermission> = { PRODUCTION: "PRODUCTION", PACKAGING: "PACKAGING", DELIVERY: "DELIVERY" };
 
-type Order = { _id: string; orderNumber: string; currentFulfilmentStage?: FulfilmentStage | "COMPLETED"; fulfilmentStages?: FulfilmentStage[]; assignedStaffId?: string };
-type WorkflowStaff = { _id: string; name: string; role: string; permissions?: string[] };
+type Order = { _id: string; orderNumber: string; currentFulfilmentStage?: FulfilmentStage | "COMPLETED"; fulfilmentStages?: FulfilmentStage[]; assignedStaffId?: string; storeLocationId?: string; storeLocationName?: string };
+type WorkflowStaff = { _id: string; name: string; role: string; permissions?: string[]; assignedStoreId?: string; assignedStoreName?: string };
 
-async function getEligibleStaff(staffId: string, stage: FulfilmentStage) {
+async function getEligibleStaff(staffId: string, stage: FulfilmentStage, storeLocationId?: string) {
   const person = await serverClient.fetch<WorkflowStaff | null>(
-    `*[_type == "customerUser" && _id == $id && status == "ACTIVE"][0]{_id,name,role,permissions}`,
+    `*[_type == "customerUser" && _id == $id && status == "ACTIVE"][0]{_id,name,role,permissions,"assignedStoreId":assignedStore._ref,"assignedStoreName":assignedStore->name}`,
     { id: staffId },
     { cache: "no-store" },
   );
   if (!person || (person.role !== roleForStage(stage) && !person.permissions?.includes(permissionFor[stage]))) {
     throw new Error(`Selected staff member is not available for ${stage.toLowerCase()}.`);
+  }
+  if (storeLocationId && person.assignedStoreId && person.assignedStoreId !== storeLocationId) {
+    throw new Error(`Select ${stage.toLowerCase()} staff assigned to this order's store/location, or company-wide staff.`);
   }
   return person;
 }
@@ -32,17 +35,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params;
     const body = await request.json() as { action?: "assign_current"; staffId?: string; nextStaffId?: string };
     const order = await serverClient.fetch<Order | null>(
-      `*[_type == "commerceOrder" && _id == $id][0]{_id,orderNumber,currentFulfilmentStage,fulfilmentStages,"assignedStaffId":assignedFulfilmentStaff._ref}`,
+      `*[_type == "commerceOrder" && _id == $id][0]{_id,orderNumber,currentFulfilmentStage,fulfilmentStages,"assignedStaffId":assignedFulfilmentStaff._ref,"storeLocationId":storeLocation._ref,"storeLocationName":coalesce(storeLocation->name,assignedStore,"")}`,
       { id }, { cache: "no-store" },
     );
     if (!order?.currentFulfilmentStage || order.currentFulfilmentStage === "COMPLETED") throw new Error("This sale has no active fulfilment stage.");
     const stage: FulfilmentStage = order.currentFulfilmentStage;
     const manager = staff.role === "ADMIN" || staff.role === "STORE" || staff.role === "MANAGER";
+    const staffScopedStoreId = staff.role === "ADMIN" || staff.role === "STORE" ? "" : staff.storeLocationId || "";
+    if (!order.storeLocationId) {
+      return NextResponse.json({ message: "Assign this order to a fulfilment store/location in the Order Queue before starting workflow." }, { status: 400 });
+    }
+    if (staff.role === "MANAGER" && !staff.storeLocationId) {
+      return NextResponse.json({ message: "This Manager is not assigned to a store/location." }, { status: 403 });
+    }
+    if (staffScopedStoreId && order.storeLocationId !== staffScopedStoreId) {
+      return NextResponse.json({ message: "This fulfilment job belongs to a different store/location." }, { status: 403 });
+    }
 
     if (body.action === "assign_current") {
       if (!manager) return NextResponse.json({ message: "Only a manager or admin can assign the current workflow stage." }, { status: 403 });
       if (!body.staffId) throw new Error(`Select an available ${stage.toLowerCase()} staff member.`);
-      const assigned = await getEligibleStaff(body.staffId, stage);
+      const assigned = await getEligibleStaff(body.staffId, stage, order.storeLocationId);
       const now = new Date().toISOString();
       await serverClient.patch(id).set({
         assignedFulfilmentStaff: { _type: "reference", _ref: assigned._id },
@@ -79,7 +92,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     let nextStaff: WorkflowStaff | null = null;
     if (nextStage) {
       if (!body.nextStaffId) throw new Error(`Select an available ${nextStage.toLowerCase()} staff member before completing this stage.`);
-      nextStaff = await getEligibleStaff(body.nextStaffId, nextStage);
+      nextStaff = await getEligibleStaff(body.nextStaffId, nextStage, order.storeLocationId);
     }
 
     const now = new Date().toISOString();

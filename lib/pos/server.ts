@@ -55,6 +55,7 @@ export type PosSaleInput = {
   customerEmail?: string;
   customerPhone?: string;
   paymentMethod: "mpesa" | "paystack" | "manual";
+  storeLocationId?: string;
   manualPaymentName?: string;
   manualPaymentReference?: string;
   manualAmountReceived?: number;

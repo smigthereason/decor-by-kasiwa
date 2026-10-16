@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, ShoppingBag } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
@@ -9,6 +9,8 @@ import OrderTable from "@/components/backoffice/OrderTable";
 import { useLiveOperations } from "@/lib/operations/client";
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 function getNairobiDateTime(value?: string) {
   if (!value) return null;
@@ -40,6 +42,17 @@ export default function AdminOrdersPage() {
   const [toDate, setToDate] = useState("");
   const [fromTime, setFromTime] = useState("");
   const [toTime, setToTime] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[] };
+        if (response.ok) setStoreLocations(payload.locations || []);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const orders = data?.orders || [];
   const statuses = useMemo(
@@ -47,6 +60,7 @@ export default function AdminOrdersPage() {
     [orders],
   );
   const filtered = orders.filter((order) => {
+    if (storeFilter && order.storeLocationId !== storeFilter) return false;
     if (status !== "All" && order.status !== status) return false;
 
     const placed = getNairobiDateTime(order.soldAt || order.createdAt);
@@ -76,13 +90,14 @@ export default function AdminOrdersPage() {
   const clearFilters = () => {
     setSearch("");
     setStatus("All");
+    setStoreFilter("");
     setFromDate("");
     setToDate("");
     setFromTime("");
     setToTime("");
   };
 
-  const hasActiveFilters = Boolean(search || status !== "All" || fromDate || toDate || fromTime || toTime);
+  const hasActiveFilters = Boolean(search || status !== "All" || storeFilter || fromDate || toDate || fromTime || toTime);
 
   if (!data) {
     return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;
@@ -109,7 +124,14 @@ export default function AdminOrdersPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
-          <div className="lg:ml-auto"><ExportButtons title="Decor by Kasiwa Orders" columns={[{key:"order",label:"Order"},{key:"channel",label:"Channel"},{key:"customer",label:"Customer"},{key:"email",label:"Email"},{key:"status",label:"Status"},{key:"payment",label:"Payment"},{key:"total",label:"Total (KES)"},{key:"soldBy",label:"Sold By"},{key:"placed",label:"Placed"}]} rows={filtered.map((order)=>({order:order.orderNumber,channel:order.salesChannel||"ONLINE",customer:order.customerName,email:order.customerEmail,status:order.status,payment:order.paymentStatus,total:order.total,soldBy:order.soldByName||"Online checkout",placed:order.soldAt||order.createdAt}))}/></div>
+          <div className="relative w-full lg:w-64">
+            <select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10">
+              <option value="">All stores / unassigned</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
+          <div className="lg:ml-auto"><ExportButtons title="Decor by Kasiwa Orders" columns={[{key:"order",label:"Order"},{key:"channel",label:"Channel"},{key:"store",label:"Store"},{key:"customer",label:"Customer"},{key:"email",label:"Email"},{key:"status",label:"Status"},{key:"payment",label:"Payment"},{key:"total",label:"Total (KES)"},{key:"soldBy",label:"Sold By"},{key:"placed",label:"Placed"}]} rows={filtered.map((order)=>({order:order.orderNumber,channel:order.salesChannel||"ONLINE",store:order.storeLocationName||"Unassigned",customer:order.customerName,email:order.customerEmail,status:order.status,payment:order.paymentStatus,total:order.total,soldBy:order.soldByName||"Online checkout",placed:order.soldAt||order.createdAt}))}/></div>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:max-w-5xl">

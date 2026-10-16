@@ -139,6 +139,10 @@ export async function GET(
       available,
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
         location,
+        "defaultStoreId": defaultStore._ref,
+        "defaultStoreName": defaultStore->name,
+        "defaultStoreCode": defaultStore->code,
+        "defaultStoreType": defaultStore->locationType,
         reserved,
         incoming,
         reorderPoint,
@@ -177,7 +181,7 @@ export async function PATCH(
       for (const key of [
         "name", "shortDescription", "description", "onHand", "initialStock", "reserved", "incoming", "reorderPoint",
         "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
-        "rating", "reviewCount", "location", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
+        "rating", "reviewCount", "location", "storeLocationId", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
         "careInstructions", "variants", "galleryExisting",
       ]) {
@@ -196,14 +200,17 @@ export async function PATCH(
     } else if (staff.role === "MANAGER") {
       const managerEditableFields = new Set([
         "name", "shortDescription", "description",
-        "ecommerceEnabled", "posEnabled", "retailPrice", "available", "bestSeller",
+        "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
+        "rating", "reviewCount", "location", "storeLocationId", "reorderPoint", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
+        "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
+        "careInstructions", "variants", "galleryExisting",
       ]);
       const restrictedField = Object.keys(body).find((key) => !managerEditableFields.has(key));
-      if (restrictedField) return NextResponse.json({ message: "Managers cannot view or edit procurement / production cost or owner-only catalogue settings." }, { status: 403 });
+      if (restrictedField) return NextResponse.json({ message: "Managers can edit catalogue details but cannot view or edit production cost or inventory stock levels." }, { status: 403 });
     } else if (staff.role !== "ADMIN") {
       const storeEditableFields = new Set([
         "name", "shortDescription", "description", "onHand", "reserved", "incoming", "reorderPoint",
-        "unitCost", "ecommerceEnabled", "posEnabled", "retailPrice", "location", "available", "bestSeller",
+        "unitCost", "ecommerceEnabled", "posEnabled", "retailPrice", "location", "storeLocationId", "available", "bestSeller",
       ]);
       const restrictedField = Object.keys(body).find((key) => !storeEditableFields.has(key));
       if (restrictedField) {
@@ -380,6 +387,26 @@ export async function PATCH(
         return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
       }
 
+      const managerVariantStock = staff.role === "MANAGER"
+        ? await serverClient.fetch<Array<{ _key?: string; stockQuantity?: number }>>(
+            `*[_type == "product" && _id == $productId][0].variants[]{_key,stockQuantity}`,
+            { productId },
+            { cache: "no-store" },
+          )
+        : [];
+      const managerStockByKey = new Map(managerVariantStock.map((variant) => [variant._key || "", Math.max(0, Number(variant.stockQuantity || 0))]));
+      if (staff.role === "MANAGER") {
+        const submittedKeyList = variants.map((variant) => variant._key?.trim()).filter((key): key is string => Boolean(key));
+        const submittedKeys = new Set(submittedKeyList);
+        if (submittedKeys.size !== submittedKeyList.length) {
+          return NextResponse.json({ message: "Duplicate variant identifiers are not allowed. Reload the product and try again." }, { status: 400 });
+        }
+        const removedStockedVariant = managerVariantStock.find((variant) => variant._key && !submittedKeys.has(variant._key) && Number(variant.stockQuantity || 0) > 0);
+        if (removedStockedVariant) {
+          return NextResponse.json({ message: "A Manager cannot remove a variant that still has stock. Move or clear its stock through Inventory first." }, { status: 403 });
+        }
+      }
+
       const variantDocuments = [];
       for (let index = 0; index < variants.length; index += 1) {
         const variant = variants[index];
@@ -397,12 +424,16 @@ export async function PATCH(
           size: variant.size?.trim() || undefined,
           sku: variant.sku?.trim() || undefined,
           price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-          stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
+          stockQuantity: staff.role === "MANAGER"
+            ? (variant._key?.trim() ? managerStockByKey.get(variant._key.trim()) ?? 0 : 0)
+            : (typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined),
           ...(image ? { image } : {}),
         });
       }
       productPatch.variants = variantDocuments;
-      if (variantDocuments.length > 0) {
+      // A Manager may change variant merchandising, but cannot write stock totals.
+      // Stock is managed exclusively by inventory operations.
+      if (staff.role !== "MANAGER" && variantDocuments.length > 0) {
         productPatch.initialStock = variantDocuments.reduce(
           (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
           0,
@@ -411,7 +442,25 @@ export async function PATCH(
     }
 
     const inventoryPatch: Record<string, unknown> = {};
-    if (body.location !== undefined) inventoryPatch.location = cleanString(body.location) || "Main store";
+    const inventoryUnset: string[] = [];
+    if (body.storeLocationId !== undefined) {
+      const storeLocationId = cleanString(body.storeLocationId);
+      if (storeLocationId) {
+        const storeLocation = await serverClient.fetch<{ _id: string; name?: string } | null>(
+          `*[_type == "storeLocation" && _id == $storeLocationId && active != false][0]{_id,name}`,
+          { storeLocationId },
+          { cache: "no-store" },
+        );
+        if (!storeLocation) return NextResponse.json({ message: "Select an active inventory location." }, { status: 400 });
+        inventoryPatch.defaultStore = { _type: "reference", _ref: storeLocation._id };
+        inventoryPatch.location = storeLocation.name || "Assigned store";
+      } else {
+        inventoryPatch.location = "Unassigned";
+        inventoryUnset.push("defaultStore");
+      }
+    } else if (body.location !== undefined) {
+      inventoryPatch.location = cleanString(body.location) || "Unassigned";
+    }
     const reserved = numericValue(body.reserved);
     if (reserved !== undefined) inventoryPatch.reserved = Math.max(0, reserved);
     const incoming = numericValue(body.incoming);
@@ -431,7 +480,7 @@ export async function PATCH(
       });
     }
 
-    if (Object.keys(inventoryPatch).length > 0) {
+    if (Object.keys(inventoryPatch).length > 0 || inventoryUnset.length > 0) {
       const inventoryId = inventoryDocumentId(productId);
       transaction.createIfNotExists({
         _id: inventoryId,
@@ -443,7 +492,12 @@ export async function PATCH(
         reorderPoint: 5,
         unitCost: 0,
       });
-      transaction.patch(inventoryId, (patch) => patch.set(inventoryPatch));
+      transaction.patch(inventoryId, (patch) => {
+        let next = patch;
+        if (Object.keys(inventoryPatch).length > 0) next = next.set(inventoryPatch);
+        if (inventoryUnset.length > 0) next = next.unset(inventoryUnset);
+        return next;
+      });
     }
 
     await transaction.commit();

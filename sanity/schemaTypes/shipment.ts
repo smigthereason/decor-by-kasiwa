@@ -7,6 +7,7 @@ export const shipment = defineType({
   fields: [
     defineField({ name: "shipmentNumber", title: "Shipment Number", type: "string", validation: (Rule) => Rule.required() }),
     defineField({ name: "order", title: "Order", type: "reference", to: [{ type: "commerceOrder" }], validation: (Rule) => Rule.required() }),
+    defineField({ name: "storeLocation", title: "Store / Location", type: "reference", to: [{ type: "storeLocation" }], description: "Fulfilment store inherited from the related order." }),
     defineField({ name: "orderNumber", title: "Order Number", type: "string" }),
     defineField({ name: "customerName", title: "Customer Name", type: "string" }),
     defineField({ name: "destination", title: "Destination", type: "string" }),

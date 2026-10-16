@@ -6,11 +6,13 @@ import { recordOutstandingCashPayment } from "@/lib/pos/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
-    return NextResponse.json({ receivables: await listReceivables() });
+    const requestedStoreId = new URL(request.url).searchParams.get("store")?.trim() || undefined;
+    const storeId = staff.role === "MANAGER" ? staff.storeLocationId : requestedStoreId;
+    return NextResponse.json({ receivables: await listReceivables(storeId) });
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load receivables." }, { status: 400 });
   }

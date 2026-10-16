@@ -1,22 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { ArrowUpRight, Check, Search, Send, Truck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, Check, ChevronDown, Search, Send, Truck } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
+
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 export default function StoreDispatchPage() {
   const { data, loading, error, refresh } = useLiveOperations();
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+  const storeLocked = Boolean(data?.viewerStoreId);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[]; assignedStoreId?: string };
+        if (!response.ok) return;
+        setStoreLocations(payload.locations || []);
+        if (payload.assignedStoreId) setStoreFilter(payload.assignedStoreId);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const orders = (data?.orders || []).filter(
     (order) => order.paymentStatus === "paid" && !order.dispatchedAt && !["dispatched", "delivered", "cancelled"].includes(order.status),
   );
   const filtered = orders.filter((order) => {
+    if (storeFilter && order.storeLocationId !== storeFilter) return false;
     if (!search) return true;
     const term = search.toLowerCase();
     return [order.orderNumber, order.customerName, order.deliveryLocation].some((value) => value.toLowerCase().includes(term));
@@ -49,7 +67,16 @@ export default function StoreDispatchPage() {
         {message && <p className="mt-4 text-xs text-[var(--muted)]">{message}</p>}
       </div>
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">
-        <div className="relative max-w-sm"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search dispatch queue..." className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10" /></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search dispatch queue..." className="w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10" /></div>
+          <div className="relative min-w-56">
+            <select value={storeFilter} disabled={storeLocked} onChange={(e) => setStoreFilter(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10 disabled:cursor-not-allowed disabled:opacity-70">
+              <option value="">All stores / unassigned</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
+        </div>
       </div>
       <section className="p-4 sm:p-6 lg:p-8">
         {filtered.length ? (
@@ -61,12 +88,12 @@ export default function StoreDispatchPage() {
                   <StatusPill value={order.status} />
                 </div>
                 <p className="mt-4 border-t hairline pt-4 text-xs leading-5">{order.deliveryLocation}</p>
-                <p className="mt-2 text-[10px] text-[var(--muted)]">{order.lineItems.length} line items · {order.customerPhone || "No phone supplied"}</p>
+                <p className="mt-2 text-[10px] font-medium text-[var(--brand-green)]">{order.storeLocationName || "Unassigned store"}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.lineItems.length} line items · {order.customerPhone || "No phone supplied"}</p>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Link href={`/store/orders/${encodeURIComponent(order.id)}`} className="group inline-flex min-h-11 items-center justify-center gap-2 rounded-full border hairline px-4 text-[10px] font-semibold uppercase tracking-[0.08em] transition hover:border-[var(--brand-green)]">
                     Review <ArrowUpRight size={13} className="transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                   </Link>
-                  <button disabled={savingId === order.id} type="button" onClick={() => void dispatch(order.id)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">
+                  <button disabled={savingId === order.id || !order.storeLocationId} type="button" onClick={() => void dispatch(order.id)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50">
                     <Send size={13} /> {savingId === order.id ? "Saving…" : "Dispatch"}
                   </button>
                 </div>

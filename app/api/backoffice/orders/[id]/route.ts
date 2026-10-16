@@ -45,6 +45,7 @@ export async function PATCH(
     status?: OrderStatus;
     paymentStatus?: PaymentStatus;
     assignedStore?: string;
+    storeLocationId?: string;
   };
 
   if (body.status && !orderStatuses.includes(body.status)) {
@@ -89,6 +90,8 @@ export async function PATCH(
       deliveryLocation?: string;
       dispatchedAt?: string;
       status?: OrderStatus;
+      storeLocationId?: string;
+      storeLocationName?: string;
       shipment?: { _id: string } | null;
       lineItems?: { quantity?: number }[];
     } | null>(
@@ -99,6 +102,8 @@ export async function PATCH(
         deliveryLocation,
         dispatchedAt,
         status,
+        "storeLocationId": storeLocation._ref,
+        "storeLocationName": coalesce(storeLocation->name, assignedStore, ""),
         "shipment": (*[_type == "shipment" && order._ref == ^._id] | order(updatedAt desc))[0]{_id},
         lineItems[]{quantity}
       }`,
@@ -110,6 +115,18 @@ export async function PATCH(
       return NextResponse.json({ message: "Order not found." }, { status: 404 });
     }
 
+    if (staff.role === "MANAGER") {
+      if (!staff.storeLocationId) {
+        return NextResponse.json({ message: "This Manager is not assigned to a store/location." }, { status: 403 });
+      }
+      if (order.storeLocationId !== staff.storeLocationId) {
+        return NextResponse.json({ message: "Managers can only update orders assigned to their store/location." }, { status: 403 });
+      }
+      if (body.storeLocationId && body.storeLocationId !== staff.storeLocationId) {
+        return NextResponse.json({ message: "Managers cannot move orders to another store/location." }, { status: 403 });
+      }
+    }
+
     if (order.dispatchedAt || order.status === "dispatched" || order.status === "delivered") {
       if (body.status && body.status !== order.status) {
         return NextResponse.json(
@@ -117,12 +134,46 @@ export async function PATCH(
           { status: 409 },
         );
       }
+      if (body.storeLocationId && body.storeLocationId !== order.storeLocationId) {
+        return NextResponse.json(
+          { message: "A dispatched order cannot be moved to another store/location." },
+          { status: 409 },
+        );
+      }
     }
+
+    let selectedStore: { _id: string; name?: string; code?: string } | null = null;
+    if (body.storeLocationId !== undefined) {
+      if (staff.role !== "ADMIN" && staff.role !== "STORE") {
+        if (body.storeLocationId !== order.storeLocationId) {
+          return NextResponse.json({ message: "Only Admin or Store Manager can assign an order to a different store/location." }, { status: 403 });
+        }
+      }
+      const requestedStoreId = typeof body.storeLocationId === "string" ? body.storeLocationId.trim() : "";
+      if (!requestedStoreId) {
+        return NextResponse.json({ message: "Select an active fulfilment store/location." }, { status: 400 });
+      }
+      selectedStore = await serverClient.fetch<{ _id: string; name?: string; code?: string } | null>(
+        `*[_type == "storeLocation" && _id == $id && active != false][0]{_id,name,code}`,
+        { id: requestedStoreId },
+        { cache: "no-store" },
+      );
+      if (!selectedStore) {
+        return NextResponse.json({ message: "Select an active fulfilment store/location." }, { status: 400 });
+      }
+    }
+
+    const effectiveStoreId = selectedStore?._id || order.storeLocationId || "";
+    const effectiveStoreName = selectedStore?.name || order.storeLocationName || "";
 
     const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (body.status) set.status = body.status;
     if (body.paymentStatus && staff.role === "ADMIN") set.paymentStatus = body.paymentStatus;
     if (typeof body.assignedStore === "string") set.assignedStore = body.assignedStore.trim();
+    if (selectedStore) {
+      set.storeLocation = { _type: "reference", _ref: selectedStore._id };
+      set.assignedStore = selectedStore.name || selectedStore.code || "Store";
+    }
 
     const transaction = serverClient.transaction().patch(orderId, (patch) => patch.set(set));
 
@@ -130,6 +181,12 @@ export async function PATCH(
       const shipmentStatus = shipmentStatusForOrder(body.status);
 
       if (shipmentStatus) {
+        if (!effectiveStoreId) {
+          return NextResponse.json(
+            { message: "Assign a fulfilment store/location before moving this order into store preparation." },
+            { status: 400 },
+          );
+        }
         const now = new Date().toISOString();
         const totalUnits = (order.lineItems || []).reduce(
           (sum, line) => sum + Number(line.quantity || 0),
@@ -138,7 +195,11 @@ export async function PATCH(
 
         if (order.shipment?._id) {
           transaction.patch(order.shipment._id, (patch) =>
-            patch.set({ status: shipmentStatus, updatedAt: now }),
+            patch.set({
+              status: shipmentStatus,
+              storeLocation: { _type: "reference", _ref: effectiveStoreId },
+              updatedAt: now,
+            }),
           );
         } else {
           const id = shipmentId(orderId);
@@ -147,6 +208,7 @@ export async function PATCH(
             _type: "shipment",
             shipmentNumber: `SHP-${Date.now().toString().slice(-6)}`,
             order: { _type: "reference", _ref: orderId },
+            storeLocation: { _type: "reference", _ref: effectiveStoreId },
             orderNumber: order.orderNumber || orderId,
             customerName: order.customerName || "Customer",
             destination: order.deliveryLocation || "Not supplied",
@@ -155,6 +217,7 @@ export async function PATCH(
             status: shipmentStatus,
             itemCount: order.lineItems?.length || 0,
             totalUnits,
+            notes: effectiveStoreName ? `Fulfilment store: ${effectiveStoreName}` : undefined,
           });
         }
       }

@@ -33,9 +33,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     { id: customerId },
   );
   if (!existing) return NextResponse.json({ message: "Customer not found." }, { status: 404 });
-  if (role === "MANAGER" && !existing.assignedStoreId) {
+  if ((role === "MANAGER" || role === "STORE_STAFF") && !existing.assignedStoreId) {
     return NextResponse.json(
-      { message: "Assign this account to a store under Staff before using the Manager role." },
+      { message: `Assign this account to a store under Staff before using the ${role === "MANAGER" ? "Manager" : "Sales Staff"} role.` },
       { status: 400 },
     );
   }

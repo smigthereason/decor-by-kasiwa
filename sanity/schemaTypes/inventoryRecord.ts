@@ -12,7 +12,8 @@ export const inventoryRecord = defineType({
       to: [{ type: "product" }],
       validation: (Rule) => Rule.required(),
     }),
-    defineField({ name: "location", title: "Legacy / default store location", type: "string", initialValue: "Unassigned", description: "Kept for backwards compatibility. New branch stock is tracked in Location balances below." }),
+    defineField({ name: "location", title: "Legacy / default store location", type: "string", initialValue: "Unassigned", description: "Readable snapshot kept for backwards compatibility." }),
+    defineField({ name: "defaultStore", title: "Default inventory location", type: "reference", to: [{ type: "storeLocation" }], options: { filter: "active != false" }, description: "The product editor uses this client-created location as its default assignment. Actual stock balances remain tracked per location below." }),
     defineField({
       name: "locationBalances",
       title: "Location balances",

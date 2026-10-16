@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, Truck } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
@@ -9,16 +9,31 @@ import StatusPill from "@/components/backoffice/StatusPill";
 import { useLiveOperations } from "@/lib/operations/client";
 import { formatDateTime } from "@/lib/operations/selectors";
 
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
+
 export default function AdminShipmentsPage() {
   const { data, loading, error, refresh } = useLiveOperations();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[] };
+        if (response.ok) setStoreLocations(payload.locations || []);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const shipments = data?.shipments || [];
   const statuses = useMemo(
     () => ["All", ...Array.from(new Set(shipments.map((item) => item.status)))],
     [shipments],
   );
   const filtered = shipments.filter((shipment) => {
+    if (storeFilter && shipment.storeLocationId !== storeFilter) return false;
     if (status !== "All" && shipment.status !== status) return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -58,7 +73,14 @@ export default function AdminShipmentsPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
-          <div className="sm:ml-auto"><ExportButtons title="Shipments" columns={[{key:"shipment",label:"Shipment"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"destination",label:"Destination"},{key:"status",label:"Status"},{key:"updated",label:"Updated"}]} rows={filtered.map((item)=>({shipment:item.shipmentNumber,order:item.orderNumber,customer:item.customerName,destination:item.destination,status:item.status,updated:item.updatedAt}))}/></div>
+          <div className="relative w-full sm:w-auto sm:min-w-60">
+            <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10">
+              <option value="">All stores / unassigned</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
+          <div className="sm:ml-auto"><ExportButtons title="Shipments" columns={[{key:"shipment",label:"Shipment"},{key:"order",label:"Order"},{key:"store",label:"Store"},{key:"customer",label:"Customer"},{key:"destination",label:"Destination"},{key:"status",label:"Status"},{key:"updated",label:"Updated"}]} rows={filtered.map((item)=>({shipment:item.shipmentNumber,order:item.orderNumber,store:item.storeLocationName||"Unassigned",customer:item.customerName,destination:item.destination,status:item.status,updated:item.updatedAt}))}/></div>
         </div>
       </div>
 
@@ -73,6 +95,7 @@ export default function AdminShipmentsPage() {
                       <p className="truncate text-xs font-semibold">{shipment.shipmentNumber}</p>
                       <p className="mt-1 truncate text-sm font-medium">{shipment.customerName}</p>
                       <p className="mt-1 truncate text-[10px] text-[var(--muted)]">{shipment.orderNumber}</p>
+                      <p className="mt-1 truncate text-[10px] font-medium text-[var(--brand-green)]">{shipment.storeLocationName || "Unassigned store"}</p>
                     </div>
                     <StatusPill value={shipment.status} />
                   </div>
@@ -87,7 +110,7 @@ export default function AdminShipmentsPage() {
                 <table className="w-full min-w-[850px] text-left">
                   <thead>
                     <tr className="border-b hairline">
-                      {["Shipment", "Order", "Customer", "Destination", "Updated", "Status"].map((heading) => (
+                      {["Shipment", "Order", "Store", "Customer", "Destination", "Updated", "Status"].map((heading) => (
                         <th key={heading} className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{heading}</th>
                       ))}
                     </tr>
@@ -97,6 +120,7 @@ export default function AdminShipmentsPage() {
                       <tr key={shipment.id} className="border-b hairline last:border-0">
                         <td className="px-4 py-4 text-xs font-semibold">{shipment.shipmentNumber}</td>
                         <td className="px-4 py-4 text-xs">{shipment.orderNumber}</td>
+                        <td className="px-4 py-4 text-xs">{shipment.storeLocationName || "Unassigned"}</td>
                         <td className="px-4 py-4 text-xs">{shipment.customerName}</td>
                         <td className="px-4 py-4 text-xs text-[var(--muted)]">{shipment.destination}</td>
                         <td className="px-4 py-4 text-[10px] text-[var(--muted)]">{formatDateTime(shipment.updatedAt)}</td>

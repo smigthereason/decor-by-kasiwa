@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, ShoppingBag } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
@@ -8,10 +8,27 @@ import LiveDataState from "@/components/backoffice/LiveDataState";
 import OrderTable from "@/components/backoffice/OrderTable";
 import { useLiveOperations } from "@/lib/operations/client";
 
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
+
 export default function StoreOrdersPage() {
   const { data, loading, error, refresh } = useLiveOperations();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
+  const storeLocked = Boolean(data?.viewerStoreId);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocationOption[]; assignedStoreId?: string };
+        if (!response.ok) return;
+        setStoreLocations(payload.locations || []);
+        if (payload.assignedStoreId) setStoreFilter(payload.assignedStoreId);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const orders = (data?.orders || []).filter((order) =>
     ["ready_for_store", "picking", "packed", "dispatched", "delivered"].includes(order.status),
   );
@@ -20,6 +37,7 @@ export default function StoreOrdersPage() {
     [orders],
   );
   const filtered = orders.filter((order) => {
+    if (storeFilter && order.storeLocationId !== storeFilter) return false;
     if (status !== "All" && order.status !== status) return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -49,7 +67,14 @@ export default function StoreOrdersPage() {
             </select>
             <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           </div>
-          <div className="sm:ml-auto"><ExportButtons title="Store Orders" columns={[{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"destination",label:"Destination"},{key:"status",label:"Status"},{key:"payment",label:"Payment"},{key:"total",label:"Total (KES)"},{key:"soldBy",label:"Sold By"},{key:"placed",label:"Placed"}]} rows={filtered.map((order)=>({order:order.orderNumber,customer:order.customerName,destination:order.deliveryLocation,status:order.status,payment:order.paymentStatus,total:order.total,soldBy:order.soldByName||"Online checkout",placed:order.soldAt||order.createdAt}))}/></div>
+          <div className="relative min-w-56">
+            <select value={storeFilter} disabled={storeLocked} onChange={(e) => setStoreFilter(e.target.value)} className="min-h-11 w-full cursor-pointer appearance-none rounded-full border hairline bg-[var(--paper)] py-2.5 pl-4 pr-11 text-sm outline-none transition focus:border-[var(--brand-green)] focus:ring-2 focus:ring-[var(--brand-green)]/10 disabled:cursor-not-allowed disabled:opacity-70">
+              <option value="">All stores / unassigned</option>
+              {storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.code ? ` · ${location.code}` : ""}</option>)}
+            </select>
+            <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          </div>
+          <div className="sm:ml-auto"><ExportButtons title="Store Orders" columns={[{key:"order",label:"Order"},{key:"store",label:"Store"},{key:"customer",label:"Customer"},{key:"destination",label:"Destination"},{key:"status",label:"Status"},{key:"payment",label:"Payment"},{key:"total",label:"Total (KES)"},{key:"soldBy",label:"Sold By"},{key:"placed",label:"Placed"}]} rows={filtered.map((order)=>({order:order.orderNumber,store:order.storeLocationName||"Unassigned",customer:order.customerName,destination:order.deliveryLocation,status:order.status,payment:order.paymentStatus,total:order.total,soldBy:order.soldByName||"Online checkout",placed:order.soldAt||order.createdAt}))}/></div>
         </div>
       </div>
       <section className="p-4 sm:p-6 lg:p-8">

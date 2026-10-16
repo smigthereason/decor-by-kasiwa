@@ -79,6 +79,9 @@ export type Order = {
   deliveryFee: number;
   total: number;
   assignedStore?: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
+  storeLocationCode?: string;
   paymentReference?: string;
   discountAmount?: number;
   amountPaid?: number;
@@ -154,6 +157,9 @@ export type Shipment = {
   orderNumber: string;
   customerName: string;
   destination: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
+  storeLocationCode?: string;
   carrier?: string;
   trackingNumber?: string;
   createdAt: string;
@@ -225,5 +231,7 @@ export type OperationsSnapshot = {
   restockRequests: RestockRequest[];
   activity: ActivityEvent[];
   viewerRole?: StaffRole;
+  viewerStoreId?: string;
+  viewerStoreName?: string;
   source: "sanity-live";
 };

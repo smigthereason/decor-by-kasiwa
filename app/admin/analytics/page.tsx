@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { BarChart3, Boxes, CircleDollarSign, ShoppingBag, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BarChart3, Boxes, ChevronDown, CircleDollarSign, ShoppingBag, Users } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
 import LiveDataState from "@/components/backoffice/LiveDataState";
@@ -10,10 +10,23 @@ import WebAnalyticsPanel from "@/components/backoffice/WebAnalyticsPanel";
 import { useLiveOperations } from "@/lib/operations/client";
 import { formatKes } from "@/lib/operations/selectors";
 
+type StoreLocation = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
+
 export default function AdminAnalyticsPage() {
   const { data, loading, error, refresh } = useLiveOperations();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
+  const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/backoffice/store-locations", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { locations?: StoreLocation[] };
+        if (response.ok) setStoreLocations(payload.locations || []);
+      })
+      .catch(() => undefined);
+  }, []);
 
   if (!data) return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;
 
@@ -21,6 +34,7 @@ export default function AdminAnalyticsPage() {
   const rangeEnd = toDate ? new Date(`${toDate}T23:59:59.999+03:00`).getTime() : null;
   const paidOrders = data.orders.filter((order) => {
     if (order.paymentStatus !== "paid") return false;
+    if (storeFilter && order.storeLocationId !== storeFilter) return false;
     const timestamp = new Date(order.soldAt || order.createdAt).getTime();
     if (rangeStart !== null && timestamp < rangeStart) return false;
     if (rangeEnd !== null && timestamp > rangeEnd) return false;
@@ -31,7 +45,12 @@ export default function AdminAnalyticsPage() {
   const deliveryPayables = paidOrders.reduce((sum, order) => sum + Number(order.deliveryFee || 0), 0);
   const moneyIn = paidOrders.reduce((sum, order) => sum + order.total, 0);
   const avgOrder = paidOrders.length ? revenue / paidOrders.length : 0;
-  const inventoryRetailValue = data.products.reduce((sum, product) => sum + product.retailPrice * product.onHand, 0);
+  const inventoryRetailValue = data.products.reduce((sum, product) => {
+    const onHand = storeFilter
+      ? Number(product.locationBalances?.find((balance) => balance.storeId === storeFilter)?.onHand || 0)
+      : product.onHand;
+    return sum + product.retailPrice * onHand;
+  }, 0);
   const productRevenue = new Map<string, number>();
   for (const order of paidOrders) {
     for (const line of order.lineItems) {
@@ -50,6 +69,8 @@ export default function AdminAnalyticsPage() {
   const topCustomers = [...customerRevenue.values()].sort((a,b) => b.lifetimeValue - a.lifetimeValue).slice(0,8);
   const activeCustomerCount = customerRevenue.size;
   const rangeLabel = fromDate || toDate ? `${fromDate || "Beginning"} to ${toDate || "Today"}` : "All dates";
+  const selectedStore = storeLocations.find((store) => store._id === storeFilter);
+  const storeLabel = selectedStore ? selectedStore.name : "All stores";
   const exportRows = [
     { section: "Business totals", metric: "Business revenue", value: revenue, detail: `${paidOrders.length} paid orders; delivery excluded` },
     { section: "Business totals", metric: "Delivery payables", value: deliveryPayables, detail: "Pass-through delivery amounts" },
@@ -66,15 +87,17 @@ export default function AdminAnalyticsPage() {
       <div className="border-b hairline bg-[var(--paper)] px-4 py-6 sm:px-6 lg:px-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div><p className="kicker text-[var(--muted)]">Analytics</p><h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">Live business analytics</h1><p className="mt-3 text-sm text-[var(--muted)]">Calculated only from live Sanity products, customers and orders.</p></div>
-          <ExportButtons title={`Decor by Kasiwa Analytics - ${rangeLabel}`} columns={[{key:"section",label:"Section"},{key:"metric",label:"Metric"},{key:"value",label:"Value"},{key:"detail",label:"Detail"}]} rows={exportRows}/>
+          <ExportButtons title={`Decor by Kasiwa Analytics - ${storeLabel} - ${rangeLabel}`} columns={[{key:"section",label:"Section"},{key:"metric",label:"Metric"},{key:"value",label:"Value"},{key:"detail",label:"Detail"}]} rows={exportRows}/>
         </div>
         <div className="mt-5 flex flex-wrap items-end gap-2">
+          <label className="grid min-w-60 gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Store / location<span className="relative"><select value={storeFilter} onChange={(event)=>setStoreFilter(event.target.value)} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All stores</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.locationType ? ` · ${store.locationType === "MAIN" ? "Main" : "Branch"}` : ""}{store.code ? ` · ${store.code}` : ""}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></span></label>
           <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} max={toDate || undefined} className="min-h-10 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
           <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} min={fromDate || undefined} className="min-h-10 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
           {(fromDate || toDate) && <button type="button" onClick={() => { setFromDate(""); setToDate(""); }} className="min-h-10 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear dates</button>}
-          <p className="w-full text-xs text-[var(--muted)] sm:w-auto sm:pl-2">Showing: {rangeLabel}</p>
+          <p className="w-full text-xs text-[var(--muted)] sm:w-auto sm:pl-2">Showing: {storeLabel} · {rangeLabel}</p>
         </div>
       </div>
+      <div className="px-4 pt-4 text-[10px] text-[var(--muted)] sm:px-6 lg:px-10">Store filtering applies to sales, customers and inventory metrics below. Website/GA4 traffic remains company-wide because web sessions are not tied to a physical store.</div>
       <WebAnalyticsPanel fromDate={fromDate} toDate={toDate} />
       <section className="mt-4 grid grid-cols-1 border-y hairline sm:grid-cols-2 xl:grid-cols-5"><MetricCard index="01" label="Business revenue" value={formatKes(revenue)} detail="Paid product revenue; delivery payables excluded." icon={CircleDollarSign} /><MetricCard index="02" label="Delivery payables" value={formatKes(deliveryPayables)} detail="Delivery money collected on behalf of fulfilment." icon={ShoppingBag} /><MetricCard index="03" label="Money In" value={formatKes(moneyIn)} detail="Total customer payments including delivery payables." icon={CircleDollarSign} /><MetricCard index="04" label="Purchasing customers" value={String(activeCustomerCount)} detail={`Customers with paid orders · ${rangeLabel}.`} icon={Users} /><MetricCard index="05" label="Inventory retail value" value={formatKes(inventoryRetailValue)} detail="Retail price multiplied by current on-hand stock." icon={Boxes} /></section>
       <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2 lg:p-8"><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><div className="flex items-center gap-3"><BarChart3 size={18} /><div><p className="kicker text-[var(--muted)]">Top products</p><p className="mt-1 text-xs text-[var(--muted)]">Based on paid order revenue.</p></div></div><div className="mt-5 divide-y hairline">{topProducts.length ? topProducts.map(([name, value], index) => <div key={name} className="flex items-center justify-between gap-4 py-3"><div className="flex items-center gap-3"><span className="text-[10px] text-[var(--muted)]">{String(index + 1).padStart(2, "0")}</span><span className="text-sm font-medium">{name}</span></div><span className="text-sm font-semibold">{formatKes(value)}</span></div>) : <p className="py-10 text-center text-sm text-[var(--muted)]">No paid order data yet.</p>}</div></section><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><p className="kicker text-[var(--muted)]">Customer value</p><div className="mt-5 divide-y hairline">{topCustomers.map((customer) => <div key={customer.id} className="flex items-center justify-between gap-4 py-3"><div><p className="text-sm font-medium">{customer.name}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{customer.orders} orders</p></div><span className="text-sm font-semibold">{formatKes(customer.lifetimeValue)}</span></div>)}</div></section></div>

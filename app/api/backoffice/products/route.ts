@@ -11,6 +11,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 export const dynamic = "force-dynamic";
 
 type ReferenceOption = { _id: string; title: string; slug?: string };
+type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 type VariantInput = {
   title?: string;
   colour?: string;
@@ -91,18 +92,19 @@ async function uniqueSlug(name: string) {
 }
 
 export async function GET() {
-  const staff = await getApiStaff(["ADMIN"]);
+  const staff = await getApiStaff(["ADMIN", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
-  const [categories, collections, spaces, styles, products] = await Promise.all([
+  const [categories, collections, spaces, styles, products, storeLocations] = await Promise.all([
     serverClient.fetch<ReferenceOption[]>(`*[_type == "category"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "collection"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "shopSpace"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "shopStyle"] | order(title asc){_id,title,"slug":slug.current}`, {}, { cache: "no-store" }),
     serverClient.fetch<ReferenceOption[]>(`*[_type == "product"] | order(name asc){_id,"title":name,"slug":slug.current}`, {}, { cache: "no-store" }),
+    serverClient.fetch<StoreLocationOption[]>(`*[_type == "storeLocation" && active != false] | order(name asc){_id,name,code,locationType}`, {}, { cache: "no-store" }),
   ]);
 
-  return NextResponse.json({ categories, collections, spaces, styles, products });
+  return NextResponse.json({ categories, collections, spaces, styles, products, storeLocations });
 }
 
 export async function POST(request: Request) {
@@ -127,6 +129,16 @@ export async function POST(request: Request) {
       if (wholesaleMinQuantity < 2) return NextResponse.json({ message: "Wholesale quantity threshold must be at least 2." }, { status: 400 });
     }
     if (!primaryCategory) return NextResponse.json({ message: "Primary category is required." }, { status: 400 });
+
+    const storeLocationId = clean(form.get("storeLocationId"));
+    const storeLocation = storeLocationId
+      ? await serverClient.fetch<StoreLocationOption | null>(
+          `*[_type == "storeLocation" && _id == $storeLocationId && active != false][0]{_id,name,code,locationType}`,
+          { storeLocationId },
+          { cache: "no-store" },
+        )
+      : null;
+    if (storeLocationId && !storeLocation) return NextResponse.json({ message: "Select an active inventory location." }, { status: 400 });
 
     const productId = `product.${randomUUID().replaceAll("-", "")}`;
     const slug = await uniqueSlug(name);
@@ -241,7 +253,8 @@ export async function POST(request: Request) {
       _id: inventoryDocumentId(productId),
       _type: "inventoryRecord",
       product: { _type: "reference", _ref: productId },
-      location: clean(form.get("location")) || "Main store",
+      location: storeLocation?.name || "Unassigned",
+      ...(storeLocation ? { defaultStore: { _type: "reference", _ref: storeLocation._id } } : {}),
       reserved: 0,
       incoming: Math.max(0, numberValue(form.get("incoming"))),
       reorderPoint: Math.max(0, numberValue(form.get("reorderPoint"), 5)),
