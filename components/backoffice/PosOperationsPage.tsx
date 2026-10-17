@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ClipboardList, CreditCard, FileClock, HandCoins, ReceiptText, RefreshCcw, RotateCcw, Search, WalletCards } from "lucide-react";
 
+import ExternalTillReconciliation from "@/components/backoffice/ExternalTillReconciliation";
 import ExportButtons from "@/components/backoffice/ExportButtons";
 import { formatMoney } from "@/lib/money";
 
@@ -466,6 +467,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
         </div>}
 
         {tab === "reconciliation" && manager && <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
+          <ExternalTillReconciliation storeId={storeFilter} admin={role === "ADMIN" || role === "STORE"} />
           <div className="border-b hairline p-4">
             <p className="text-xs text-[var(--muted)]">A failed row is a failed STK attempt, not automatically missing money. If staff prompted the same phone again and a matching amount was paid within 15 minutes, the row is flagged as a <strong>possible paid retry</strong>. The failed attempt remains failed because the successful payment belongs to its own Safaricom CheckoutRequestID.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_160px_170px_160px_210px_auto] xl:items-end">

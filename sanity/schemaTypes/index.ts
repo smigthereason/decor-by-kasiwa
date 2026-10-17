@@ -5,6 +5,7 @@ import { auditEvent } from "./auditEvent";
 import { staffSession } from "./staffSession";
 import { expenseTransaction } from "./expenseTransaction";
 import { inventoryMovement } from "./inventoryMovement";
+import { tillReceipt } from "./tillReceipt";
 import { paymentTransaction } from "./paymentTransaction";
 import { returnTransaction } from "./returnTransaction";
 import { category } from "./category";
@@ -32,6 +33,7 @@ export const schema: { types: SchemaTypeDefinition[] } = {
     expenseTransaction,
     inventoryMovement,
     paymentTransaction,
+    tillReceipt,
     returnTransaction,
     inventoryRecord,
     shipment,
