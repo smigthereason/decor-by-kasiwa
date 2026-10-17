@@ -6,14 +6,17 @@ import { getSalesReport } from "@/lib/pos/operations";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   const params = new URL(request.url).searchParams;
   const raw = params.get("period");
   const period = raw === "week" || raw === "month" ? raw : "day";
   const from = params.get("from")?.trim() || undefined;
   const to = params.get("to")?.trim() || undefined;
-  const storeId = params.get("store")?.trim() || undefined;
+  if (staff.role === "MANAGER" && !staff.storeLocationId) {
+    return NextResponse.json({ message: "Manager must be assigned to a store to view reports." }, { status: 403 });
+  }
+  const storeId = staff.role === "MANAGER" ? staff.storeLocationId : (params.get("store")?.trim() || undefined);
   try {
     return NextResponse.json({ report: await getSalesReport(period, { from, to, storeId }) });
   } catch (cause) {

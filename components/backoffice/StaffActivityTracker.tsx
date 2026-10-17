@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 
 const STORAGE_KEY = "dbk_staff_activity_session";
 const SESSION_REUSE_MS = 30 * 60 * 1000;
-const HEARTBEAT_MS = 60 * 1000;
+const HEARTBEAT_MS = 2 * 60 * 1000;
 
 type StoredSession = { id: string; lastSeenAt: number };
 

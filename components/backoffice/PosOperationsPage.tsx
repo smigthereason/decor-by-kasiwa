@@ -46,7 +46,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const { data: session } = useSession();
   const role = session?.user?.role;
   const manager = role === "ADMIN" || role === "STORE" || role === "MANAGER";
-  const canViewReports = role === "ADMIN" || role === "STORE";
+  const canViewReports = role === "ADMIN" || role === "STORE" || role === "MANAGER";
   const salesStaff = role === "STORE_STAFF";
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [assignedStoreId, setAssignedStoreId] = useState("");

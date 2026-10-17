@@ -63,10 +63,14 @@ export async function POST(request: Request) {
     // Preserve actionable stock, payment, and configuration validation failures.
     // Unexpected server failures must not be disguised as invalid cashier input.
     const message = cause instanceof Error && cause.message ? cause.message : failure.message;
-    const isOperationalError = /stock|unit\(s\)|store|location|customer|phone|M-PESA|Daraja|MPESA_|Safaricom|cart|variant|price|quantity|discount|payment/i.test(message);
+    // Never convert an unexpected Sanity/server error to a cashier-side HTTP 400
+    // merely because the provider message happens to mention "payment" or "stock".
+    const isValidationError = /^(?:Enter |Select |Confirm |This POS user |A POS product |That payment reference |M-PESA STK Push requires |POS cart |POS payment |.* only has \d+ unit\(s\) available|.* no longer has enough stock)/i.test(message);
+    const status = failure.status === 500 && isValidationError ? 400 : failure.status;
+    const safeMessage = failure.status !== 500 || isValidationError ? message : failure.message;
     return NextResponse.json(
-      { message: isOperationalError && failure.status === 500 ? message : failure.message },
-      { status: failure.status === 500 && isOperationalError ? 400 : failure.status },
+      { message: safeMessage, code: status === 402 ? "SANITY_QUOTA" : status === 400 ? "POS_VALIDATION" : "POS_SERVER_ERROR" },
+      { status },
     );
   }
 }

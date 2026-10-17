@@ -186,7 +186,7 @@ export default function PointOfSalePage() {
 
     // Keep POS stock reasonably fresh without continuously hammering Sanity.
     // Checkout still performs authoritative stock/price validation server-side.
-    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    const timer = window.setInterval(refreshWhenVisible, 300_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {

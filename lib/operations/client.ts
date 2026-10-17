@@ -64,7 +64,7 @@ export async function mutateBackoffice(
 }
 
 
-export function useBackofficeNotifications(pollMs = 60000) {
+export function useBackofficeNotifications(pollMs = 180000) {
   const [notifications, setNotifications] = useState<BackofficeNotifications>({
     newOrders: 0,
     deliveries: 0,
