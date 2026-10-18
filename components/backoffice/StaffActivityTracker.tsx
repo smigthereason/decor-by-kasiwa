@@ -69,7 +69,6 @@ export async function endTrackedStaffActivitySession() {
 export default function StaffActivityTracker() {
   const pathname = usePathname();
   const sessionId = useRef("");
-  const lastInteraction = useRef({ fingerprint: "", at: 0 });
 
   useEffect(() => {
     sessionId.current = getTrackedStaffSessionId();
@@ -80,7 +79,8 @@ export default function StaffActivityTracker() {
       void postActivity({ action: "HEARTBEAT", sessionId: sessionId.current, route: window.location.pathname });
     };
 
-    heartbeat();
+    // Initial PAGE_VIEW below creates/touches the session. Do not double
+    // request on mount by also sending an immediate heartbeat.
     const interval = window.setInterval(heartbeat, HEARTBEAT_MS);
     const onVisibility = () => { if (document.visibilityState === "visible") heartbeat(); };
     document.addEventListener("visibilitychange", onVisibility);
@@ -97,25 +97,9 @@ export default function StaffActivityTracker() {
     void postActivity({ action: "PAGE_VIEW", sessionId: sessionId.current, route: pathname });
   }, [pathname]);
 
-  useEffect(() => {
-    const onClick = (event: MouseEvent) => {
-      const target = event.target instanceof Element ? event.target.closest("button, a") : null;
-      if (!target || !sessionId.current) return;
-      const label = (target.getAttribute("aria-label") || target.getAttribute("title") || target.textContent || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
-      if (!label) return;
-      const fingerprint = `${pathname}|${label}`;
-      const now = Date.now();
-      if (lastInteraction.current.fingerprint === fingerprint && now - lastInteraction.current.at < 1500) return;
-      lastInteraction.current = { fingerprint, at: now };
-      markSessionSeen(sessionId.current);
-      void postActivity({ action: "INTERACTION", sessionId: sessionId.current, route: pathname, label });
-    };
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, [pathname]);
+  // Clicks were only touching the staffSession's lastRoute, not recording
+  // individual interactions. Heartbeats and page changes still track presence
+  // while removing a costly authenticated read/write cycle per click.
 
   useEffect(() => {
     const nativeFetch = window.fetch.bind(window);

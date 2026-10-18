@@ -104,33 +104,37 @@ export async function touchStaffSession({
   );
   const increment = existing?.status === "ACTIVE" ? activeIncrement(existing.lastSeenAt, nowMs) : 0;
 
-  await serverClient.createIfNotExists({
-    _id: id,
-    _type: "staffSession",
-    staff: { _type: "reference", _ref: staffId },
-    staffName: actor.name,
-    staffEmail: actor.email,
-    staffRole: actor.role,
-    sessionKey: hashId(sessionId),
-    loginAt: now,
-    lastSeenAt: now,
-    durationMinutes: 0,
-    status: "ACTIVE",
-    lastRoute: safeText(route, 240),
-    createdAt: now,
-  });
-
-  const patch = serverClient.patch(id).set({
-    staff: { _type: "reference", _ref: staffId },
-    staffName: actor.name,
-    staffEmail: actor.email,
-    staffRole: actor.role,
-    lastSeenAt: now,
-    status: "ACTIVE",
-    ...(route ? { lastRoute: safeText(route, 240) } : {}),
-  }).unset(["logoutAt"]);
-  if (increment > 0) patch.inc({ durationMinutes: increment });
-  await patch.commit();
+  if (!existing) {
+    // The initial create already contains the latest heartbeat/route. Avoid
+    // a second mutation for the same event (previously create + patch).
+    await serverClient.createIfNotExists({
+      _id: id,
+      _type: "staffSession",
+      staff: { _type: "reference", _ref: staffId },
+      staffName: actor.name,
+      staffEmail: actor.email,
+      staffRole: actor.role,
+      sessionKey: hashId(sessionId),
+      loginAt: now,
+      lastSeenAt: now,
+      durationMinutes: 0,
+      status: "ACTIVE",
+      lastRoute: safeText(route, 240),
+      createdAt: now,
+    });
+  } else {
+    const patch = serverClient.patch(id).set({
+      staff: { _type: "reference", _ref: staffId },
+      staffName: actor.name,
+      staffEmail: actor.email,
+      staffRole: actor.role,
+      lastSeenAt: now,
+      status: "ACTIVE",
+      ...(route ? { lastRoute: safeText(route, 240) } : {}),
+    }).unset(["logoutAt"]);
+    if (increment > 0) patch.inc({ durationMinutes: increment });
+    await patch.commit();
+  }
 
   // One login document per session. Heartbeats and page views must not create more.
   if (!existing) {

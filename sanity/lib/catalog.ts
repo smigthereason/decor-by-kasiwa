@@ -1281,7 +1281,7 @@ export async function getStoreProductBySlug(
   }
 
   const record =
-    await serverClient.fetch<
+    await client.fetch<
       SanityProductRecord | null
     >(
       `*[
@@ -1428,91 +1428,30 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
   }
 
   try {
-    const [
-      categories,
-      spaces,
-      styles,
-      collections,
-    ] =
-      await Promise.all([
-        client.fetch<
-          SanityCategoryRecord[]
-        >(
-          `*[
-            _type == "category" &&
-            active != false &&
-            showInNavigation != false
-          ]
-          | order(
-            displayOrder asc,
-            title asc
-          ) {
-            _id,
-            title,
-            "slug": slug.current,
-            description,
-            "parentId": parent._ref,
-
-            "imageUrl": coalesce(
-              image.asset->url,
-              categoryImage.asset->url,
-              navigationImage.asset->url,
-              heroImage.asset->url
-            )
-          }`,
-        ),
-
-        client.fetch<
-          SanityReferenceLabel[]
-        >(
-          `*[
-            _type == "shopSpace" &&
-            active != false
-          ]
-          | order(
-            displayOrder asc,
-            title asc
-          ) {
-            _id,
-            title,
-            "slug": slug.current
-          }`,
-        ),
-
-        client.fetch<
-          SanityReferenceLabel[]
-        >(
-          `*[
-            _type == "shopStyle" &&
-            active != false
-          ]
-          | order(
-            displayOrder asc,
-            title asc
-          ) {
-            _id,
-            title,
-            "slug": slug.current
-          }`,
-        ),
-
-        client.fetch<
-          SanityReferenceLabel[]
-        >(
-          `*[
-            _type == "collection" &&
-            active != false
-          ]
-          | order(
-            displayOrder asc,
-            title asc
-          ) {
-            _id,
-            title,
-            "slug": slug.current
-          }`,
-        ),
-      ]);
+    // Read static shop navigation in one CDN query instead of four separate
+    // requests per rendered page. Keep updates reasonably fresh without
+    // coupling catalogue pages to real-time operational endpoints.
+    const { categories, spaces, styles, collections } = await client.fetch<{
+      categories: SanityCategoryRecord[];
+      spaces: SanityReferenceLabel[];
+      styles: SanityReferenceLabel[];
+      collections: SanityReferenceLabel[];
+    }>(`{
+      "categories": *[_type == "category" && active != false && showInNavigation != false]
+        | order(displayOrder asc, title asc) {
+          _id, title, "slug": slug.current, description, "parentId": parent._ref,
+          "imageUrl": coalesce(
+            image.asset->url, categoryImage.asset->url,
+            navigationImage.asset->url, heroImage.asset->url
+          )
+        },
+      "spaces": *[_type == "shopSpace" && active != false]
+        | order(displayOrder asc, title asc) {_id, title, "slug": slug.current},
+      "styles": *[_type == "shopStyle" && active != false]
+        | order(displayOrder asc, title asc) {_id, title, "slug": slug.current},
+      "collections": *[_type == "collection" && active != false]
+        | order(displayOrder asc, title asc) {_id, title, "slug": slug.current}
+    }`, {}, { next: { revalidate: 120 } });
 
     const fallbackBySlug =
       new Map<
