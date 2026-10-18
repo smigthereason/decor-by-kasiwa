@@ -94,6 +94,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
             className="receipt-logo mx-auto h-auto w-[140px] object-contain sm:w-[160px] print:w-[106px]"
             priority
           />
+          <p className="mt-1 text-xs font-semibold">0117553747</p>
           <h1 className="receipt-title mt-2 text-xl font-semibold tracking-[-0.04em]">POS Receipt</h1>
           <p className="mt-1 text-xs font-semibold">{receipt.receiptNumber || `RCT-${receipt.orderNumber}`}</p>
           <div className="receipt-muted mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[9px] text-[var(--muted)]">
