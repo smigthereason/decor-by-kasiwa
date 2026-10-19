@@ -13,6 +13,7 @@ import type {
 
 import { client } from "./client";
 import { serverClient } from "./serverClient";
+import { locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 
 const imageBuilder = imageUrlBuilder(client);
 
@@ -1238,7 +1239,7 @@ export const fallbackShopNavigation: ShopNavigation =
 /* PRODUCTS                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce"): Promise<
+export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce", storeId?: string): Promise<
   StoreProduct[]
 > {
   if (
@@ -1265,9 +1266,34 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
       channel === "pos" ? { cache: "no-store" } : { next: { revalidate: 10 } },
     );
 
-  return records.map(
-    mapProduct,
+  const products = records.map(mapProduct);
+  if (channel !== "pos" || !storeId) return products;
+
+  // POS must show the same location-specific inventory that checkout validates.
+  // Do not use product.initialStock or company-wide variant quantities here.
+  type StoreInventoryRow = { productId: string; balance?: LocationBalance | null };
+  const rows = await serverClient.fetch<StoreInventoryRow[]>(
+    `*[_type == "inventoryRecord" && count(locationBalances[store._ref == $storeId || storeId == $storeId]) > 0]{
+      "productId": product._ref,
+      "balance": locationBalances[store._ref == $storeId || storeId == $storeId][0]{onHand,variants[]{variantId,onHand}}
+    }`,
+    { storeId },
+    { cache: "no-store" },
   );
+  const balances = new Map(rows.map((row) => [row.productId, row.balance]));
+  return products.map((product) => {
+    const balance = balances.get(product.id);
+    const onHand = locationOnHand(balance);
+    return {
+      ...product,
+      stockQuantity: onHand,
+      stock: onHand > 0 ? `${onHand} in stock` : "Out of stock",
+      variants: product.variants?.map((variant) => ({
+        ...variant,
+        stockQuantity: locationOnHand(balance, variant.id),
+      })),
+    };
+  });
 }
 
 export async function getStoreProductBySlug(

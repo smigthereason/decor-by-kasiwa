@@ -118,6 +118,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const [loadingProduct, setLoadingProduct] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pricingError, setPricingError] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [existingGallery, setExistingGallery] = useState<ExistingGalleryImage[]>([]);
   const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
@@ -199,7 +200,18 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     if (saving) return;
     setSaving(true);
     setMessage(null);
+    setPricingError(null);
     const form = new FormData(event.currentTarget);
+    const retailPrice = Number(form.get("price"));
+    const compareAtPrice = Number(form.get("compareAtPrice"));
+    if (compareAtPrice > 0 && retailPrice > 0 && compareAtPrice <= retailPrice) {
+      const error = "Compare-at price must be higher than the retail price.";
+      setPricingError(error);
+      setMessage(error);
+      setSaving(false);
+      event.currentTarget.querySelector<HTMLInputElement>('[name="compareAtPrice"]')?.focus();
+      return;
+    }
     form.set("categories", JSON.stringify(selected.categories));
     form.set("collections", JSON.stringify(selected.collections));
     form.set("spaces", JSON.stringify(selected.spaces));
@@ -266,7 +278,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         headers,
       });
       const payload = await readApiResponse<{ productId?: string }>(response);
-      if (!response.ok) throw new Error(payload.message || `Unable to ${isEditing ? "update" : "create"} product.`);
+      if (!response.ok) {
+        if (payload.message?.includes("Compare-at price")) setPricingError(payload.message);
+        throw new Error(payload.message || `Unable to ${isEditing ? "update" : "create"} product.`);
+      }
       const destinationId = productId || payload.productId;
       if (!destinationId) throw new Error("Product saved but its ID was not returned.");
       router.push(managerMode ? `/store/products/${encodeURIComponent(destinationId)}` : `/admin/products/${encodeURIComponent(destinationId)}`);
@@ -302,7 +317,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Product name *" className="sm:col-span-2"><input name="name" defaultValue={product?.name || ""} required /></Field>
               <Field label="Retail price (KES) *"><input name="price" type="number" min="1" step="0.01" defaultValue={product?.price ?? ""} required /></Field>
-              <Field label="Compare-at price" hint="Original price shown crossed out during a sale"><input name="compareAtPrice" type="number" min="0" step="0.01" defaultValue={product?.compareAtPrice ?? ""} /></Field>
+              <div>
+                <Field label="Compare-at price" hint="Original price shown crossed out during a sale"><input name="compareAtPrice" type="number" min="0" step="0.01" defaultValue={product?.compareAtPrice ?? ""} aria-invalid={Boolean(pricingError)} onChange={() => setPricingError(null)} /></Field>
+                {pricingError && <p role="alert" className="mt-2 text-xs font-medium text-red-700">{pricingError}</p>}
+              </div>
               <Field label="Wholesale price (KES)" hint="Optional discounted unit price"><input name="wholesalePrice" type="number" min="1" step="0.01" defaultValue={product?.wholesalePrice ?? ""} /></Field>
               <Field label="Wholesale quantity" hint="Minimum units, e.g. 5"><input name="wholesaleMinQuantity" type="number" min="2" step="1" defaultValue={product?.wholesaleMinQuantity ?? ""} /></Field>
               <p className="sm:col-span-2 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">When both wholesale fields are set, quantities below the threshold use the retail price. At the threshold and above, the wholesale unit price applies automatically in cart, checkout and POS.</p>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   ChevronDown,
@@ -87,10 +87,13 @@ function variantLabel(variant: ProductVariant) {
   return variant.title || [variant.colour, variant.size].filter(Boolean).join(" · ") || "Variant";
 }
 
+function stockAvailable(product: StoreProduct, variant?: ProductVariant) {
+  return Math.max(0, Number(variant?.stockQuantity ?? product.stockQuantity ?? 0));
+}
+
 function stockLabel(product: StoreProduct, variant?: ProductVariant) {
-  const stock = variant?.stockQuantity ?? product.stockQuantity;
-  if (typeof stock !== "number") return "In stock";
-  return `${stock} in stock`;
+  const stock = stockAvailable(product, variant);
+  return stock === 0 ? "Out of stock" : `${stock} in stock`;
 }
 
 export default function PointOfSalePage() {
@@ -102,6 +105,8 @@ export default function PointOfSalePage() {
   const storeLocked = role === "MANAGER" || role === "STORE_STAFF";
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [catalogStoreId, setCatalogStoreId] = useState("");
+  const storeRequestController = useRef<AbortController | null>(null);
   const [loading, setLoading] = useState(true);
   const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [storeLocations, setStoreLocations] = useState<StoreLocationOption[]>([]);
@@ -136,21 +141,27 @@ export default function PointOfSalePage() {
   const [saleCompletion, setSaleCompletion] = useState<SaleCompletion | null>(null);
   const [salePanelExpanded, setSalePanelExpanded] = useState(false);
 
-  const loadProducts = useCallback(async (background = false) => {
+  const loadProducts = useCallback(async (storeId: string, background = false, signal?: AbortSignal) => {
     if (background) setCatalogRefreshing(true);
     try {
-      const response = await fetch(`/api/catalog?channel=pos&t=${Date.now()}`, {
+      const response = await fetch(`/api/catalog?channel=pos&storeLocationId=${encodeURIComponent(storeId)}&t=${Date.now()}`, {
         cache: "no-store",
+        signal,
         headers: { "Cache-Control": "no-cache" },
       });
-      if (!response.ok) throw new Error("Could not load the live catalogue.");
-      const payload = (await response.json()) as { products?: StoreProduct[] };
+      const payload = await response.json() as { products?: StoreProduct[]; message?: string };
+      if (!response.ok) throw new Error(payload.message || "Could not load live store inventory.");
+      if (signal?.aborted) return;
       setProducts(Array.isArray(payload.products) ? payload.products : []);
+      setCatalogStoreId(storeId);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Could not load products.");
+      if (signal?.aborted) return;
+      setMessage(cause instanceof Error ? cause.message : "Could not load store inventory.");
     } finally {
-      setLoading(false);
-      if (background) setCatalogRefreshing(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        if (background) setCatalogRefreshing(false);
+      }
     }
   }, []);
 
@@ -178,22 +189,35 @@ export default function PointOfSalePage() {
   }, [role, storeLocked]);
 
   useEffect(() => {
-    void loadProducts();
+    // A cart from another store must never be used for this store's sale.
+    setCart([]);
+    setProducts([]);
+    setCatalogStoreId("");
+    if (!saleStoreId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const controller = new AbortController();
+    storeRequestController.current = controller;
+    void loadProducts(saleStoreId, false, controller.signal);
 
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadProducts(true);
+      if (document.visibilityState === "visible") void loadProducts(saleStoreId, true, controller.signal);
     };
 
-    // Keep POS stock reasonably fresh without continuously hammering Sanity.
-    // Checkout still performs authoritative stock/price validation server-side.
+    // Live location stock is refreshed periodically, with a final server-side
+    // validation at checkout to handle concurrent cashiers and stock transfers.
     const timer = window.setInterval(refreshWhenVisible, 300_000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
+      controller.abort();
+      if (storeRequestController.current === controller) storeRequestController.current = null;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [loadProducts]);
+  }, [loadProducts, saleStoreId]);
 
   useEffect(() => {
     const term = customerSearch.trim();
@@ -260,6 +284,7 @@ export default function PointOfSalePage() {
           }
           setPaymentReference(null);
           setCart([]);
+          void loadProducts(saleStoreId, true, storeRequestController.current?.signal);
           setProcessing(false);
           setSelectedCustomerId("");
           setCustomerSearch("");
@@ -313,7 +338,7 @@ export default function PointOfSalePage() {
       stopped = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [paymentReference]);
+  }, [paymentReference, loadProducts, saleStoreId]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -338,6 +363,15 @@ export default function PointOfSalePage() {
   const deliveryPayable = deliveryEnabled ? Math.max(0, Number(deliveryFee || 0)) : 0;
   const total = productRevenue + deliveryPayable;
   const units = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const cartStockIssue = catalogStoreId === saleStoreId && saleStoreId
+    ? cart.map((line) => {
+        const product = products.find((item) => item.id === line.productId);
+        const variant = product?.variants?.find((item) => item.id === line.variantId);
+        return !product || stockAvailable(product, variant) < line.quantity
+          ? `${line.name} has insufficient stock at the selected store. Refresh products or remove the item.`
+          : null;
+      }).find((error) => error !== null)
+    : cart.length > 0 ? "Store inventory is not loaded. Refresh products before checkout." : null;
 
   function selectedVariant(product: StoreProduct) {
     const selectedId = variantSelections[product.id];
@@ -345,13 +379,22 @@ export default function PointOfSalePage() {
   }
 
   function addProduct(product: StoreProduct) {
+    if (!saleStoreId || catalogStoreId !== saleStoreId) {
+      setMessage("Select a store and load its live stock before adding products.");
+      return;
+    }
     const variant = selectedVariant(product);
-    const available = variant?.stockQuantity ?? product.stockQuantity;
-    if (typeof available === "number" && available <= 0) {
-      setMessage(`${product.name} is currently out of stock.`);
+    const available = stockAvailable(product, variant);
+    const storeName = storeLocations.find((location) => location._id === saleStoreId)?.name || "this store";
+    if (available === 0) {
+      setMessage(`${product.name}${variant ? ` (${variantLabel(variant)})` : ""} is out of stock at ${storeName}. Select an in-stock variant or request restock.`);
       return;
     }
     const key = `${product.id}|${variant?.id || "default"}`;
+    if ((cart.find((line) => line.key === key)?.quantity || 0) >= available) {
+      setMessage(`Only ${available} unit(s) of ${product.name} available at ${storeName}.`);
+      return;
+    }
     const unitPrice = getQuantityUnitPrice(product, 1, variant?.price);
     setCart((current) => {
       const index = current.findIndex((line) => line.key === key);
@@ -432,6 +475,10 @@ export default function PointOfSalePage() {
   async function completeSale() {
     if (!cart.length || processing) return;
 
+    if (cartStockIssue) {
+      setMessage(cartStockIssue);
+      return;
+    }
     if (!saleStoreId) {
       setMessage(storeLocked
         ? "This POS user is not assigned to a store/location. Ask Admin to assign one under Staff."
@@ -533,6 +580,7 @@ export default function PointOfSalePage() {
           });
         }
         setCart([]); setProcessing(false); setSelectedCustomerId(""); setCustomerSearch(""); setCustomerName(""); setCustomerEmail(""); setCustomerPhone("+254");
+        void loadProducts(saleStoreId, true, storeRequestController.current?.signal);
         setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryAddressLine(""); setDeliveryRecipientName(""); setDeliveryRecipientPhone(""); setDeliveryFee("");
         setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived(""); setManualPaymentConfirmed(false);
         return;
@@ -543,7 +591,12 @@ export default function PointOfSalePage() {
       setMessage(`${prefix}${payload.displayText || "Ask the customer to complete the M-PESA payment."}`);
       setPaymentReference(payload.reference);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "POS sale failed.");
+      const error = cause instanceof Error ? cause.message : "POS sale failed.";
+      setMessage(error);
+      // A competing sale or transfer may have changed stock since the last refresh.
+      if (/stock|unit\(s\) available|out of stock/i.test(error)) {
+        void loadProducts(saleStoreId, true, storeRequestController.current?.signal);
+      }
       setProcessing(false);
     }
   }
@@ -649,8 +702,8 @@ export default function PointOfSalePage() {
               )}
               <button
                 type="button"
-                onClick={() => void loadProducts(true)}
-                disabled={catalogRefreshing}
+                onClick={() => saleStoreId && void loadProducts(saleStoreId, true, storeRequestController.current?.signal)}
+                disabled={catalogRefreshing || !saleStoreId}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border hairline bg-[var(--paper)] px-3 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--ink)] transition hover:border-[var(--brand-green)] disabled:opacity-50"
                 title="Refresh products added in another tab or device"
               >
@@ -668,6 +721,11 @@ export default function PointOfSalePage() {
                   <RefreshCw size={24} className="animate-spin text-[var(--brand-green)]" />
                   <span>Syncing store inventory...</span>
                 </div>
+              </div>
+            ) : !saleStoreId ? (
+              <div className="grid flex-1 place-content-center gap-2 p-8 text-center">
+                <p className="text-sm font-semibold">Select a store/location to view its POS inventory</p>
+                <p className="text-xs text-[var(--muted)]">Only stock available at the selected store can be sold.</p>
               </div>
             ) : filtered.length === 0 ? (
               <div className="grid h-full place-items-center rounded-2xl border border-dashed hairline p-8 text-center">
@@ -690,6 +748,7 @@ export default function PointOfSalePage() {
                 {filtered.map((product) => {
                   const variant = selectedVariant(product);
                   const image = variant?.imageUrl || product.heroImage;
+                  const available = catalogStoreId === saleStoreId ? stockAvailable(product, variant) : 0;
                   return (
                     <article
                       key={product.id}
@@ -743,7 +802,7 @@ export default function PointOfSalePage() {
                                 >
                                   {product.variants.map((item) => (
                                     <option key={item.id} value={item.id}>
-                                      {variantLabel(item)}
+                                      {variantLabel(item)} · {stockAvailable(product, item)} available
                                     </option>
                                   ))}
                                 </select>
@@ -778,10 +837,10 @@ export default function PointOfSalePage() {
                         <button
                           type="button"
                           onClick={() => addProduct(product)}
-                          disabled={(variant?.stockQuantity ?? product.stockQuantity) === 0}
+                          disabled={available <= 0 || !saleStoreId || catalogStoreId !== saleStoreId}
                           className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--brand-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Plus size={12} strokeWidth={2.5} /> {(variant?.stockQuantity ?? product.stockQuantity) === 0 ? "Out" : "Add"}
+                          <Plus size={12} strokeWidth={2.5} /> {available <= 0 ? "Out of stock" : "Add"}
                         </button>
                       </div>
                     </article>
@@ -1197,10 +1256,11 @@ export default function PointOfSalePage() {
                   : <>Record the sale only after you have confirmed the external payment details above.</>}
               </p>
 
+              {cartStockIssue && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{cartStockIssue}</p>}
               <button
                 type="button"
                 onClick={() => void completeSale()}
-                disabled={processing || cart.length === 0}
+                disabled={processing || cart.length === 0 || Boolean(cartStockIssue)}
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-green)] text-xs font-bold uppercase tracking-wider text-soft-cream shadow-md transition-all hover:bg-[var(--brand-green)]/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {processing ? (
