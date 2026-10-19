@@ -66,6 +66,7 @@ export const inventoryRecord = defineType({
         },
       }],
     }),
+    defineField({ name: "stockConsolidatedToMainAt", title: "Main consolidation timestamp", type: "datetime", readOnly: true, hidden: true, description: "One-time all-stock migration marker to prevent accidental repeated relocation after restocking branches." }),
     defineField({ name: "reorderPoint", title: "Reorder Point", type: "number", initialValue: 5, validation: (Rule) => Rule.min(0) }),
     defineField({ name: "unitCost", title: "Procurement Cost (KES)", type: "number", initialValue: 0, validation: (Rule) => Rule.min(0) }),
   ],

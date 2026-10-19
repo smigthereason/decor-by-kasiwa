@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
+  if (staff.role === "MANAGER" && !staff.storeLocationId) return NextResponse.json({ message: "Manager must be assigned to a store." }, { status: 403 });
   const params = new URL(request.url).searchParams;
   const channel = params.get("channel");
   const cashier = params.get("cashier")?.trim() || undefined;

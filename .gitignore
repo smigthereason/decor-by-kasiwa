@@ -37,3 +37,6 @@ dist/
 .dbk-patch-backups/
 .sanity/
 dist/
+
+# Local inventory consolidation preview
+DBK-main-stock-consolidation-plan.csv

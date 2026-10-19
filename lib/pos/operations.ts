@@ -7,6 +7,7 @@ import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { getMainStore, isLegacyStoreName, storeOrderPredicate, relatedOrderPredicate } from "@/lib/stores/main-store";
 
 const PAYSTACK_API = "https://api.paystack.co";
 
@@ -112,7 +113,15 @@ export type SalesHistoryFilters = {
   storeId?: string;
 };
 
+function attributedHistoryOrders(orders: PosHistoryOrder[], main: Awaited<ReturnType<typeof getMainStore>>) {
+  if (!main) return orders;
+  return orders.map((order) => order.salesChannel === "ONLINE" && !order.storeLocationId && isLegacyStoreName(order.storeLocationName)
+    ? { ...order, storeLocationId: main.id, storeLocationName: main.name }
+    : order);
+}
+
 export async function listSalesHistory({ limit = 100, channel, cashier, query, from, to, storeId }: SalesHistoryFilters = {}) {
+  const main = await getMainStore();
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
   let start: string | null = null;
   let end: string | null = null;
@@ -127,18 +136,19 @@ export async function listSalesHistory({ limit = 100, channel, cashier, query, f
   const cashierName = cleanText(cashier) || null;
   const search = cleanText(query) || null;
   const searchPattern = search ? `*${search.replaceAll("*", "")}*` : null;
-  return serverClient.fetch<PosHistoryOrder[]>(
+  const orders = await serverClient.fetch<PosHistoryOrder[]>(
     `*[_type == "commerceOrder"
-      && (!defined($channel) || salesChannel == $channel)
+      && (!defined($channel) || coalesce(salesChannel,"ONLINE") == $channel)
       && (!defined($cashier) || soldByName == $cashier)
-      && (!defined($storeId) || storeLocation._ref == $storeId)
+      && ${storeOrderPredicate}
       && (!defined($searchPattern) || [orderNumber,receiptNumber,customerName,customerPhone,customerEmail,providerReceiptNumber,paymentReference] match $searchPattern)
       && (!defined($start) || coalesce(soldAt,paidAt,createdAt) >= $start)
       && (!defined($end) || coalesce(soldAt,paidAt,createdAt) <= $end)
     ] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
-    { limit: safeLimit, channel: channel || null, cashier: cashierName, storeId: cleanText(storeId) || null, searchPattern, start, end },
+    { limit: safeLimit, channel: channel || null, cashier: cashierName, storeId: cleanText(storeId) || null, mainStoreId: main?.id || null, searchPattern, start, end },
     { cache: "no-store" },
   );
+  return attributedHistoryOrders(orders, main);
 }
 
 export async function listSalesCashiers(storeId?: string) {
@@ -151,11 +161,13 @@ export async function listSalesCashiers(storeId?: string) {
 }
 
 export async function listReceivables(storeId?: string) {
-  return serverClient.fetch<PosHistoryOrder[]>(
-    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && paymentStatus in ["partially_paid","pending"] && (!defined($storeId) || storeLocation._ref == $storeId)] | order(coalesce(soldAt,createdAt) desc)[0...250]${historyProjection}`,
-    { storeId: cleanText(storeId) || null },
+  const main = await getMainStore();
+  const orders = await serverClient.fetch<PosHistoryOrder[]>(
+    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && paymentStatus in ["partially_paid","pending"] && ${storeOrderPredicate}] | order(coalesce(soldAt,createdAt) desc)[0...250]${historyProjection}`,
+    { storeId: cleanText(storeId) || null, mainStoreId: main?.id || null },
     { cache: "no-store" },
   );
+  return attributedHistoryOrders(orders, main);
 }
 
 export type SalesReportPeriod = "day" | "week" | "month" | "custom";
@@ -255,23 +267,25 @@ function reportWindow(period: "day" | "week" | "month", range: SalesReportRange 
 export async function getSalesReport(period: "day" | "week" | "month", range: SalesReportRange = {}): Promise<SalesReport> {
   const { period: reportPeriod, start, end } = reportWindow(period, range);
   const storeId = cleanText(range.storeId) || null;
+  const main = await getMainStore();
+  const mainStoreId = main?.id || null;
   const [orders, returnRows, failedPending, globalReceivables, expenseRows] = await Promise.all([
     serverClient.fetch<PosHistoryOrder[]>(
-      `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"] && (!defined($storeId) || storeLocation._ref == $storeId)]${historyProjection}`,
-      { start, end, storeId }, { cache: "no-store" },
+      `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"] && ${storeOrderPredicate}]${historyProjection}`,
+      { start, end, storeId, mainStoreId }, { cache: "no-store" },
     ),
     serverClient.fetch<Array<{ amount?: number; restock?: boolean; items?: Array<{ productId?: string; quantity?: number; unitCost?: number }> }>>(
-      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed" && (!defined($storeId) || order->storeLocation._ref == $storeId)]{
+      `*[_type == "returnTransaction" && createdAt >= $start && createdAt <= $end && status != "failed" && ${relatedOrderPredicate}]{
         "amount":coalesce(refundAmount,0),restock,
         "items":items[]{"productId":coalesce(product._ref,productId),quantity,unitCost}
       }`,
-      { start, end, storeId }, { cache: "no-store" },
+      { start, end, storeId, mainStoreId }, { cache: "no-store" },
     ),
     serverClient.fetch<Array<{ status?: string }>>(
-      `*[_type == "paymentTransaction" && createdAt >= $start && createdAt <= $end && status in ["failed","pending","timed_out"] && (!defined($storeId) || order->storeLocation._ref == $storeId)]{status}`,
-      { start, end, storeId }, { cache: "no-store" },
+      `*[_type == "paymentTransaction" && createdAt >= $start && createdAt <= $end && status in ["failed","pending","timed_out"] && ${relatedOrderPredicate}]{status}`,
+      { start, end, storeId, mainStoreId }, { cache: "no-store" },
     ),
-    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && (!defined($storeId) || storeLocation._ref == $storeId)].balanceDue),0)`, { storeId }, { cache: "no-store" }),
+    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && ${storeOrderPredicate}].balanceDue),0)`, { storeId, mainStoreId }, { cache: "no-store" }),
     serverClient.fetch<Array<{ ledgerAccount?: string; expenseCategory?: string; expenseType?: string; amount?: number }>>(
       `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end && (!defined($storeId) || storeLocation._ref == $storeId)]{ledgerAccount,expenseCategory,expenseType,amount}`,
       { start, end, storeId }, { cache: "no-store" },
@@ -504,7 +518,10 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     { id: input.orderId }, { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
-  if (seller.role === "MANAGER" && order.storeLocationId && seller.storeLocationId !== order.storeLocationId) {
+  const mainForReturn = order.salesChannel === "ONLINE" && !order.storeLocationId && isLegacyStoreName(order.storeLocationName)
+    ? await getMainStore() : null;
+  const effectiveOrderStore = order.storeLocationId || mainForReturn?.id;
+  if (seller.role === "MANAGER" && (!effectiveOrderStore || seller.storeLocationId !== effectiveOrderStore)) {
     throw new Error("Managers can only process returns/refunds for their assigned store.");
   }
   const reason = cleanText(input.reason);
@@ -568,9 +585,9 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
         : currentStock + qty;
       transaction.patch(product._id, (patch) => patch.ifRevisionId(product._rev).set({ initialStock: nextStock, available: nextStock > 0, ...(nextVariants ? { variants: nextVariants } : {}) }));
 
-      if (order.storeLocationId) {
-        if (!product.inventory?._id) throw new Error(`${product.name || "Product"} does not have a branch inventory record for this return.`);
-        const store = { id: order.storeLocationId, name: order.storeLocationName || "Original POS store" };
+      if (effectiveOrderStore) {
+        if (!product.inventory?._id) throw new Error(`${product.name || "Product"} does not have a store inventory record for this return.`);
+        const store = { id: effectiveOrderStore, name: order.storeLocationName || mainForReturn?.name || "Original store" };
         let nextBalances = product.inventory.locationBalances || [];
         for (const row of rows) {
           nextBalances = adjustLocationBalance(nextBalances, store, { onHandDelta: row.quantity, variantId: row.variantId });
@@ -578,7 +595,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
         transaction.patch(product.inventory._id, (patch) => patch.set({ location: "Multi-location", locationBalances: nextBalances }));
       }
 
-      rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock, destinationStoreId: order.storeLocationId, destination: order.storeLocationName }));
+      rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock, destinationStoreId: effectiveOrderStore, destination: order.storeLocationName || mainForReturn?.name }));
     }
   }
 
@@ -654,8 +671,12 @@ export async function getDeveloperAuditTrail(days = 31) {
 }
 
 export async function getPaymentReconciliation(limit = 200, storeId?: string) {
-  return serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; paidAt?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string; storeLocationId?: string; storeLocationName?: string }>>(
-    `*[_type == "paymentTransaction" && (!defined($storeId) || order->storeLocation._ref == $storeId)] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,customerName,customerPhone,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,failureReason,createdAt,paidAt,"storeLocationId":order->storeLocation._ref,"storeLocationName":coalesce(order->storeLocation->name,order->assignedStore,""),"inventoryReviewRequired":coalesce(order->inventoryReviewRequired,false),"inventoryReconciliationReason":coalesce(order->inventoryReconciliationReason,"")}`,
-    { limit: Math.max(1, Math.min(500, limit)), storeId: cleanText(storeId) || null }, { cache: "no-store" },
+  const main = await getMainStore();
+  const payments = await serverClient.fetch<Array<{ id: string; reference: string; orderNumber?: string; customerName?: string; customerPhone?: string; provider?: string; channel?: string; status: string; amount: number; providerTransactionId?: string; providerReceiptNumber?: string; processedByName?: string; failureReason?: string; createdAt: string; paidAt?: string; inventoryReviewRequired?: boolean; inventoryReconciliationReason?: string; storeLocationId?: string; storeLocationName?: string; isLegacyOnline?: boolean }>>(
+    `*[_type == "paymentTransaction" && ${relatedOrderPredicate}] | order(createdAt desc)[0...$limit]{"id":_id,reference,orderNumber,customerName,customerPhone,provider,channel,status,amount,providerTransactionId,providerReceiptNumber,processedByName,failureReason,createdAt,paidAt,"storeLocationId":order->storeLocation._ref,"storeLocationName":coalesce(order->storeLocation->name,order->assignedStore,""),"isLegacyOnline":defined(order._ref) && coalesce(order->salesChannel,salesChannel,"ONLINE") == "ONLINE" && !defined(order->storeLocation._ref) && (!defined(order->assignedStore) || order->assignedStore in ["", "Company / online", "Company-wide", "Online"]),"inventoryReviewRequired":coalesce(order->inventoryReviewRequired,false),"inventoryReconciliationReason":coalesce(order->inventoryReconciliationReason,"")}`,
+    { limit: Math.max(1, Math.min(500, limit)), storeId: cleanText(storeId) || null, mainStoreId: main?.id || null }, { cache: "no-store" },
   );
+  return payments.map((payment) => payment.isLegacyOnline && !payment.storeLocationId && isLegacyStoreName(payment.storeLocationName) && main
+    ? { ...payment, storeLocationId: main.id, storeLocationName: main.name }
+    : payment);
 }

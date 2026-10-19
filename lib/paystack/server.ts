@@ -6,6 +6,8 @@ import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { getMainStore } from "@/lib/stores/main-store";
+import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
 import { getDeliveryZoneById } from "@/lib/shipping-server";
 import { sendOrderConfirmationEmail } from "@/lib/order-email";
@@ -47,6 +49,7 @@ type RawCheckoutProduct = {
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   initialStock?: number;
+  inventory?: { _id: string; _rev: string; locationBalances?: LocationBalance[] } | null;
   procurementCost?: number;
   available?: boolean;
   ecommerceEnabled?: boolean;
@@ -82,6 +85,8 @@ type PendingOrder = {
   _id: string;
   _rev: string;
   orderNumber: string;
+  storeLocationId?: string;
+  storeLocationName?: string;
   customerName: string;
   customerEmail: string;
   customerPhone?: string;
@@ -294,6 +299,7 @@ async function fetchCheckoutProducts(productIds: string[]) {
       wholesalePrice,
       wholesaleMinQuantity,
       initialStock,
+      "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{_id,_rev,locationBalances},
       procurementCost,
       available,
       ecommerceEnabled,
@@ -469,6 +475,11 @@ export async function initializePaystackCheckout({
     throw new Error("Your bag is empty.");
   }
 
+  const mainStore = await getMainStore();
+  if (!mainStore) {
+    throw new Error("Online checkout requires an active Main store. When multiple Main stores exist, configure DBK_MAIN_STORE_ID on the server.");
+  }
+
   const { lineItems } = await buildAuthoritativeOrderLines(cart);
   const workflow = await workflowForProducts(lineItems.map((line) => line.productId));
 
@@ -534,6 +545,8 @@ export async function initializePaystackCheckout({
     receiptNumber: `RCT-${orderNumber}`,
     currency: CURRENCY,
     salesChannel: "ONLINE",
+    storeLocation: { _type: "reference", _ref: mainStore.id },
+    assignedStore: mainStore.name,
     fulfilmentType: "DELIVERY",
     fulfilmentStages: workflow.fulfilmentStages,
     ...(workflow.currentFulfilmentStage ? { currentFulfilmentStage: workflow.currentFulfilmentStage } : {}),
@@ -633,6 +646,8 @@ async function fetchPendingOrder(reference: string) {
       _id,
       _rev,
       orderNumber,
+      "storeLocationId": storeLocation._ref,
+      "storeLocationName": coalesce(storeLocation->name,assignedStore,""),
       customerName,
       customerEmail,
       customerPhone,
@@ -857,6 +872,41 @@ export async function finalizePaystackPayment(reference: string) {
     const nextStock = variantProduct
       ? variantStockTotal(nextVariants || product.variants)
       : Math.max(0, currentStock - soldQuantity);
+    // Only modify a location ledger when its current balance can cover the
+    // entire item quantity. Paid orders must remain paid even if stock needs
+    // manual reconciliation; never fabricate/clip store stock to hide that.
+    let storeDeducted = false;
+    if (order.storeLocationId) {
+      const inventory = product.inventory;
+      const balances = inventory?.locationBalances || [];
+      const currentLocation = findLocationBalance(balances, order.storeLocationId);
+      const requestedByVariant = new Map<string, number>();
+      for (const line of productLines) {
+        const key = variantProduct ? (line.variantId || "") : "";
+        requestedByVariant.set(key, (requestedByVariant.get(key) || 0) + Number(line.quantity || 0));
+      }
+      const sufficient = Boolean(inventory?._id && inventory?._rev) &&
+        [...requestedByVariant].every(([variantId, qty]) => locationOnHand(currentLocation, variantId || undefined) >= qty);
+      if (sufficient && inventory) {
+        let nextLocationBalances = balances;
+        for (const line of productLines) {
+          nextLocationBalances = adjustLocationBalance(nextLocationBalances, {
+            id: order.storeLocationId,
+            name: order.storeLocationName || "Main store",
+          }, {
+            onHandDelta: -Number(line.quantity || 0),
+            ...(variantProduct ? {
+              variantId: line.variantId,
+              variantLabel: product.variants?.find((item) => item._key === line.variantId)?.title,
+            } : {}),
+          });
+        }
+        mutation.patch(inventory._id, (patch) => patch.ifRevisionId(inventory._rev).set({ locationBalances: nextLocationBalances }));
+        storeDeducted = true;
+      } else {
+        stockWarnings.push(`${product.name || "Product"}: online payment confirmed, but the assigned store has insufficient or unallocated inventory. Reconcile its store ledger before fulfilment.`);
+      }
+    }
     productLines.forEach((line) => stockMovements.push({
       productId: product._id,
       productName: product.name || "Product",
@@ -864,6 +914,7 @@ export async function finalizePaystackPayment(reference: string) {
       quantityChange: -Number(line.quantity || 0),
       stockBefore: currentStock,
       stockAfter: nextStock,
+      ...(storeDeducted ? { sourceStoreId: order.storeLocationId, sourceLocation: order.storeLocationName } : {}),
     }));
     mutation.patch(product._id, (patch) =>
       patch

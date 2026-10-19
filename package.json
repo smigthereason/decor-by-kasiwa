@@ -11,7 +11,9 @@
     "migrate:stock-main": "DBK_MAIN_STOCK_WRITE=1 sanity exec scripts/assign-existing-stock-to-main.ts --with-user-token",
     "migrate:products:dry": "sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
     "migrate:products": "DBK_MIGRATION_WRITE=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
-    "migrate:products:images": "DBK_MIGRATION_WRITE=1 DBK_MIGRATE_IMAGES=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token"
+    "migrate:products:images": "DBK_MIGRATION_WRITE=1 DBK_MIGRATE_IMAGES=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
+    "consolidate:stock-main:dry": "sanity exec scripts/consolidate-all-stock-to-main.ts --with-user-token",
+    "consolidate:stock-main": "DBK_ALL_MAIN_WRITE=1 sanity exec scripts/consolidate-all-stock-to-main.ts --with-user-token"
   },
   "dependencies": {
     "@sanity/image-url": "^1.2.0",

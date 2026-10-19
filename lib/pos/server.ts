@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getMainStore, isLegacyStoreName } from "@/lib/stores/main-store";
+
 import { createHash, createHmac } from "node:crypto";
 
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
@@ -1978,12 +1980,20 @@ export async function getPosReceipt(orderId: string) {
 }
 
 export async function recordOutstandingCashPayment({ orderId, amount, seller }: { orderId: string; amount: number; seller: PosSeller }) {
-  const order = await serverClient.fetch<PosOrder | null>(
-    `*[_type == "commerceOrder" && _id == $orderId][0]{_id,_rev,orderNumber,paymentStatus,status,total,amountPaid,balanceDue,receiptNumber,paymentReference,paymentChannel,customerName,customerEmail,customerPhone,"customerId":customer._ref,soldByName,soldAt}`,
+  const order = await serverClient.fetch<(PosOrder & { salesChannel?: "ONLINE" | "POS"; assignedStore?: string }) | null>(
+    `*[_type == "commerceOrder" && _id == $orderId][0]{_id,_rev,orderNumber,paymentStatus,status,total,amountPaid,balanceDue,receiptNumber,paymentReference,paymentChannel,customerName,customerEmail,customerPhone,"customerId":customer._ref,soldByName,soldAt,salesChannel,assignedStore,"storeLocationId":storeLocation._ref}`,
     { orderId },
     { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
+  if (seller.role === "MANAGER") {
+    const main = await getMainStore();
+    const effectiveStoreId = order.storeLocationId ||
+      ((order.salesChannel === "ONLINE" || !order.salesChannel) && isLegacyStoreName(order.assignedStore) ? main?.id : undefined);
+    if (!effectiveStoreId || effectiveStoreId !== seller.storeLocationId) {
+      throw new Error("Managers may record payments only for their assigned store.");
+    }
+  }
   const balance = Number(order.balanceDue || 0);
   if (balance <= 0) throw new Error("This order has no outstanding balance.");
   const payment = Number(amount);

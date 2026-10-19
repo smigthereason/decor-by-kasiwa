@@ -3,6 +3,7 @@ import "server-only";
 import { effectiveOnHand, type StockVariant } from "@/lib/inventory/stock";
 import { allocatedOnHand, findLocationBalance, locationIncoming, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { getMainStore, isLegacyStoreName, storeOrderPredicate } from "@/lib/stores/main-store";
 
 import { adminMetrics, storeMetrics } from "./selectors";
 import type {
@@ -168,8 +169,9 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
 }
 
 export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> {
+  const main = await getMainStore();
   const rows = await serverClient.fetch<Order[]>(
-    `*[_type == "commerceOrder" && (!defined($storeId) || storeLocation._ref == $storeId)] | order(createdAt desc) {
+    `*[_type == "commerceOrder" && ${storeOrderPredicate}] | order(createdAt desc) {
       "id": _id,
       orderNumber,
       "customerId": coalesce(customer._ref, ""),
@@ -225,12 +227,14 @@ export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> 
         "image": product->heroImage.asset->url
       }
     }`,
-    { storeId: storeLocationId || null },
+    { storeId: storeLocationId || null, mainStoreId: main?.id || null },
     { cache: "no-store" },
   );
 
   return rows.map((row) => ({
     ...row,
+    ...(main && (row.salesChannel === "ONLINE" || !row.salesChannel) && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
+      ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code, assignedStore: main.name } : {}),
     orderNumber: safeString(row.orderNumber, row.id),
     customerName: safeString(row.customerName, "Customer"),
     customerEmail: safeString(row.customerEmail, ""),
@@ -253,8 +257,9 @@ export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> 
 }
 
 export async function getLiveShipments(storeLocationId?: string): Promise<Shipment[]> {
-  const rows = await serverClient.fetch<Shipment[]>(
-    `*[_type == "shipment" && (!defined($storeId) || coalesce(storeLocation._ref, order->storeLocation._ref) == $storeId)] | order(updatedAt desc) {
+  const main = await getMainStore();
+  const rows = await serverClient.fetch<Array<Shipment & { isLegacyOnline?: boolean }>>(
+    `*[_type == "shipment" && (!defined($storeId) || coalesce(storeLocation._ref, order->storeLocation._ref) == $storeId || ($storeId == $mainStoreId && !defined(storeLocation._ref) && defined(order._ref) && coalesce(order->salesChannel,"ONLINE") == "ONLINE" && !defined(order->storeLocation._ref) && (!defined(order->assignedStore) || order->assignedStore in ["", "Company / online", "Company-wide", "Online"])))] | order(updatedAt desc) {
       "id": _id,
       shipmentNumber,
       "orderId": order._ref,
@@ -264,6 +269,7 @@ export async function getLiveShipments(storeLocationId?: string): Promise<Shipme
       "storeLocationId": coalesce(storeLocation._ref, order->storeLocation._ref),
       "storeLocationName": coalesce(storeLocation->name, order->storeLocation->name, order->assignedStore, ""),
       "storeLocationCode": coalesce(storeLocation->code, order->storeLocation->code, ""),
+      "isLegacyOnline": !defined(storeLocation._ref) && defined(order._ref) && coalesce(order->salesChannel,"ONLINE") == "ONLINE" && !defined(order->storeLocation._ref) && (!defined(order->assignedStore) || order->assignedStore in ["", "Company / online", "Company-wide", "Online"]),
       carrier,
       trackingNumber,
       createdAt,
@@ -278,12 +284,14 @@ export async function getLiveShipments(storeLocationId?: string): Promise<Shipme
       deliveredByName,
       deliveryConfirmationNote
     }`,
-    { storeId: storeLocationId || null },
+    { storeId: storeLocationId || null, mainStoreId: main?.id || null },
     { cache: "no-store" },
   );
 
   return rows.map((row) => ({
     ...row,
+    ...(main && row.isLegacyOnline && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
+      ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code } : {}),
     shipmentNumber: safeString(row.shipmentNumber, row.id),
     orderNumber: safeString(row.orderNumber, "—"),
     customerName: safeString(row.customerName, "Customer"),
