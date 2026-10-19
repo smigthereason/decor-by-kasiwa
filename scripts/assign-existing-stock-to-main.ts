@@ -24,12 +24,17 @@ async function main() {
   const store = explicit ? stores.find(s => s._id === explicit) : stores.length === 1 ? stores[0] : undefined;
   if (!store) throw new Error(`Choose an active MAIN store. Found ${stores.length}; set DBK_MAIN_STORE_ID to its Sanity document ID when ambiguous. Available: ${stores.map(s => `${s.name} (${s._id})`).join(", ")}`);
   const products = await client.fetch<Product[]>(`*[_type == "product" && !(_id in path("drafts.**"))]{_id,_rev,name,initialStock,variants[]{_key,title,colour,size,stockQuantity}}`);
+  const targetIds = (process.env.DBK_PRODUCT_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
+  if (targetIds.length > 0 && targetIds.some(id => !products.some(product => product._id === id))) {
+    throw new Error(`Unknown product ID(s): ${targetIds.filter(id => !products.some(product => product._id === id)).join(", ")}`);
+  }
   const inventories = await client.fetch<Inventory[]>(`*[_type == "inventoryRecord" && !(_id in path("drafts.**"))]{_id,_rev,"productId":product._ref,defaultStore,incoming,incomingByVariant,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}`);
   const grouped = new Map<string, Inventory[]>();
   for (const inv of inventories) grouped.set(inv.productId, [...(grouped.get(inv.productId) || []), inv]);
   let changed = 0, skipped = 0;
   console.log(`Mode: ${write ? "WRITE" : "DRY RUN"}; MAIN: ${store.name} (${store._id}); products: ${products.length}`);
   for (const product of products) {
+    if (targetIds.length > 0 && !targetIds.includes(product._id)) continue;
     const records = grouped.get(product._id) || [];
     if (records.length > 1) { console.warn(`SKIP duplicate inventory records: ${product._id}`); skipped++; continue; }
     const inv = records[0];

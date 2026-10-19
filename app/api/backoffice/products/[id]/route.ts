@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { adjustLocationBalance, findLocationBalance, locationOnHand, locationStoreId, type LocationBalance } from "@/lib/inventory/location-stock";
 
 function inventoryDocumentId(productId: string) {
   const safe = productId.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -100,6 +101,7 @@ export async function GET(
   const product = await serverClient.fetch(
     `*[_type == "product" && _id == $productId][0]{
       _id,
+      _rev,
       name,
       sku,
       "slug": slug.current,
@@ -138,6 +140,7 @@ export async function GET(
       onSale,
       available,
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
+        _rev,
         location,
         "defaultStoreId": defaultStore._ref,
         "defaultStoreName": defaultStore->name,
@@ -146,7 +149,8 @@ export async function GET(
         reserved,
         incoming,
         reorderPoint,
-        unitCost
+        unitCost,
+        "locationBalances": locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
       }
     }`,
     { productId },
@@ -155,8 +159,9 @@ export async function GET(
 
   if (!product) return NextResponse.json({ message: "Product not found." }, { status: 404 });
   if (staff.role === "MANAGER") {
-    const safe = { ...product, procurementCost: undefined, inventory: product.inventory ? { ...product.inventory, unitCost: undefined } : product.inventory };
-    return NextResponse.json({ product: safe });
+    if (!staff.storeLocationId || product.inventory?.defaultStoreId !== staff.storeLocationId) {
+      return NextResponse.json({ message: "This product is not assigned to your store." }, { status: 403 });
+    }
   }
   return NextResponse.json({ product });
 }
@@ -171,6 +176,16 @@ export async function PATCH(
   const { id } = await context.params;
   const productId = decodeURIComponent(id);
 
+  if (staff.role === "MANAGER") {
+    const assignedStoreId = await serverClient.fetch<string | null>(
+      `*[_type == "inventoryRecord" && product._ref == $productId][0].defaultStore._ref`,
+      { productId }, { cache: "no-store" },
+    );
+    if (!staff.storeLocationId || assignedStoreId !== staff.storeLocationId) {
+      return NextResponse.json({ message: "Managers can only edit products assigned to their store." }, { status: 403 });
+    }
+  }
+
   try {
     const contentType = request.headers.get("content-type") || "";
     let body: Record<string, unknown> = {};
@@ -183,7 +198,7 @@ export async function PATCH(
         "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
         "rating", "reviewCount", "location", "storeLocationId", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
-        "careInstructions", "variants", "galleryExisting",
+        "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision",
       ]) {
         if (form.has(key)) body[key] = form.get(key);
       }
@@ -198,15 +213,18 @@ export async function PATCH(
         return NextResponse.json({ message: "Sales Staff can edit catalogue descriptions only. Prices and inventory quantities are manager-only." }, { status: 403 });
       }
     } else if (staff.role === "MANAGER") {
+      if (!staff.storeLocationId || cleanString(body.storeLocationId) !== staff.storeLocationId) {
+        return NextResponse.json({ message: "Managers can only edit products at their assigned store." }, { status: 403 });
+      }
       const managerEditableFields = new Set([
-        "name", "shortDescription", "description",
+        "name", "shortDescription", "description", "onHand", "initialStock", "incoming", "reserved", "unitCost", "procurementCost",
         "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
         "rating", "reviewCount", "location", "storeLocationId", "reorderPoint", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
-        "careInstructions", "variants", "galleryExisting",
+        "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision",
       ]);
       const restrictedField = Object.keys(body).find((key) => !managerEditableFields.has(key));
-      if (restrictedField) return NextResponse.json({ message: "Managers can edit catalogue details but cannot view or edit production cost or inventory stock levels." }, { status: 403 });
+      if (restrictedField) return NextResponse.json({ message: `Managers cannot change ${restrictedField}.` }, { status: 403 });
     } else if (staff.role !== "ADMIN") {
       const storeEditableFields = new Set([
         "name", "shortDescription", "description", "onHand", "reserved", "incoming", "reorderPoint",
@@ -387,26 +405,6 @@ export async function PATCH(
         return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
       }
 
-      const managerVariantStock = staff.role === "MANAGER"
-        ? await serverClient.fetch<Array<{ _key?: string; stockQuantity?: number }>>(
-            `*[_type == "product" && _id == $productId][0].variants[]{_key,stockQuantity}`,
-            { productId },
-            { cache: "no-store" },
-          )
-        : [];
-      const managerStockByKey = new Map(managerVariantStock.map((variant) => [variant._key || "", Math.max(0, Number(variant.stockQuantity || 0))]));
-      if (staff.role === "MANAGER") {
-        const submittedKeyList = variants.map((variant) => variant._key?.trim()).filter((key): key is string => Boolean(key));
-        const submittedKeys = new Set(submittedKeyList);
-        if (submittedKeys.size !== submittedKeyList.length) {
-          return NextResponse.json({ message: "Duplicate variant identifiers are not allowed. Reload the product and try again." }, { status: 400 });
-        }
-        const removedStockedVariant = managerVariantStock.find((variant) => variant._key && !submittedKeys.has(variant._key) && Number(variant.stockQuantity || 0) > 0);
-        if (removedStockedVariant) {
-          return NextResponse.json({ message: "A Manager cannot remove a variant that still has stock. Move or clear its stock through Inventory first." }, { status: 403 });
-        }
-      }
-
       const variantDocuments = [];
       for (let index = 0; index < variants.length; index += 1) {
         const variant = variants[index];
@@ -424,16 +422,12 @@ export async function PATCH(
           size: variant.size?.trim() || undefined,
           sku: variant.sku?.trim() || undefined,
           price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-          stockQuantity: staff.role === "MANAGER"
-            ? (variant._key?.trim() ? managerStockByKey.get(variant._key.trim()) ?? 0 : 0)
-            : (typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined),
+          stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
           ...(image ? { image } : {}),
         });
       }
       productPatch.variants = variantDocuments;
-      // A Manager may change variant merchandising, but cannot write stock totals.
-      // Stock is managed exclusively by inventory operations.
-      if (staff.role !== "MANAGER" && variantDocuments.length > 0) {
+      if (variantDocuments.length > 0) {
         productPatch.initialStock = variantDocuments.reduce(
           (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
           0,
@@ -469,11 +463,110 @@ export async function PATCH(
     if (reorderPoint !== undefined) inventoryPatch.reorderPoint = Math.max(0, reorderPoint);
     if (procurementCost !== undefined) inventoryPatch.unitCost = Math.max(0, procurementCost);
 
+    let stockProductRevision: string | undefined;
+    let stockInventoryRevision: string | undefined;
+    let stockInventoryId: string | undefined;
+    // Product quantities are company totals, while POS uses locationBalances. On an
+    // explicit editor stock submission, place only the *unallocated* remainder at
+    // the selected default store. Never take stock away from another branch.
+    if (productPatch.initialStock !== undefined || productPatch.variants !== undefined) {
+      const [currentProduct, inventoryRecords] = await Promise.all([
+        serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number }> } | null>(
+          `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity}}`, { id: productId }, { cache: "no-store" },
+        ),
+        serverClient.fetch<Array<{ _id: string; _rev: string; defaultStoreId?: string; locationBalances?: LocationBalance[] }>>(
+          `*[_type == "inventoryRecord" && product._ref == $id]{_id,_rev,"defaultStoreId":defaultStore._ref,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}`,
+          { id: productId }, { cache: "no-store" },
+        ),
+      ]);
+      if (!currentProduct) return NextResponse.json({ message: "Product not found." }, { status: 404 });
+      if (inventoryRecords.length > 1) {
+        return NextResponse.json({ message: "Multiple inventory records were found. Resolve this conflict before editing stock." }, { status: 409 });
+      }
+      if (body.productRevision && body.productRevision !== currentProduct._rev) {
+        return NextResponse.json({ message: "This product changed since you opened it (possibly due to a sale). Reload before editing stock." }, { status: 409 });
+      }
+      if (body.inventoryRevision && body.inventoryRevision !== inventoryRecords[0]?._rev) {
+        return NextResponse.json({ message: "Store inventory changed since you opened this product. Reload before editing stock." }, { status: 409 });
+      }
+      const inventory = inventoryRecords[0];
+      const selectedStoreId = cleanString(body.storeLocationId) || inventory?.defaultStoreId || "";
+      if (!selectedStoreId) return NextResponse.json({ message: "Assign this product to a store before saving stock quantities." }, { status: 400 });
+      if (staff.role === "MANAGER" && selectedStoreId !== staff.storeLocationId) {
+        return NextResponse.json({ message: "Managers cannot edit another store's inventory." }, { status: 403 });
+      }
+      const store = await serverClient.fetch<{ _id: string; name: string; code?: string } | null>(
+        `*[_type == "storeLocation" && _id == $id && active != false][0]{_id,name,code}`, { id: selectedStoreId }, { cache: "no-store" },
+      );
+      if (!store) return NextResponse.json({ message: "Selected inventory store is not active." }, { status: 400 });
+      const balances = inventory?.locationBalances || [];
+      const storeSnapshot = { id: store._id, name: store.name, code: store.code };
+      let nextBalances = balances;
+      if (Array.isArray(productPatch.variants) && productPatch.variants.length > 0) {
+        const documents = productPatch.variants as Array<{ _key: string; title?: string; colour?: string; size?: string; stockQuantity?: number }>;
+        const keys = new Set(documents.map((variant) => variant._key));
+        if (keys.size !== documents.length || documents.some((variant) => typeof variant.stockQuantity !== "number")) {
+          return NextResponse.json({ message: "Every variant must have a unique identifier and a stock quantity." }, { status: 400 });
+        }
+        for (const balance of balances) {
+          if (balance.variants?.some((variant) => !keys.has(variant.variantId || "") && Number(variant.onHand || 0) > 0)) {
+            return NextResponse.json({ message: "A stocked variant cannot be removed until its location stock is transferred or cleared." }, { status: 409 });
+          }
+          if ((!balance.variants || balance.variants.length === 0) && Number(balance.onHand || 0) > 0) {
+            return NextResponse.json({ message: "Move existing non-variant location stock before converting this product to variants." }, { status: 409 });
+          }
+        }
+        for (const variant of documents) {
+          const atOtherStores = balances.filter((row) => locationStoreId(row) !== store._id).reduce(
+            (sum, row) => sum + locationOnHand(row, variant._key), 0,
+          );
+          const desired = variant.stockQuantity || 0;
+          if (desired < atOtherStores) return NextResponse.json({ message: `Variant ${variant.title || variant._key} has ${atOtherStores} units at other stores. The company total cannot be lower.` }, { status: 409 });
+          const current = locationOnHand(findLocationBalance(nextBalances, store._id), variant._key);
+          nextBalances = adjustLocationBalance(nextBalances, storeSnapshot, {
+            variantId: variant._key,
+            variantLabel: variant.title || [variant.colour, variant.size].filter(Boolean).join(" / "),
+            onHandDelta: desired - atOtherStores - current,
+          });
+        }
+      } else if ((productPatch.variants !== undefined && (productPatch.variants as unknown[]).length === 0) || body.initialStock !== undefined) {
+        if ((currentProduct.variants || []).length && balances.some((row) => (row.variants || []).some((variant) => Number(variant.onHand || 0) > 0))) {
+          return NextResponse.json({ message: "Transfer or clear variant inventory before switching to a single stock quantity." }, { status: 409 });
+        }
+        const other = balances.filter((row) => locationStoreId(row) !== store._id).reduce((sum, row) => sum + locationOnHand(row), 0);
+        const desired = Number(productPatch.initialStock ?? currentProduct.initialStock ?? 0);
+        if (desired < other) return NextResponse.json({ message: `Other stores have ${other} units; company stock cannot be less.` }, { status: 409 });
+        const current = locationOnHand(findLocationBalance(nextBalances, store._id));
+        nextBalances = adjustLocationBalance(nextBalances, storeSnapshot, { onHandDelta: desired - other - current });
+      }
+      if (body.incoming !== undefined && (!currentProduct.variants || currentProduct.variants.length === 0)) {
+        const totalIncoming = numericValue(body.incoming);
+        if (totalIncoming === undefined || totalIncoming < 0) {
+          return NextResponse.json({ message: "Incoming stock must be zero or higher." }, { status: 400 });
+        }
+        const incomingAtOthers = balances.filter((row) => locationStoreId(row) !== store._id).reduce(
+          (sum, row) => sum + Math.max(0, Number(row.incoming || 0)), 0,
+        );
+        if (totalIncoming < incomingAtOthers) {
+          return NextResponse.json({ message: `Other stores have ${incomingAtOthers} incoming units; total incoming cannot be lower.` }, { status: 409 });
+        }
+        const current = Math.max(0, Number(findLocationBalance(nextBalances, store._id)?.incoming || 0));
+        nextBalances = adjustLocationBalance(nextBalances, storeSnapshot, { incomingDelta: totalIncoming - incomingAtOthers - current });
+      }
+      inventoryPatch.locationBalances = nextBalances;
+      inventoryPatch.defaultStore = { _type: "reference", _ref: store._id };
+      inventoryPatch.location = store.name;
+      // Check revisions to avoid overwriting a sale that happened while editing.
+      stockProductRevision = currentProduct._rev;
+      stockInventoryRevision = inventory?._rev;
+      stockInventoryId = inventory?._id;
+    }
+
     const transaction = serverClient.transaction();
 
     if (Object.keys(productPatch).length > 0 || productUnset.length > 0) {
       transaction.patch(productId, (patch) => {
-        let next = patch;
+        let next = stockProductRevision ? patch.ifRevisionId(stockProductRevision) : patch;
         if (Object.keys(productPatch).length > 0) next = next.set(productPatch);
         if (productUnset.length > 0) next = next.unset([...new Set(productUnset)]);
         return next;
@@ -481,8 +574,8 @@ export async function PATCH(
     }
 
     if (Object.keys(inventoryPatch).length > 0 || inventoryUnset.length > 0) {
-      const inventoryId = inventoryDocumentId(productId);
-      transaction.createIfNotExists({
+      const inventoryId = stockInventoryId || inventoryDocumentId(productId);
+      if (!stockInventoryId) transaction.createIfNotExists({
         _id: inventoryId,
         _type: "inventoryRecord",
         product: { _type: "reference", _ref: productId },
@@ -493,7 +586,7 @@ export async function PATCH(
         unitCost: 0,
       });
       transaction.patch(inventoryId, (patch) => {
-        let next = patch;
+        let next = stockInventoryRevision ? patch.ifRevisionId(stockInventoryRevision) : patch;
         if (Object.keys(inventoryPatch).length > 0) next = next.set(inventoryPatch);
         if (inventoryUnset.length > 0) next = next.unset(inventoryUnset);
         return next;
@@ -507,6 +600,10 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Product update failed:", error);
+    const detail = error instanceof Error ? error.message : "";
+    if (/revision.*(mismatch|changed|conflict)|conflict.*revision/i.test(detail)) {
+      return NextResponse.json({ message: "Inventory changed while you were editing. Reload the product and retry." }, { status: 409 });
+    }
     const failure = toSanityServiceError(error, "Product update failed.");
     return NextResponse.json({ message: failure.message }, { status: failure.status });
   }
