@@ -40,3 +40,7 @@ dist/
 
 # Local inventory consolidation preview
 DBK-main-stock-consolidation-plan.csv
+
+# Local, approval-gated one-time stock reconciliation plans
+DBK-23-main-stock-approval-template.csv
+DBK-23-main-stock-approved.csv

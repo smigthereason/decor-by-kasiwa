@@ -9,7 +9,7 @@
  * DBK_ALL_MAIN_CONFIRM=MOVE_ALL_STOCK_TO_MAIN.
  */
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { getCliClient } from "sanity/cli";
 
 type Variant = { _key?: string; title?: string; colour?: string; size?: string; stockQuantity?: number };
@@ -33,8 +33,54 @@ type Plan = {
   product: Product; inventory?: Inventory; mainBalance: Balance;
   movements: Movement[]; sourceBalanceCount: number;
   sourceOnHand: number; companyOnHand: number;
-  isChange: boolean;
+  isChange: boolean; adjustments: Array<{ variantId?: string; variantLabel?: string; before: number; after: number }>;
+  companyIncoming: number; parentStockCorrected: boolean; incomingCorrected: boolean;
 };
+type IssueCode = "LEDGER_EXCEEDS_COMPANY" | "VARIANT_LEDGER_EXCEEDS_COMPANY" | "PARENT_VS_VARIANTS" | "INCOMING_VS_VARIANTS";
+type Issue = {
+  productId: string; productName: string; variantId: string; variantName: string;
+  issue: IssueCode; current: number; comparison: number; proposed: number;
+  productRevision: string; inventoryRevision: string; mainStoreId: string;
+};
+type Approval = Pick<Issue, "productId" | "variantId" | "issue" | "productRevision" | "inventoryRevision" | "mainStoreId"> & {
+  current: string; comparison: string; proposed: string; approval: string; reason: string;
+};
+const issueKey = (issue: Pick<Issue, "productId" | "variantId" | "issue">) => [issue.productId, issue.variantId, issue.issue].join("|");
+
+// Quotes and embedded commas/newlines are supported. No dependency is required.
+function parseCsv(contents: string): string[][] {
+  const rows: string[][] = []; let row: string[] = []; let value = ""; let quoted = false;
+  for (let i = 0; i < contents.length; i++) {
+    const c = contents[i];
+    if (c === '"') {
+      if (quoted && contents[i + 1] === '"') { value += '"'; i++; }
+      else quoted = !quoted;
+    } else if (!quoted && (c === "," || c === "\n")) {
+      row.push(value); value = "";
+      if (c === "\n") { rows.push(row); row = []; }
+    } else if (c !== "\r" || quoted) value += c;
+  }
+  if (quoted) throw new Error("Approval CSV has an unclosed quote");
+  if (value || row.length) { row.push(value); rows.push(row); }
+  return rows;
+}
+function readApprovals(path: string | undefined): Map<string, Approval> {
+  const result = new Map<string, Approval>();
+  if (!path) return result;
+  const rows = parseCsv(readFileSync(path, "utf8"));
+  const required = ["productId", "variantId", "issue", "current", "comparison", "proposed", "productRevision", "inventoryRevision", "mainStoreId", "approval", "reason"];
+  const header = rows.shift() || [];
+  for (const field of required) if (!header.includes(field)) throw new Error(`Approval CSV is missing column: ${field}`);
+  for (const [i, values] of rows.entries()) {
+    if (!values.some(Boolean)) continue;
+    const data = Object.fromEntries(header.map((name, idx) => [name, values[idx] || ""]));
+    const approval = data as unknown as Approval;
+    const key = issueKey(approval);
+    if (!approval.productId || !approval.issue || result.has(key)) throw new Error(`Missing or duplicate approval at CSV row ${i + 2}`);
+    result.set(key, approval);
+  }
+  return result;
+}
 
 const client = getCliClient().withConfig({ apiVersion: "2026-08-27", useCdn: false, perspective: "published" });
 const write = process.env.DBK_ALL_MAIN_WRITE === "1";
@@ -53,7 +99,10 @@ const number = (value: unknown, label: string, errors: string[]): number => {
 const key = (value: string, prefix: string) => `${prefix}-${createHash("sha1").update(value).digest("hex").slice(0, 24)}`;
 const variantLabel = (v: Variant) => v.title || [v.colour, v.size].filter(Boolean).join(" / ") || v._key || "Variant";
 
-function planProduct(product: Product, inventory: Inventory | undefined, store: Store, errors: string[]): Plan {
+function planProduct(
+  product: Product, inventory: Inventory | undefined, store: Store, errors: string[],
+  requireApproval: (issue: Issue) => boolean,
+): Plan {
   const label = `${product.name || "Unnamed"} (${product._id})`;
   const balances = inventory?.locationBalances || [];
   const variants = product.variants || [];
@@ -61,9 +110,11 @@ function planProduct(product: Product, inventory: Inventory | undefined, store: 
   const main = balances.find(b => balanceId(b) === store._id);
   const sourceBalanceCount = balances.filter(b => balanceId(b) !== store._id).length;
   const movements: Movement[] = [];
+  const adjustments: Plan["adjustments"] = [];
   const sourceOnHand = balances.reduce((sum, b) => sum + number(b.onHand, `${label}: balance onHand`, errors), 0);
-  const companyOnHand = number(product.initialStock, `${label}: company initialStock`, errors);
-  const companyIncoming = number(inventory?.incoming, `${label}: company incoming`, errors);
+  let companyOnHand = number(product.initialStock, `${label}: company initialStock`, errors);
+  let companyIncoming = number(inventory?.incoming, `${label}: company incoming`, errors);
+  let parentStockCorrected = false, incomingCorrected = false;
   const allocatedIncoming = balances.reduce((sum, b) => sum + number(b.incoming, `${label}: balance incoming`, errors), 0);
   const reserved = number(inventory?.reserved, `${label}: reserved`, errors);
 
@@ -72,7 +123,11 @@ function planProduct(product: Product, inventory: Inventory | undefined, store: 
     errors.push(`${label}: previously consolidated; branches now have balances. Do not rerun this one-time migration after redistribution`);
   }
   if (sourceOnHand > companyOnHand && !hasVariants) {
-    errors.push(`${label}: ${sourceOnHand} allocated vs ${companyOnHand} company stock; refusing to discard or invent units`);
+    const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: "", variantName: "",
+      issue: "LEDGER_EXCEEDS_COMPANY", current: companyOnHand, comparison: sourceOnHand, proposed: companyOnHand,
+      productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
+    if (!ok) errors.push(`${label}: ${sourceOnHand} allocated vs ${companyOnHand} company stock; explicit approval required`);
+    else adjustments.push({ before: sourceOnHand, after: companyOnHand });
   }
   if (allocatedIncoming > companyIncoming && !hasVariants) {
     errors.push(`${label}: ${allocatedIncoming} allocated incoming vs ${companyIncoming} company incoming`);
@@ -92,7 +147,13 @@ function planProduct(product: Product, inventory: Inventory | undefined, store: 
       const allocated = records.reduce((sum, r) => sum + r.v.reduce((n,x) => n + number(x.onHand, `${label}: variant ${v._key} allocated`, errors), 0), 0);
       const companyVariantIncoming = number((inventory?.incomingByVariant || []).find(x => x.variantId === v._key)?.quantity, `${label}: variant ${v._key} incoming`, errors);
       const allocatedVariantIncoming = records.reduce((sum, r) => sum + r.v.reduce((n,x) => n + number(x.incoming, `${label}: variant ${v._key} incoming balance`, errors), 0), 0);
-      if (allocated > total) errors.push(`${label}: variant ${v._key} has ${allocated} allocated but only ${total} company stock`);
+      if (allocated > total) {
+        const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: v._key,
+          variantName: variantLabel(v), issue: "VARIANT_LEDGER_EXCEEDS_COMPANY", current: total, comparison: allocated,
+          proposed: total, productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
+        if (!ok) errors.push(`${label}: variant ${v._key} has ${allocated} allocated but only ${total} company stock; explicit approval required`);
+        else adjustments.push({ variantId: v._key, variantLabel: variantLabel(v), before: allocated, after: total });
+      }
       if (allocatedVariantIncoming > companyVariantIncoming) errors.push(`${label}: variant ${v._key} has inconsistent incoming stock`);
       const prevMain = main?.variants?.find(x => x.variantId === v._key);
       newVariants.push({
@@ -134,8 +195,20 @@ function planProduct(product: Product, inventory: Inventory | undefined, store: 
     }
     const companyVariantStock = newVariants.reduce((sum,v) => sum + (v.onHand || 0), 0);
     const companyVariantIncomingTotal = newVariants.reduce((sum,v) => sum + (v.incoming || 0), 0);
-    if (companyVariantStock !== companyOnHand) errors.push(`${label}: initialStock ${companyOnHand} differs from variant total ${companyVariantStock}`);
-    if (companyVariantIncomingTotal !== companyIncoming) errors.push(`${label}: company incoming ${companyIncoming} differs from variant incoming ${companyVariantIncomingTotal}`);
+    if (companyVariantStock !== companyOnHand) {
+      const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: "", variantName: "",
+        issue: "PARENT_VS_VARIANTS", current: companyOnHand, comparison: companyVariantStock, proposed: companyVariantStock,
+        productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
+      if (!ok) errors.push(`${label}: initialStock ${companyOnHand} differs from variant total ${companyVariantStock}; confirm variant totals before changing product total`);
+      else { companyOnHand = companyVariantStock; parentStockCorrected = true; }
+    }
+    if (companyVariantIncomingTotal !== companyIncoming) {
+      const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: "", variantName: "",
+        issue: "INCOMING_VS_VARIANTS", current: companyIncoming, comparison: companyVariantIncomingTotal, proposed: companyVariantIncomingTotal,
+        productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
+      if (!ok) errors.push(`${label}: company incoming ${companyIncoming} differs from variant incoming ${companyVariantIncomingTotal}; confirm pending deliveries first`);
+      else { companyIncoming = companyVariantIncomingTotal; incomingCorrected = true; }
+    }
   } else {
     if (companyOnHand > sourceOnHand) movements.push({ sourceName: "Previously unallocated company stock", quantity: companyOnHand - sourceOnHand });
     for (const b of balances) {
@@ -164,7 +237,8 @@ function planProduct(product: Product, inventory: Inventory | undefined, store: 
   if (inventory?.stockConsolidatedToMainAt && isChange) {
     errors.push(`${label}: already consolidated previously, but balances differ now. Refusing to run again and overwrite post-migration changes`);
   }
-  return { product, inventory, mainBalance: newMain, movements, sourceBalanceCount, sourceOnHand, companyOnHand, isChange };
+  return { product, inventory, mainBalance: newMain, movements, adjustments, sourceBalanceCount, sourceOnHand,
+    companyOnHand, companyIncoming, parentStockCorrected, incomingCorrected, isChange };
 }
 
 async function main() {
@@ -175,23 +249,55 @@ async function main() {
   if (!storeId) throw new Error(`Set DBK_MAIN_STORE_ID to the actual Sanity document ID of the target Main store. Available: ${stores.map(s => `${s.name} (${s._id})`).join(", ")}`);
   const store = stores.find(s => s._id === storeId);
   if (!store) throw new Error(`Store ${storeId} is not an active MAIN. Available MAIN stores: ${stores.map(s => `${s.name} (${s._id})`).join(", ")}`);
+  const approvals = readApprovals(process.env.DBK_MAIN_APPROVALS_PATH);
+  const issues: Issue[] = [];
+  const usedApprovals = new Set<string>();
+  const errors: string[] = [];
+  const requireApproval = (issue: Issue): boolean => {
+    issues.push(issue);
+    const match = approvals.get(issueKey(issue));
+    if (!match) return false;
+    usedApprovals.add(issueKey(issue));
+    const stable = match.productId === issue.productId && match.variantId === issue.variantId &&
+      match.issue === issue.issue && match.productRevision === issue.productRevision &&
+      match.inventoryRevision === issue.inventoryRevision && match.mainStoreId === issue.mainStoreId &&
+      match.current === String(issue.current) && match.comparison === String(issue.comparison) &&
+      match.proposed === String(issue.proposed);
+    if (!stable) { errors.push(`${issue.productName} (${issue.productId}) ${issue.issue}: approval is STALE; regenerate and review current figures`); return false; }
+    if (match.approval !== "APPROVE" || !match.reason.trim()) return false;
+    return true;
+  };
   const products = await client.fetch<Product[]>(`*[_type == "product" && !(_id in path("drafts.**"))]{_id,_rev,name,initialStock,variants[]{_key,title,colour,size,stockQuantity}}`);
   const inventories = await client.fetch<Inventory[]>(`*[_type == "inventoryRecord" && !(_id in path("drafts.**"))]{_id,_rev,"productId":product._ref,defaultStore,incoming,reserved,incomingByVariant,stockConsolidatedToMainAt,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}`);
   const byId = new Map<string, Inventory[]>();
   for (const inv of inventories) byId.set(inv.productId || "", [...(byId.get(inv.productId || "") || []), inv]);
-  const errors: string[] = [];
   const plans: Plan[] = [];
   for (const product of products) {
     const matches = byId.get(product._id) || [];
     if (matches.length > 1) { errors.push(`${product._id}: duplicate inventory records; resolve before migration`); continue; }
-    plans.push(planProduct(product, matches[0], store, errors));
+    plans.push(planProduct(product, matches[0], store, errors, requireApproval));
   }
   const productIds = new Set(products.map(p => p._id));
   for (const inv of inventories) if (!inv.productId || !productIds.has(inv.productId)) errors.push(`Inventory ${inv._id} has no published product. Inspect orphan records before the migration.`);
+  for (const key of approvals.keys()) if (!usedApprovals.has(key)) errors.push(`Approval ${key} no longer matches a current issue. Regenerate the approval file.`);
+  // Never auto-approve a mismatch. A fresh comparison and a human reason are mandatory.
+  const approved = issues.filter(i => {
+    const match = approvals.get(issueKey(i));
+    return match?.approval === "APPROVE" && Boolean(match.reason.trim()) &&
+      match.current === String(i.current) && match.comparison === String(i.comparison) && match.proposed === String(i.proposed) &&
+      match.productRevision === i.productRevision && match.inventoryRevision === i.inventoryRevision && match.mainStoreId === i.mainStoreId;
+  }).length;
   const changed = plans.filter(p => p.isChange);
   const movements = changed.reduce((sum,p) => sum + p.movements.length, 0);
-  // Full printable plan (including every variant), not only the console preview.
+  const adjustments = changed.reduce((sum,p) => sum + p.adjustments.length, 0);
+  // Fresh revisions and exact quantities are part of each approval. Never reuse old approvals.
   const csv = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const approvalPath = process.env.DBK_MAIN_APPROVAL_TEMPLATE_PATH || "DBK-23-main-stock-approval-template.csv";
+  const approvalHeaders = ["productId", "productName", "variantId", "variantName", "issue", "current", "comparison", "proposed", "productRevision", "inventoryRevision", "mainStoreId", "approval", "reason"];
+  writeFileSync(approvalPath, [approvalHeaders, ...issues.map(issue => [issue.productId, issue.productName, issue.variantId, issue.variantName,
+    issue.issue, issue.current, issue.comparison, issue.proposed, issue.productRevision, issue.inventoryRevision, issue.mainStoreId,
+    approvals.get(issueKey(issue))?.approval || "", approvals.get(issueKey(issue))?.reason || ""])]
+    .map(row => row.map(csv).join(",")).join("\n") + "\n", "utf8");
   const lines: string[][] = [["productId", "productName", "variantId", "variantName", "companyOnHand", "allocatedAcrossLocations", "mainAfter", "incomingAtMainAfter", "oldLocationBalances", "action"]];
   for (const p of plans) {
     const original = p.inventory?.locationBalances || [];
@@ -210,7 +316,8 @@ async function main() {
   writeFileSync(planPath, lines.map(row => row.map(csv).join(",")).join("\n") + "\n", "utf8");
   console.log(`Full product + variant plan: ${planPath}`);
   console.log(`MODE: ${write ? "WRITE" : "DRY RUN"}; target: ${store.name} (${store._id})`);
-  console.log(`Products: ${products.length}; proposed changes: ${changed.length}; proposed movement records: ${movements}; conflicts: ${errors.length}`);
+  console.log(`Products: ${products.length}; proposed changes: ${changed.length}; transfer movements: ${movements}; proposed ledger corrections: ${adjustments}; parent-total corrections: ${plans.filter(p => p.parentStockCorrected).length}; incoming-total corrections: ${plans.filter(p => p.incomingCorrected).length}; approvals: ${approved}/${issues.length}; blockers: ${errors.length}`);
+  console.log(`Approval template: ${approvalPath}. Verify physical counts, transaction history, and exact variant quantities before approving.`);
   for (const p of changed.slice(0, 30)) {
     console.log(`  ${p.product.name || p.product._id} [${p.product._id}] => ${p.mainBalance.onHand} on hand, ${p.mainBalance.incoming} incoming; ${p.sourceBalanceCount} other location balance(s)`);
   }
@@ -241,7 +348,24 @@ async function main() {
       tx.patch(p.inventory._id, patch => patch.ifRevisionId(p.inventory!._rev).set({
         defaultStore: ref(store._id), location: store.name, locationBalances: [p.mainBalance],
         stockConsolidatedToMainAt: now,
+        ...(p.incomingCorrected ? { incoming: p.companyIncoming } : {}),
       }));
+    }
+    // Approved overallocated stock was already deducted from company totals. Record
+    // the historical store-ledger correction, WITHOUT subtracting sales again.
+    for (const adjustment of p.adjustments) {
+      const id = `inventoryMovement.${key([p.product._id, store._id, adjustment.variantId || "", "DBK-23", "ledger"].join("|"), "adjust")}`;
+      tx.createIfNotExists({
+        _id: id, _type: "inventoryMovement", movementNumber: `RECON-${id.slice(-13).toUpperCase()}`,
+        movementType: "ADJUSTMENT", product: ref(p.product._id), productId: p.product._id,
+        productName: p.product.name || p.product._id,
+        ...(adjustment.variantId ? { variantId: adjustment.variantId, variantLabel: adjustment.variantLabel } : {}),
+        quantityChange: adjustment.after - adjustment.before,
+        stockBefore: adjustment.before, stockAfter: adjustment.after,
+        sourceLocation: "Legacy location ledgers", destination: store.name, destinationStore: ref(store._id),
+        note: "DBK-23 approved correction of historical location balance to already-updated company stock. No additional sale was deducted. See approved CSV and DBK-22 audit.",
+        createdAt: now,
+      });
     }
     // One entry per moved branch/variant, with stable keys for audit and replay safety.
     for (const movement of p.movements) {
@@ -267,6 +391,6 @@ async function main() {
       throw err;
     }
   }
-  console.log(`DONE: ${completed} products consolidated to ${store.name}. All written inventory records now have ONLY the Main balance. Run dry run again to verify.`);
+  console.log(`DONE: ${completed} products consolidated to ${store.name}. All written inventory records now have ONLY the Main balance. Unset DBK_MAIN_APPROVALS_PATH and run dry run again to verify.`);
 }
 main().catch(err => { console.error(err); process.exitCode = 1; });
