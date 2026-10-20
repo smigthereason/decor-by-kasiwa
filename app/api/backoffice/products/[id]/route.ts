@@ -163,6 +163,13 @@ export async function GET(
       return NextResponse.json({ message: "This product is not assigned to your store." }, { status: 403 });
     }
   }
+  // Managers may see stock levels but never procurement/production cost.
+  // Redact at the API boundary, not only in the product editor.
+  if (staff.role === "MANAGER") {
+    const { procurementCost: _cost, inventory, ...safe } = product;
+    const { unitCost: _unitCost, ...safeInventory } = inventory || {};
+    return NextResponse.json({ product: { ...safe, inventory: inventory ? safeInventory : null } });
+  }
   return NextResponse.json({ product });
 }
 
@@ -217,9 +224,9 @@ export async function PATCH(
         return NextResponse.json({ message: "Managers can only edit products at their assigned store." }, { status: 403 });
       }
       const managerEditableFields = new Set([
-        "name", "shortDescription", "description", "onHand", "initialStock", "incoming", "reserved", "unitCost", "procurementCost",
+        "name", "shortDescription", "description",
         "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
-        "rating", "reviewCount", "location", "storeLocationId", "reorderPoint", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
+        "rating", "reviewCount", "storeLocationId", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
         "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision",
       ]);
@@ -395,6 +402,7 @@ export async function PATCH(
       productPatch.gallery = [...retained, ...uploaded];
     }
 
+    let managerProductRevision: string | undefined;
     if (body.variants !== undefined) {
       let variants: VariantInput[] = [];
       try {
@@ -405,6 +413,47 @@ export async function PATCH(
         return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
       }
 
+      const managerVariants = staff.role === "MANAGER";
+      const currentVariantStock = new Map<string, number>();
+      if (managerVariants) {
+        const current = await serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number }> } | null>(
+          `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity}}`,
+          { id: productId }, { cache: "no-store" },
+        );
+        if (!current) return NextResponse.json({ message: "Product not found." }, { status: 404 });
+        if (!body.productRevision || body.productRevision !== current._rev) {
+          return NextResponse.json({ message: "This product changed. Reload before editing its variants." }, { status: 409 });
+        }
+        managerProductRevision = current._rev;
+        for (const variant of current.variants || []) {
+          if (variant._key) currentVariantStock.set(variant._key, Number(variant.stockQuantity || 0));
+        }
+        if (variants.some(v => v.stockQuantity !== undefined && v.stockQuantity !== null)) {
+          return NextResponse.json({ message: "Managers cannot edit variant stock quantities." }, { status: 403 });
+        }
+        if (!(current.variants || []).length && variants.length && Number(current.initialStock || 0) > 0) {
+          return NextResponse.json({ message: "Move or allocate existing stock before changing this product to variants." }, { status: 403 });
+        }
+        const requestedKeys = new Set(variants.map(v => v._key).filter(Boolean));
+        if (requestedKeys.size !== variants.filter(x => x._key).length) {
+          return NextResponse.json({ message: "Every variant must have a unique identifier." }, { status: 400 });
+        }
+        if ([...currentVariantStock].some(([id, amount]) => !requestedKeys.has(id) && amount > 0)) {
+          return NextResponse.json({ message: "Managers cannot remove a variant while it has stock." }, { status: 403 });
+        }
+        const removedKeys = [...currentVariantStock.keys()].filter(id => !requestedKeys.has(id));
+        if (removedKeys.length) {
+          const allocated = await serverClient.fetch<Array<{ locationBalances?: Array<{ variants?: Array<{ variantId?: string; onHand?: number; incoming?: number }> }> }>>(
+            `*[_type == "inventoryRecord" && product._ref == $id]{locationBalances[]{variants[]{variantId,onHand,incoming}}}`,
+            { id: productId }, { cache: "no-store" },
+          );
+          if (allocated.some(record => (record.locationBalances || []).some(balance =>
+            (balance.variants || []).some(v => removedKeys.includes(v.variantId || "") &&
+              (Number(v.onHand || 0) > 0 || Number(v.incoming || 0) > 0))))) {
+            return NextResponse.json({ message: "Managers cannot remove a variant with allocated or incoming stock." }, { status: 403 });
+          }
+        }
+      }
       const variantDocuments = [];
       for (let index = 0; index < variants.length; index += 1) {
         const variant = variants[index];
@@ -422,12 +471,14 @@ export async function PATCH(
           size: variant.size?.trim() || undefined,
           sku: variant.sku?.trim() || undefined,
           price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-          stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
+          stockQuantity: managerVariants
+            ? currentVariantStock.get(variant._key || "") ?? 0
+            : typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
           ...(image ? { image } : {}),
         });
       }
       productPatch.variants = variantDocuments;
-      if (variantDocuments.length > 0) {
+      if (variantDocuments.length > 0 && !managerVariants) {
         productPatch.initialStock = variantDocuments.reduce(
           (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
           0,
@@ -463,13 +514,15 @@ export async function PATCH(
     if (reorderPoint !== undefined) inventoryPatch.reorderPoint = Math.max(0, reorderPoint);
     if (procurementCost !== undefined) inventoryPatch.unitCost = Math.max(0, procurementCost);
 
-    let stockProductRevision: string | undefined;
+    // Variant metadata saves must be revision-bound too: an in-flight POS sale
+    // must not have its newly reduced variant quantities overwritten.
+    let stockProductRevision: string | undefined = typeof managerProductRevision === "string" ? managerProductRevision : undefined;
     let stockInventoryRevision: string | undefined;
     let stockInventoryId: string | undefined;
     // Product quantities are company totals, while POS uses locationBalances. On an
     // explicit editor stock submission, place only the *unallocated* remainder at
     // the selected default store. Never take stock away from another branch.
-    if (productPatch.initialStock !== undefined || productPatch.variants !== undefined) {
+    if (staff.role !== "MANAGER" && (productPatch.initialStock !== undefined || productPatch.variants !== undefined)) {
       const [currentProduct, inventoryRecords] = await Promise.all([
         serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number }> } | null>(
           `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity}}`, { id: productId }, { cache: "no-store" },
@@ -492,9 +545,6 @@ export async function PATCH(
       const inventory = inventoryRecords[0];
       const selectedStoreId = cleanString(body.storeLocationId) || inventory?.defaultStoreId || "";
       if (!selectedStoreId) return NextResponse.json({ message: "Assign this product to a store before saving stock quantities." }, { status: 400 });
-      if (staff.role === "MANAGER" && selectedStoreId !== staff.storeLocationId) {
-        return NextResponse.json({ message: "Managers cannot edit another store's inventory." }, { status: 403 });
-      }
       const store = await serverClient.fetch<{ _id: string; name: string; code?: string } | null>(
         `*[_type == "storeLocation" && _id == $id && active != false][0]{_id,name,code}`, { id: selectedStoreId }, { cache: "no-store" },
       );

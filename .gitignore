@@ -44,3 +44,10 @@ DBK-main-stock-consolidation-plan.csv
 # Local, approval-gated one-time stock reconciliation plans
 DBK-23-main-stock-approval-template.csv
 DBK-23-main-stock-approved.csv
+
+DBK-23A-online-ledger-review.csv
+DBK-23A-online-ledger-approved.csv
+
+# Records-only reconciliation artifacts: local and bound to Sanity revisions
+DBK-25-records-only-approved.csv
+DBK-25-records-only-review.csv

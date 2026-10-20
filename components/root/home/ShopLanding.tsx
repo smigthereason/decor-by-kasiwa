@@ -891,6 +891,7 @@ export default function ShopLanding({
         meta="Decor by Kasiwa"
         ctaLabel={heroCtaLabel}
         ctaHref="/shop"
+        mobileCompact
       />
 
       {/* 1. Shop by Category - AUTO CAROUSEL */}

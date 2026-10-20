@@ -108,11 +108,18 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const staff = await getApiStaff(["ADMIN"]);
+  const staff = await getApiStaff(["ADMIN", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
   try {
     const form = await request.formData();
+    const manager = staff.role === "MANAGER";
+    if (manager && !staff.storeLocationId) {
+      return NextResponse.json({ message: "Manager must be assigned to a store before creating products." }, { status: 403 });
+    }
+    if (manager && ["onHand", "initialStock", "incoming", "reserved", "reorderPoint", "unitCost", "procurementCost"].some(field => form.has(field))) {
+      return NextResponse.json({ message: "Managers cannot edit stock quantities or production costs." }, { status: 403 });
+    }
     const name = cleanProductName(form.get("name"));
     const price = numberValue(form.get("price"));
     const wholesalePriceText = clean(form.get("wholesalePrice"));
@@ -130,7 +137,10 @@ export async function POST(request: Request) {
     }
     if (!primaryCategory) return NextResponse.json({ message: "Primary category is required." }, { status: 400 });
 
-    const storeLocationId = clean(form.get("storeLocationId"));
+    if (manager && form.has("storeLocationId") && clean(form.get("storeLocationId")) && clean(form.get("storeLocationId")) !== staff.storeLocationId) {
+      return NextResponse.json({ message: "Managers can only create products at their assigned store." }, { status: 403 });
+    }
+    const storeLocationId = manager ? staff.storeLocationId! : clean(form.get("storeLocationId"));
     const selectedLocation = storeLocationId
       ? await serverClient.fetch<StoreLocationOption | null>(
           `*[_type == "storeLocation" && _id == $storeLocationId && active != false][0]{_id,name,code,locationType}`,
@@ -174,6 +184,9 @@ export async function POST(request: Request) {
     for (let index = 0; index < variants.length; index += 1) {
       const variant = variants[index];
       const image = await uploadImage(form.get(`variantImage-${index}`) instanceof File ? form.get(`variantImage-${index}`) as File : null);
+      if (manager && variant.stockQuantity !== undefined && variant.stockQuantity !== null) {
+        return NextResponse.json({ message: "Managers cannot set variant stock quantities." }, { status: 403 });
+      }
       variantDocuments.push({
         _key: randomUUID().slice(0, 12),
         _type: "object",
@@ -182,7 +195,7 @@ export async function POST(request: Request) {
         size: variant.size?.trim() || undefined,
         sku: variant.sku?.trim() || undefined,
         price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-        stockQuantity: typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
+        stockQuantity: manager ? 0 : typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
         ...(image ? { image } : {}),
       });
     }
@@ -191,10 +204,10 @@ export async function POST(request: Request) {
       (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
       0,
     );
-    const initialStock = variantDocuments.length > 0
+    const initialStock = manager ? 0 : variantDocuments.length > 0
       ? variantStockTotal
       : Math.max(0, numberValue(form.get("initialStock")));
-    const procurementCost = Math.max(0, numberValue(form.get("procurementCost")));
+    const procurementCost = manager ? 0 : Math.max(0, numberValue(form.get("procurementCost")));
     const ecommerceEnabled = booleanValue(form.get("ecommerceEnabled"), true);
     const posEnabled = booleanValue(form.get("posEnabled"), true);
     if (!ecommerceEnabled && !posEnabled) {

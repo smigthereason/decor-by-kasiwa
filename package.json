@@ -14,7 +14,10 @@
     "migrate:products:images": "DBK_MIGRATION_WRITE=1 DBK_MIGRATE_IMAGES=1 sanity exec scripts/migrate-products-to-sanity.ts --with-user-token",
     "consolidate:stock-main:dry": "sanity exec scripts/consolidate-all-stock-to-main.ts --with-user-token",
     "audit:stock-history": "sanity exec scripts/audit-historical-inventory.ts --with-user-token",
-    "consolidate:stock-main": "DBK_ALL_MAIN_WRITE=1 sanity exec scripts/consolidate-all-stock-to-main.ts --with-user-token"
+    "consolidate:stock-main": "DBK_ALL_MAIN_WRITE=1 sanity exec scripts/consolidate-all-stock-to-main.ts --with-user-token",
+    "reconcile:online-ledger:dry": "sanity exec scripts/reconcile-confirmed-online-ledger.ts --with-user-token",
+    "reconcile:online-ledger": "DBK_23A_WRITE=1 sanity exec scripts/reconcile-confirmed-online-ledger.ts --with-user-token",
+    "prepare:stock-main:records": "node scripts/prepare-records-only-stock-approvals.mjs"
   },
   "dependencies": {
     "@sanity/image-url": "^1.2.0",

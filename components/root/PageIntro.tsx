@@ -22,6 +22,7 @@ type PageIntroProps = {
   ctaLabel?: string;
   ctaHref?: string;
   featureHref?: string;
+  mobileCompact?: boolean;
 };
 
 export default function PageIntro({
@@ -37,6 +38,7 @@ export default function PageIntro({
   ctaLabel,
   ctaHref,
   featureHref,
+  mobileCompact = false,
 }: PageIntroProps) {
   const reduceMotion = useReducedMotion();
 
@@ -54,7 +56,7 @@ export default function PageIntro({
       className="relative isolate w-full overflow-hidden bg-[var(--brand-green)] text-soft-cream"
       aria-label={`${eyebrow}: ${title}`}
     >
-      <div className="relative min-h-[560px] w-full sm:min-h-[620px] lg:h-[clamp(620px,72vh,820px)]">
+      <div className={`relative w-full sm:min-h-[620px] lg:h-[clamp(620px,72vh,820px)] ${mobileCompact ? "h-[50svh] min-h-[285px]" : "min-h-[560px]"}`}>
         {/* BACKGROUND IMAGE */}
         <motion.div
           initial={
@@ -89,7 +91,7 @@ export default function PageIntro({
         <div className="absolute inset-0 bg-gradient-to-t from-charcoal/75 via-transparent to-charcoal/20" />
 
         {/* TOP META */}
-        <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between px-5 pt-6 sm:px-8 sm:pt-8 lg:px-[3.5vw] lg:pt-9">
+        <div className={`absolute inset-x-0 top-0 z-30 items-start justify-between px-5 pt-6 sm:flex sm:px-8 sm:pt-8 lg:px-[3.5vw] lg:pt-9 ${mobileCompact ? "hidden" : "flex"}`}>
           <motion.p
             initial={
               reduceMotion
@@ -220,9 +222,9 @@ export default function PageIntro({
             ...transition,
             delay: reduceMotion ? 0 : 0.06,
           }}
-          className="absolute bottom-10 left-5 z-30 w-[calc(100%-40px)] sm:bottom-12 sm:left-8 sm:max-w-[680px] lg:bottom-[10%] lg:left-[3.5vw] lg:max-w-[850px]"
+          className={`absolute left-5 z-30 w-[calc(100%-40px)] sm:bottom-12 sm:left-8 sm:max-w-[680px] lg:bottom-[10%] lg:left-[3.5vw] lg:max-w-[850px] ${mobileCompact ? "bottom-7" : "bottom-10"}`}
         >
-          <div className="mb-5 flex items-center gap-3">
+          <div className={`mb-5 items-center gap-3 sm:flex ${mobileCompact ? "hidden" : "flex"}`}>
             <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-soft-cream/75 sm:text-[12px]">
               {meta}
             </span>
@@ -232,12 +234,12 @@ export default function PageIntro({
             </span>
           </div>
 
-          <h1 className="max-w-[850px] text-balance text-[46px] font-medium leading-[0.94] tracking-[-0.055em] sm:text-[62px] lg:text-[clamp(64px,6vw,100px)]">
+          <h1 className={`max-w-[850px] text-balance font-medium leading-[0.94] tracking-[-0.055em] sm:text-[62px] lg:text-[clamp(64px,6vw,100px)] ${mobileCompact ? "text-[clamp(32px,9.2vw,46px)]" : "text-[46px]"}`}>
             {title}
           </h1>
 
           {(body || (ctaLabel && ctaHref)) && (
-            <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:gap-10">
+            <div className={`mt-6 flex-col gap-5 sm:flex-row sm:items-end sm:gap-10 ${mobileCompact ? "hidden sm:flex" : "flex"}`}>
               {body && (
                 <p className="max-w-[430px] text-[11px] leading-[1.65] text-soft-cream/75 sm:text-[14px]">
                   {body}

@@ -97,6 +97,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
+  if (staff.role === "MANAGER") {
+    return NextResponse.json({ message: "Managers can view inventory but cannot purchase, receive or transfer stock." }, { status: 403 });
+  }
 
   try {
     const body = (await request.json()) as {

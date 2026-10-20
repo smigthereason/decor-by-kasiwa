@@ -82,7 +82,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
 
   return (
     <>
-      <PageIntro {...intro} />
+      <div className="hidden md:block"><PageIntro {...intro} /></div>
       <div id="shop-collection" className="bg-[var(--paper)] px-4 py-8 md:px-8 md:py-12"><ShopGrid products={products} navigation={navigation} /></div>
     </>
   );

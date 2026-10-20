@@ -84,7 +84,7 @@ export default function ProductCataloguePage({ mode }: { mode: Mode }) {
         </h1>
         <div className="flex flex-wrap items-end justify-between gap-4"><p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
           Admin and Store Manager use the same live Sanity catalogue and can update stock, incoming inventory, reorder levels, prices and shop visibility.
-        </p>{mode === "admin" && <Link href="/admin/products/new" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Plus size={14}/>Add product</Link>}</div>
+        </p>{(mode === "admin" || (mode === "store" && session?.user?.role === "MANAGER")) && <Link href={mode === "admin" ? "/admin/products/new" : "/store/products/new"} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream"><Plus size={14}/>Add product</Link>}</div>
       </div>
 
       <div className="border-b hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8">

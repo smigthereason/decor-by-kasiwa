@@ -245,7 +245,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, ...variant }) => ({
       ...variant,
       price: variant.price ? Number(variant.price) : null,
-      stockQuantity: variant.stockQuantity !== "" ? Number(variant.stockQuantity) : 0,
+      ...(!managerMode ? { stockQuantity: variant.stockQuantity !== "" ? Number(variant.stockQuantity) : 0 } : {}),
     }))));
     variants.forEach((variant, index) => {
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
@@ -316,7 +316,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         <Link href={managerMode ? "/store/products" : (isEditing && productId ? `/admin/products/${encodeURIComponent(productId)}` : "/admin/products")} className="group inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1"/>{managerMode ? "Back to products" : (isEditing ? "Back to product" : "Back to products")}</Link>
         <p className="kicker mt-5 text-[var(--muted)]">Product catalogue</p>
         <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">{isEditing ? `Edit ${product?.name || "product"}` : "Add a new product"}</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">{managerMode ? "Managers can edit product pricing, production cost and inventory quantities for their assigned location. Other stores' allocations are preserved." : (isEditing ? "Every catalogue section available during product creation can be updated here." : "Create the same core catalogue information used by Sanity without leaving the Decor by Kasiwa Admin Office. The product is saved directly to the live Sanity catalogue.")}</p>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">{managerMode ? "Managers can edit catalogue details and prices. Stock quantities are read-only and production cost is hidden." : (isEditing ? "Every catalogue section available during product creation can be updated here." : "Create the same core catalogue information used by Sanity without leaving the Decor by Kasiwa Admin Office. The product is saved directly to the live Sanity catalogue.")}</p>
       </header>
 
       <form onSubmit={submit} className="mx-auto grid max-w-[1500px] gap-5 p-4 sm:p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
@@ -358,7 +358,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
           <Card title="Variants" action={<button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>}>
             <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">Stock quantities are company totals. Saving allocates the unassigned remainder to the inventory location below; stock already at other stores is preserved.</p>
-            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <img src={variant.imageUrl} alt="Current variant" className="mb-3 h-20 w-20 rounded-lg border hairline object-cover"/>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item))}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label></div>)}</div>}
+            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <img src={variant.imageUrl} alt="Current variant" className="mb-3 h-20 w-20 rounded-lg border hairline object-cover"/>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={managerMode && key === "stockQuantity"} aria-readonly={managerMode && key === "stockQuantity"} onChange={(e)=>{if (managerMode && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label></div>)}</div>}
           </Card>
         </div>
 
@@ -366,7 +366,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
           <Card title="Inventory">
             {isEditing && inventory?.defaultStoreId && <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-xs text-[var(--muted)]">
               Currently allocated to {inventory.defaultStoreName || "this store"}: <strong>{currentLocationBalance?.onHand ?? 0} unit(s)</strong>.
-              The stock fields below show company-wide totals; saving will assign only the unallocated balance to this store. Other stores are preserved.
+              {managerMode ? "Stock quantities are read-only for Managers." : "The stock fields below show company-wide totals; saving will assign only the unallocated balance to this store. Other stores are preserved."}
             </p>}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               {variants.length > 0 ? (
@@ -375,19 +375,19 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
                 </Field>
               ) : (
                 <Field label="Initial stock" hint="Company total; unallocated units will be assigned to the selected store on save">
-                  <input key="initial-stock" name="initialStock" type="number" min="0" defaultValue={product?.initialStock ?? 0} />
+                  <input key="initial-stock" name={managerMode ? undefined : "initialStock"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={product?.initialStock ?? 0} />
                 </Field>
               )}
-              <Field label="Incoming"><input name="incoming" type="number" min="0" defaultValue={inventory?.incoming ?? 0} /></Field>
-              <Field label="Reorder level"><input name="reorderPoint" type="number" min="0" defaultValue={inventory?.reorderPoint ?? 5} /></Field>
-              <Field label="Cost of Production / Initial Cost (KES)" hint="Used as procurement cost / COGS in profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>
+              <Field label="Incoming"><input name={managerMode ? undefined : "incoming"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={inventory?.incoming ?? 0} /></Field>
+              <Field label="Reorder level"><input name={managerMode ? undefined : "reorderPoint"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={inventory?.reorderPoint ?? 5} /></Field>
+              {!managerMode && <Field label="Cost of Production / Initial Cost (KES)" hint="Used as procurement cost / COGS in profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>}
               <Field label="Inventory location" hint="Default assignment; stock balances are still tracked per location" className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
                 <div className="relative">
                   <select name="storeLocationId" defaultValue={inventory?.defaultStoreId || ""} disabled={managerMode} className="min-h-11 w-full appearance-none rounded-lg border bg-[var(--paper)] pl-4 pr-11 text-sm">
                     <option value="">Unassigned (default)</option>
                     {options.storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.locationType ? ` · ${location.locationType === "MAIN" ? "Main" : "Branch"}` : ""}{location.code ? ` · ${location.code}` : ""}</option>)}
                   </select>
-                  {managerMode && <input type="hidden" name="storeLocationId" value={inventory?.defaultStoreId || ""} />}
+                  {managerMode && isEditing && <input type="hidden" name="storeLocationId" value={inventory?.defaultStoreId || ""} />}
                   <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/>
                 </div>
               </Field>

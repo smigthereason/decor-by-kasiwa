@@ -121,6 +121,7 @@ export default function InventoryManagementPage() {
   const role = session?.user?.role;
   const canManage = role === "ADMIN" || role === "STORE" || role === "MANAGER" || role === "STORE_STAFF";
   const hideProcurement = role === "MANAGER" || role === "STORE_STAFF";
+  const canChangeStock = canManage && role !== "MANAGER";
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("All");
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
@@ -138,21 +139,12 @@ export default function InventoryManagementPage() {
   const actionSectionRef = useRef<HTMLElement | null>(null);
 
   function openAction(nextAction: InventoryAction) {
+    if (!canChangeStock) return;
     setAction(nextAction);
     setMessage(null);
     setSelectedVariantId("");
-    if (role === "MANAGER" && assignedStoreId) {
-      if (nextAction === "TRANSFER") {
-        setSourceStoreId(assignedStoreId);
-        setDestinationStoreId("");
-      } else {
-        setSourceStoreId("");
-        setDestinationStoreId(assignedStoreId);
-      }
-    } else {
-      setSourceStoreId("");
-      setDestinationStoreId("");
-    }
+    setSourceStoreId("");
+    setDestinationStoreId("");
     window.requestAnimationFrame(() => actionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
@@ -202,7 +194,7 @@ export default function InventoryManagementPage() {
   const unallocated = Math.max(0, Number(selectedProductRaw?.unallocatedOnHand || 0));
 
   async function submitMovement() {
-    if (!action || !selectedProductId || (requiresVariant && !selectedVariantId)) return;
+    if (!canChangeStock || !action || !selectedProductId || (requiresVariant && !selectedVariantId)) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -224,7 +216,8 @@ export default function InventoryManagementPage() {
       setNote("");
       setSelectedProductId("");
       setSelectedVariantId("");
-      if (role !== "MANAGER") { setSourceStoreId(""); setDestinationStoreId(""); }
+      setSourceStoreId("");
+      setDestinationStoreId("");
       await Promise.all([refresh(), loadMovements()]);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Unable to update inventory.");
@@ -254,7 +247,7 @@ export default function InventoryManagementPage() {
             <h1 className="mt-2 text-2xl font-medium tracking-[-0.04em] sm:text-3xl lg:text-4xl">Stock control</h1>
             <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">Track stock by client-created store/location, receive purchases into the correct branch, and transfer stock between locations while preserving the company total.</p>
           </div>
-          {canManage && <div className="flex flex-wrap gap-2">
+          {canChangeStock && <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => openAction("PURCHASE")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-xs font-semibold !text-soft-cream"><PackagePlus size={14}/>Purchase stock</button>
             <button type="button" onClick={() => openAction("RECEIVE")} className="inline-flex min-h-11 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold"><ArrowDownToLine size={14}/>Receive stock</button>
             <button type="button" onClick={() => openAction("TRANSFER")} className="inline-flex min-h-11 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold"><Send size={14}/>Transfer stock</button>
@@ -264,7 +257,7 @@ export default function InventoryManagementPage() {
 
       {canManage && !hideProcurement && <div className="p-4 pb-0 sm:p-6 sm:pb-0 lg:p-8 lg:pb-0"><InventoryOverviewChart /></div>}
 
-      {canManage && action && (
+      {canChangeStock && action && (
         <section ref={actionSectionRef} className="scroll-mt-6 mx-4 mt-6 rounded-2xl border hairline bg-[var(--paper)] p-4 sm:mx-6 sm:p-6 lg:mx-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="kicker text-[var(--muted)]">{actionCopy[action].kicker}</p><h2 className="mt-2 text-xl font-semibold">{actionCopy[action].title}</h2></div>
@@ -275,14 +268,14 @@ export default function InventoryManagementPage() {
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select product</option>{inventory.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
             {requiresVariant && <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">Variant<div className="relative min-w-0"><select value={selectedVariantId} onChange={(e)=>setSelectedVariantId(e.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select variant</option>{selectedProductRaw?.variants?.map((variant)=><option key={variant.id} value={variant.id}>{variant.title || [variant.colour,variant.size].filter(Boolean).join(" · ") || variant.sku || "Variant"}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity<input type="number" min="1" step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
-            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations} disabled={role === "MANAGER"}/>}
-            {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} disabled={role === "MANAGER"} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
+            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations}/>}
+            {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} placeholder={action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
           </div>
 
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
-            <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected source on hand</p><p className="mt-1 font-semibold">{sourceStoreId === UNALLOCATED ? unallocated : Math.max(0, Number(selectedSourceBalance?.onHand || (role === "MANAGER" ? selectedProduct?.onHand : 0)))}</p></div>
+            <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected source on hand</p><p className="mt-1 font-semibold">{sourceStoreId === UNALLOCATED ? unallocated : Math.max(0, Number(selectedSourceBalance?.onHand || 0))}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected variant</p><p className="mt-1 font-semibold">{selectedVariant ? `${selectedVariant.stockQuantity} on hand` : "—"}</p></div>
             {!hideProcurement && <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Movement value</p><p className="mt-1 font-semibold">{formatKes(Math.max(0, Number(quantity || 0)) * selectedProductRaw.unitCost)}</p></div>}
           </div>}

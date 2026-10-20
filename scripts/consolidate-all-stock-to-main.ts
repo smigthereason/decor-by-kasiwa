@@ -22,10 +22,15 @@ type Balance = {
 type Product = { _id: string; _rev: string; name?: string; initialStock?: number; variants?: Variant[] };
 type Inventory = {
   _id: string; _rev: string; productId?: string; defaultStore?: { _ref?: string };
-  incoming?: number; reserved?: number;
+  incoming?: number; reserved?: number; incomingUnallocated?: number; unallocatedOnHand?: number;
+  stockReconciliationExceptions?: ReconciliationException[];
   incomingByVariant?: Array<{ variantId?: string; quantity?: number }>;
   locationBalances?: Balance[];
   stockConsolidatedToMainAt?: string;
+};
+type ReconciliationException = {
+  _type: "object"; _key: string; issue: "PARENT_VS_VARIANTS" | "INCOMING_VS_VARIANTS";
+  before: number; after: number; difference: number; note: string; recordedAt: string;
 };
 type Store = { _id: string; name: string; code?: string };
 type Movement = { sourceId?: string; sourceName: string; variantId?: string; variantLabel?: string; quantity: number };
@@ -34,7 +39,9 @@ type Plan = {
   movements: Movement[]; sourceBalanceCount: number;
   sourceOnHand: number; companyOnHand: number;
   isChange: boolean; adjustments: Array<{ variantId?: string; variantLabel?: string; before: number; after: number }>;
-  companyIncoming: number; parentStockCorrected: boolean; incomingCorrected: boolean;
+  companyIncoming: number; incomingUnallocated: number; unallocatedOnHand: number;
+  parentStockCorrected: boolean; incomingCorrected: boolean;
+  reconciliationExceptions: ReconciliationException[];
 };
 type IssueCode = "LEDGER_EXCEEDS_COMPANY" | "VARIANT_LEDGER_EXCEEDS_COMPANY" | "PARENT_VS_VARIANTS" | "INCOMING_VS_VARIANTS";
 type Issue = {
@@ -99,6 +106,24 @@ const number = (value: unknown, label: string, errors: string[]): number => {
 const key = (value: string, prefix: string) => `${prefix}-${createHash("sha1").update(value).digest("hex").slice(0, 24)}`;
 const variantLabel = (v: Variant) => v.title || [v.colour, v.size].filter(Boolean).join(" / ") || v._key || "Variant";
 
+// Compare only inventory quantities and store identity. Sanity may omit optional
+// properties and add reference metadata, so JSON.stringify on fetched vs freshly
+// constructed objects is not an idempotent verification check.
+function sameStoreBalance(current: Balance | undefined, expected: Balance): boolean {
+  if (!current || balanceId(current) !== balanceId(expected)) return false;
+  const qty = (n: number | undefined) => Number(n ?? 0);
+  if (qty(current.onHand) !== qty(expected.onHand) || qty(current.incoming) !== qty(expected.incoming)) return false;
+  const actualVariants = current.variants || [];
+  const expectedVariants = expected.variants || [];
+  if (actualVariants.length !== expectedVariants.length) return false;
+  const actualById = new Map(actualVariants.map(v => [v.variantId, v]));
+  if (actualById.size !== actualVariants.length) return false;
+  return expectedVariants.every(v => {
+    const actual = actualById.get(v.variantId);
+    return actual && qty(actual.onHand) === qty(v.onHand) && qty(actual.incoming) === qty(v.incoming);
+  });
+}
+
 function planProduct(
   product: Product, inventory: Inventory | undefined, store: Store, errors: string[],
   requireApproval: (issue: Issue) => boolean,
@@ -115,10 +140,14 @@ function planProduct(
   let companyOnHand = number(product.initialStock, `${label}: company initialStock`, errors);
   let companyIncoming = number(inventory?.incoming, `${label}: company incoming`, errors);
   let parentStockCorrected = false, incomingCorrected = false;
+  let incomingUnallocated = number(inventory?.incomingUnallocated, `${label}: unallocated incoming`, errors);
+  let unallocatedOnHand = number(inventory?.unallocatedOnHand, `${label}: stock with unknown variant`, errors);
+  const reconciliationExceptions: ReconciliationException[] = [];
+  const at = new Date().toISOString();
   const allocatedIncoming = balances.reduce((sum, b) => sum + number(b.incoming, `${label}: balance incoming`, errors), 0);
   const reserved = number(inventory?.reserved, `${label}: reserved`, errors);
 
-  if (reserved > 0) errors.push(`${label}: ${reserved} reserved unit(s); resolve live reservations before moving stock`);
+  if (!inventory?.stockConsolidatedToMainAt && reserved > 0) errors.push(`${label}: ${reserved} reserved unit(s); resolve live reservations before moving stock`);
   if (inventory?.stockConsolidatedToMainAt && sourceBalanceCount > 0) {
     errors.push(`${label}: previously consolidated; branches now have balances. Do not rerun this one-time migration after redistribution`);
   }
@@ -200,14 +229,47 @@ function planProduct(
         issue: "PARENT_VS_VARIANTS", current: companyOnHand, comparison: companyVariantStock, proposed: companyVariantStock,
         productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
       if (!ok) errors.push(`${label}: initialStock ${companyOnHand} differs from variant total ${companyVariantStock}; confirm variant totals before changing product total`);
-      else { companyOnHand = companyVariantStock; parentStockCorrected = true; }
+      else {
+        reconciliationExceptions.push({
+          _type: "object", _key: key(`${product._id}|PARENT_VS_VARIANTS|${product._rev}`, "review"),
+          issue: "PARENT_VS_VARIANTS", before: companyOnHand, after: companyVariantStock,
+          difference: companyOnHand - companyVariantStock,
+          note: "DBK-25 records-only policy: sellable stock uses the actual variant balances. The original parent quantity remains here as an unresolved accounting difference, NOT proof of physical stock loss or a sale. No units were assigned arbitrarily to a colour/size.",
+          recordedAt: at,
+        });
+        // Retain any unverified positive difference in a distinct, unsellable
+        // evidence field instead of pretending it was sold or discarding the
+        // originally recorded parent quantity. An increase in variants above
+        // the parent is separately recorded in the exception history.
+        if (companyOnHand > companyVariantStock) {
+          unallocatedOnHand += companyOnHand - companyVariantStock;
+        }
+        companyOnHand = companyVariantStock; parentStockCorrected = true;
+      }
     }
     if (companyVariantIncomingTotal !== companyIncoming) {
-      const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: "", variantName: "",
-        issue: "INCOMING_VS_VARIANTS", current: companyIncoming, comparison: companyVariantIncomingTotal, proposed: companyVariantIncomingTotal,
-        productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
-      if (!ok) errors.push(`${label}: company incoming ${companyIncoming} differs from variant incoming ${companyVariantIncomingTotal}; confirm pending deliveries first`);
-      else { companyIncoming = companyVariantIncomingTotal; incomingCorrected = true; }
+      const gap = companyIncoming - companyVariantIncomingTotal;
+      if (gap >= 0 && incomingUnallocated === gap && gap > 0) {
+        // Previously reviewed unassigned incoming remains visible in the parent
+        // record; it is not treated as received or assigned to a variant.
+      } else {
+        const ok = requireApproval({ productId: product._id, productName: product.name || "", variantId: "", variantName: "",
+          issue: "INCOMING_VS_VARIANTS", current: companyIncoming, comparison: companyVariantIncomingTotal, proposed: companyVariantIncomingTotal,
+          productRevision: product._rev, inventoryRevision: inventory?._rev || "", mainStoreId: store._id });
+        if (!ok) errors.push(`${label}: company incoming ${companyIncoming} differs from variant incoming ${companyVariantIncomingTotal}; explicit approval of unassigned incoming required`);
+        else if (gap < 0) errors.push(`${label}: more incoming units assigned to variants than the company total; cannot infer the delivery`);
+        else {
+          incomingUnallocated = gap;
+          incomingCorrected = true;
+          reconciliationExceptions.push({
+            _type: "object", _key: key(`${product._id}|INCOMING_VS_VARIANTS|${inventory?._rev || ""}`, "review"),
+            issue: "INCOMING_VS_VARIANTS", before: companyIncoming, after: companyVariantIncomingTotal,
+            difference: gap,
+            note: "DBK-25 records-only policy: outstanding incoming units retained in company incoming and incomingUnallocated; NOT received, discarded or allocated to an arbitrary variant. The Main store's variant incoming balances exclude these unassigned units.",
+            recordedAt: at,
+          });
+        }
+      }
     }
   } else {
     if (companyOnHand > sourceOnHand) movements.push({ sourceName: "Previously unallocated company stock", quantity: companyOnHand - sourceOnHand });
@@ -233,12 +295,13 @@ function planProduct(
   };
   const isChange = !inventory?.stockConsolidatedToMainAt ||
     inventory?.defaultStore?._ref !== store._id || balances.length !== 1 ||
-    !main || JSON.stringify(main) !== JSON.stringify(newMain);
+    !sameStoreBalance(main, newMain);
   if (inventory?.stockConsolidatedToMainAt && isChange) {
     errors.push(`${label}: already consolidated previously, but balances differ now. Refusing to run again and overwrite post-migration changes`);
   }
   return { product, inventory, mainBalance: newMain, movements, adjustments, sourceBalanceCount, sourceOnHand,
-    companyOnHand, companyIncoming, parentStockCorrected, incomingCorrected, isChange };
+    companyOnHand, companyIncoming, incomingUnallocated, unallocatedOnHand,
+    parentStockCorrected, incomingCorrected, reconciliationExceptions, isChange };
 }
 
 async function main() {
@@ -268,7 +331,7 @@ async function main() {
     return true;
   };
   const products = await client.fetch<Product[]>(`*[_type == "product" && !(_id in path("drafts.**"))]{_id,_rev,name,initialStock,variants[]{_key,title,colour,size,stockQuantity}}`);
-  const inventories = await client.fetch<Inventory[]>(`*[_type == "inventoryRecord" && !(_id in path("drafts.**"))]{_id,_rev,"productId":product._ref,defaultStore,incoming,reserved,incomingByVariant,stockConsolidatedToMainAt,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}`);
+  const inventories = await client.fetch<Inventory[]>(`*[_type == "inventoryRecord" && !(_id in path("drafts.**"))]{_id,_rev,"productId":product._ref,defaultStore,incoming,reserved,incomingByVariant,incomingUnallocated,unallocatedOnHand,stockReconciliationExceptions,stockConsolidatedToMainAt,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}`);
   const byId = new Map<string, Inventory[]>();
   for (const inv of inventories) byId.set(inv.productId || "", [...(byId.get(inv.productId || "") || []), inv]);
   const plans: Plan[] = [];
@@ -343,12 +406,21 @@ async function main() {
         product: ref(p.product._id), location: store.name, defaultStore: ref(store._id),
         locationBalances: [p.mainBalance], reserved: 0, incoming: p.mainBalance.incoming || 0, reorderPoint: 5,
         stockConsolidatedToMainAt: now,
+        ...(p.parentStockCorrected && p.unallocatedOnHand > 0 ? { unallocatedOnHand: p.unallocatedOnHand } : {}),
+        ...(p.incomingCorrected ? { incomingUnallocated: p.incomingUnallocated } : {}),
+        ...(p.reconciliationExceptions.length ? { stockReconciliationExceptions: p.reconciliationExceptions } : {}),
       });
     } else {
       tx.patch(p.inventory._id, patch => patch.ifRevisionId(p.inventory!._rev).set({
         defaultStore: ref(store._id), location: store.name, locationBalances: [p.mainBalance],
         stockConsolidatedToMainAt: now,
-        ...(p.incomingCorrected ? { incoming: p.companyIncoming } : {}),
+        ...(p.parentStockCorrected && p.unallocatedOnHand > 0 ? { unallocatedOnHand: p.unallocatedOnHand } : {}),
+        ...(p.incomingCorrected ? { incomingUnallocated: p.incomingUnallocated } : {}),
+        ...(p.reconciliationExceptions.length ? {
+          stockReconciliationExceptions: [
+            ...(p.inventory?.stockReconciliationExceptions || []), ...p.reconciliationExceptions,
+          ],
+        } : {}),
       }));
     }
     // Approved overallocated stock was already deducted from company totals. Record
