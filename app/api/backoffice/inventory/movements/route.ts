@@ -70,28 +70,73 @@ function requireAssignedStore(staff: { role: string; storeLocationId?: string },
   if (requestedStoreId !== staff.storeLocationId) throw new Error(`Managers can only ${label} stock for their assigned store.`);
 }
 
-export async function GET() {
+const MOVEMENT_PAGE_SIZE = 50;
+
+function dateToUtc(date: string): string | null {
+  // Inventory dates are interpreted as Kenya calendar days (UTC+03:00).
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const parsed = new Date(`${date}T00:00:00+03:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  // Reject impossible dates such as February 30 instead of normalizing them.
+  const kenyaCalendarDate = new Date(parsed.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return kenyaCalendarDate === date ? parsed.toISOString() : null;
+}
+
+export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
+  const { searchParams } = new URL(request.url);
+  const query = (searchParams.get("q") || "").trim();
+  const fromDate = searchParams.get("from") || "";
+  const toDate = searchParams.get("to") || "";
+  const movementType = searchParams.get("type") || "";
+  const offsetParam = searchParams.get("offset") || "0";
+  const offset = Number(offsetParam);
+
+  if (query.length > 120) return NextResponse.json({ message: "Search must be 120 characters or fewer." }, { status: 400 });
+  if (movementType && !["PURCHASE", "RECEIPT", "TRANSFER"].includes(movementType)) {
+    return NextResponse.json({ message: "Invalid movement type." }, { status: 400 });
+  }
+  if (!/^\d+$/.test(offsetParam) || !Number.isSafeInteger(offset) || offset > 10000) {
+    return NextResponse.json({ message: "Invalid movement page." }, { status: 400 });
+  }
+  const from = fromDate ? dateToUtc(fromDate) : null;
+  const toStart = toDate ? dateToUtc(toDate) : null;
+  if ((fromDate && !from) || (toDate && !toStart) || (from && toStart && from > toStart)) {
+    return NextResponse.json({ message: "Select a valid date range, with From before or equal to To." }, { status: 400 });
+  }
+  const to = toStart ? new Date(new Date(toStart).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+  // Parameterized full-history filtering is performed before paging, so searches
+  // can find movements older than the first 50/150 records.
+  const terms = query.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  const needle = terms.length ? `*${terms.join("*")}*` : "";
   const scope = staff.role === "MANAGER" ? staff.storeLocationId || "__NONE__" : "";
   const movements = await serverClient.fetch<Array<Record<string, unknown>>>(
     `*[
       _type == "inventoryMovement" &&
       movementType in ["PURCHASE", "RECEIPT", "TRANSFER"] &&
-      ($scope == "" || sourceStore._ref == $scope || destinationStore._ref == $scope)
-    ] | order(createdAt desc)[0...150]{
+      ($scope == "" || sourceStore._ref == $scope || destinationStore._ref == $scope) &&
+      ($type == "" || movementType == $type) &&
+      ($from == "" || createdAt >= $from) &&
+      ($to == "" || createdAt < $to) &&
+      ($needle == "" || lower(coalesce(productName, "")) match $needle || lower(coalesce(variantLabel, "")) match $needle ||
+        lower(coalesce(movementNumber, "")) match $needle || lower(coalesce(note, "")) match $needle ||
+        lower(coalesce(actorName, "")) match $needle || lower(coalesce(product->sku, "")) match $needle)
+    ] | order(createdAt desc, _id desc)[${offset}...${offset + MOVEMENT_PAGE_SIZE + 1}]{
       _id,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,stockBefore,stockAfter,
       incomingBefore,incomingAfter,sourceLocation,destination,"sourceStoreId":sourceStore._ref,"destinationStoreId":destinationStore._ref,
       unitCost,movementValue,actorName,note,createdAt
     }`,
-    { scope },
+    { scope, type: movementType, from: from || "", to: to || "", needle },
     { cache: "no-store" },
   );
 
   const hideCost = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
+  const page = movements.slice(0, MOVEMENT_PAGE_SIZE);
   return NextResponse.json({
-    movements: hideCost ? movements.map(({ unitCost: _unitCost, movementValue: _movementValue, ...movement }) => movement) : movements,
+    movements: hideCost ? page.map(({ unitCost: _unitCost, movementValue: _movementValue, ...movement }) => movement) : page,
+    hasMore: movements.length > MOVEMENT_PAGE_SIZE,
   });
 }
 

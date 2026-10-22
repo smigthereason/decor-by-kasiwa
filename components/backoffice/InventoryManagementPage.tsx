@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { ArrowDownToLine, ArrowUpRight, Boxes, ChevronDown, History, PackagePlus, Search, Send } from "lucide-react";
 
@@ -14,6 +14,8 @@ import { availableStock, formatKes, stockStatus } from "@/lib/operations/selecto
 import type { InventoryItem } from "@/lib/operations/types";
 
 type InventoryAction = "PURCHASE" | "RECEIVE" | "TRANSFER";
+type MovementFilters = { q: string; from: string; to: string; type: string };
+const EMPTY_MOVEMENT_FILTERS: MovementFilters = { q: "", from: "", to: "", type: "" };
 type StoreLocation = { _id: string; name: string; code?: string; active?: boolean };
 
 type InventoryMovement = {
@@ -137,6 +139,16 @@ export default function InventoryManagementPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [movementQuery, setMovementQuery] = useState("");
+  const [movementFrom, setMovementFrom] = useState("");
+  const [movementTo, setMovementTo] = useState("");
+  const [movementType, setMovementType] = useState("");
+  const [movementHasMore, setMovementHasMore] = useState(false);
+  const [movementNextOffset, setMovementNextOffset] = useState(0);
+  const [movementLoading, setMovementLoading] = useState(false);
+  const [movementError, setMovementError] = useState<string | null>(null);
+  const appliedMovementFilters = useRef<MovementFilters>(EMPTY_MOVEMENT_FILTERS);
+  const movementRequestNumber = useRef(0);
   const actionSectionRef = useRef<HTMLElement | null>(null);
 
   function openAction(nextAction: InventoryAction) {
@@ -150,16 +162,51 @@ export default function InventoryManagementPage() {
     window.requestAnimationFrame(() => actionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
-  async function loadMovements() {
+  async function loadMovements(filters = appliedMovementFilters.current, offset = 0) {
     if (!canManage) return;
+    const requestNumber = ++movementRequestNumber.current;
+    setMovementLoading(true);
+    setMovementError(null);
     try {
-      const response = await fetch("/api/backoffice/inventory/movements", { cache: "no-store" });
-      if (!response.ok) return;
-      const payload = (await response.json()) as { movements?: InventoryMovement[] };
-      setMovements(payload.movements || []);
-    } catch {
-      // Inventory itself remains usable if movement history is temporarily unavailable.
+      const params = new URLSearchParams();
+      if (filters.q) params.set("q", filters.q);
+      if (filters.from) params.set("from", filters.from);
+      if (filters.to) params.set("to", filters.to);
+      if (filters.type) params.set("type", filters.type);
+      if (offset) params.set("offset", String(offset));
+      const response = await fetch(`/api/backoffice/inventory/movements?${params.toString()}`, { cache: "no-store" });
+      const payload = (await response.json()) as { movements?: InventoryMovement[]; hasMore?: boolean; message?: string };
+      if (!response.ok) throw new Error(payload.message || "Unable to load stock movements.");
+      if (requestNumber !== movementRequestNumber.current) return;
+      const nextMovements = payload.movements || [];
+      setMovements((previous) => offset ? [...previous, ...nextMovements] : nextMovements);
+      setMovementHasMore(Boolean(payload.hasMore));
+      setMovementNextOffset(offset + nextMovements.length);
+    } catch (cause) {
+      if (requestNumber === movementRequestNumber.current) setMovementError(cause instanceof Error ? cause.message : "Unable to load stock movements.");
+    } finally {
+      if (requestNumber === movementRequestNumber.current) setMovementLoading(false);
     }
+  }
+
+  function searchMovements(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (movementFrom && movementTo && movementFrom > movementTo) {
+      setMovementError("From date must be on or before To date.");
+      return;
+    }
+    const filters = { q: movementQuery.trim(), from: movementFrom, to: movementTo, type: movementType };
+    appliedMovementFilters.current = filters;
+    void loadMovements(filters);
+  }
+
+  function clearMovementFilters() {
+    setMovementQuery("");
+    setMovementFrom("");
+    setMovementTo("");
+    setMovementType("");
+    appliedMovementFilters.current = EMPTY_MOVEMENT_FILTERS;
+    void loadMovements(EMPTY_MOVEMENT_FILTERS);
   }
 
   async function loadStores() {
@@ -318,13 +365,54 @@ export default function InventoryManagementPage() {
         <div className="sm:ml-auto"><ExportButtons title="Store Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/></div>
       </div></div>
 
-      {canManage && movements.length > 0 && <section className="px-4 pt-4 sm:px-6 lg:px-8"><div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]"><div className="flex items-center gap-2 border-b hairline px-4 py-4 sm:px-5"><History size={15} className="text-[var(--brand-green)]"/><div><h2 className="text-sm font-semibold">Recent stock movements</h2><p className="mt-0.5 text-[10px] text-[var(--muted)]">Purchases, branch receipts and store-to-store transfers.</p></div></div><div className="max-h-80 overflow-auto"><table className="w-full min-w-[900px] text-left"><thead className="sticky top-0 bg-[var(--paper)]"><tr className="border-b hairline">{movementHeadings.map((heading)=><th key={heading} className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{heading}</th>)}</tr></thead><tbody>{movements.slice(0,40).map((movement)=>{
-        const label=movement.movementType==="PURCHASE"?"Purchase stock":movement.movementType==="RECEIPT"?"Receive stock":"Transfer stock";
-        const route=movement.movementType==="PURCHASE"?`Supplier → ${movement.destination||"Store"}`:movement.movementType==="RECEIPT"?`Incoming → ${movement.destination||"Store"}`:`${movement.sourceLocation||"Store"} → ${movement.destination||"Store"}`;
-        return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt?new Date(movement.createdAt).toLocaleString("en-KE"):"—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName||"Product"}{movement.variantLabel?<><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></>:null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.quantityChange&&movement.quantityChange>0?`+${movement.quantityChange}`:movement.quantityChange??0}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement&&<td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue||0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName||"—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber||"—"}</span>{movement.note?<><br/>{movement.note}</>:null}</td></tr>;
-      })}</tbody></table></div></div></section>}
+      {canManage && <section className="px-4 pt-4 sm:px-6 lg:px-8">
+        <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
+          <div className="flex items-center gap-2 border-b hairline px-4 py-4 sm:px-5">
+            <History size={15} className="text-[var(--brand-green)]"/>
+            <div><h2 className="text-sm font-semibold">Recent stock movements</h2><p className="mt-0.5 text-[10px] text-[var(--muted)]">Search purchase, receipt and transfer history by product, variant, SKU or reference. Dates use Kenya time (EAT).</p></div>
+          </div>
+          <form onSubmit={searchMovements} className="grid gap-3 border-b hairline px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-[minmax(180px,1fr)_minmax(130px,160px)_minmax(130px,160px)_minmax(145px,170px)_auto] lg:items-end">
+            <label className="grid gap-1.5 text-xs font-semibold">Search history
+              <span className="relative"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"/>
+                <input type="search" value={movementQuery} onChange={(event) => setMovementQuery(event.target.value)} placeholder="Product, variant, SKU, reference" maxLength={120} className="min-h-11 w-full rounded-xl border hairline bg-white pl-9 pr-3 text-sm font-normal"/>
+              </span>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">From date
+              <input type="date" value={movementFrom} max={movementTo || undefined} onChange={(event) => setMovementFrom(event.target.value)} className="min-h-11 min-w-0 w-full rounded-xl border hairline bg-white px-3 text-sm font-normal"/>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">To date
+              <input type="date" value={movementTo} min={movementFrom || undefined} onChange={(event) => setMovementTo(event.target.value)} className="min-h-11 min-w-0 w-full rounded-xl border hairline bg-white px-3 text-sm font-normal"/>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">Movement
+              <select value={movementType} onChange={(event) => setMovementType(event.target.value)} className="min-h-11 w-full rounded-xl border hairline bg-white px-3 text-sm font-normal">
+                <option value="">All movements</option><option value="PURCHASE">Purchase stock</option><option value="RECEIPT">Receive stock</option><option value="TRANSFER">Transfer stock</option>
+              </select>
+            </label>
+            <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
+              <button type="submit" disabled={movementLoading} className="min-h-11 rounded-full bg-[var(--brand-green)] px-4 text-xs font-semibold !text-soft-cream disabled:opacity-60">Search</button>
+              <button type="button" onClick={clearMovementFilters} className="min-h-11 rounded-full border hairline px-4 text-xs font-semibold">Clear</button>
+            </div>
+          </form>
+          {movementError && <p role="alert" className="px-4 py-3 text-xs text-red-700 sm:px-5">{movementError}</p>}
+          <div className="max-h-80 overflow-auto">
+            <table className="w-full min-w-[900px] text-left">
+              <thead><tr className="border-b hairline">{movementHeadings.map((heading) => <th key={heading} scope="col" className="sticky top-0 z-10 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead>
+              <tbody>{movements.map((movement) => {
+                const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
+                const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.quantityChange && movement.quantityChange > 0 ? `+${movement.quantityChange}` : movement.quantityChange ?? 0}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}</td></tr>;
+              })}</tbody>
+            </table>
+            {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t hairline px-4 py-3 sm:px-5">
+            <span className="text-xs text-[var(--muted)]">{movementLoading ? "Loading stock movements…" : `${movements.length} movement${movements.length === 1 ? "" : "s"} shown`}</span>
+            {movementHasMore && <button type="button" disabled={movementLoading} onClick={() => void loadMovements(appliedMovementFilters.current, movementNextOffset)} className="rounded-full border hairline px-4 py-2 text-xs font-semibold disabled:opacity-50">Load more</button>}
+          </div>
+        </div>
+      </section>}
 
-      <section className="p-4 sm:p-6 lg:p-8">{filtered.length ? <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]"><div className="max-w-full overflow-x-auto"><table className="w-full min-w-[1000px] text-left"><thead><tr className="border-b hairline">{inventoryHeadings.map((heading)=><th key={heading} className="px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)]">{heading}</th>)}</tr></thead><tbody>{filtered.map((item)=><tr key={item.id} className="border-b hairline last:border-0"><td className="px-4 py-4 text-sm font-semibold">{item.name}{item.variants?.length?<span className="ml-2 text-[9px] font-normal text-[var(--muted)]">{item.variants.length} variants</span>:null}</td><td className="px-4 py-4 text-xs">{item.sku}</td><td className="px-4 py-4 text-xs text-[var(--muted)]">{item.location}</td><td className="px-4 py-4 text-xs font-semibold">{item.onHand}</td><td className="px-4 py-4 text-xs">{item.reserved}</td><td className="px-4 py-4 text-xs font-semibold">{availableStock(item)}</td><td className="px-4 py-4 text-xs">{item.incoming}</td><td className="px-4 py-4"><StatusPill value={stockStatus(item)}/></td>{!hideProcurement&&<td className="px-4 py-4 text-xs">{formatKes(item.unitCost)}</td>}<td className="px-4 py-4 text-xs font-semibold">{formatKes(item.retailPrice)}</td><td className="px-4 py-4 text-right"><Link href={`/shop/${item.slug||""}`} className="group inline-grid size-9 place-items-center rounded-full border hairline hover:border-[var(--brand-green)]" aria-label={`Open ${item.name} in shop`}><ArrowUpRight size={14}/></Link></td></tr>)}</tbody></table></div></div> : <div className="rounded-xl border hairline bg-[var(--paper)] p-12 text-center"><Boxes size={32} className="mx-auto text-[var(--muted)]"/><p className="mt-4 text-sm font-medium">No matching inventory found</p></div>}</section>
+      <section className="p-4 sm:p-6 lg:p-8">{filtered.length ? <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]"><div className="max-h-[75vh] max-w-full overflow-auto overscroll-contain" role="region" aria-label="Inventory products, scroll to view more rows"><table className="w-full min-w-[1000px] text-left"><thead><tr className="border-b hairline">{inventoryHeadings.map((heading)=><th key={heading} scope="col" className="sticky top-0 z-20 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead><tbody>{filtered.map((item)=><tr key={item.id} className="border-b hairline last:border-0"><td className="px-4 py-4 text-sm font-semibold">{item.name}{item.variants?.length?<span className="ml-2 text-[9px] font-normal text-[var(--muted)]">{item.variants.length} variants</span>:null}</td><td className="px-4 py-4 text-xs">{item.sku}</td><td className="px-4 py-4 text-xs text-[var(--muted)]">{item.location}</td><td className="px-4 py-4 text-xs font-semibold">{item.onHand}</td><td className="px-4 py-4 text-xs">{item.reserved}</td><td className="px-4 py-4 text-xs font-semibold">{availableStock(item)}</td><td className="px-4 py-4 text-xs">{item.incoming}</td><td className="px-4 py-4"><StatusPill value={stockStatus(item)}/></td>{!hideProcurement&&<td className="px-4 py-4 text-xs">{formatKes(item.unitCost)}</td>}<td className="px-4 py-4 text-xs font-semibold">{formatKes(item.retailPrice)}</td><td className="px-4 py-4 text-right"><Link href={`/shop/${item.slug||""}`} className="group inline-grid size-9 place-items-center rounded-full border hairline hover:border-[var(--brand-green)]" aria-label={`Open ${item.name} in shop`}><ArrowUpRight size={14}/></Link></td></tr>)}</tbody></table></div></div> : <div className="rounded-xl border hairline bg-[var(--paper)] p-12 text-center"><Boxes size={32} className="mx-auto text-[var(--muted)]"/><p className="mt-4 text-sm font-medium">No matching inventory found</p></div>}</section>
     </div>
   );
 }
