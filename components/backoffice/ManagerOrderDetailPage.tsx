@@ -31,7 +31,7 @@ const paymentStatuses: PaymentStatus[] = ["pending", "paid", "refunded", "failed
 export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
   const params = useParams<{ id: string }>();
   const id = decodeURIComponent(params.id);
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("orders");
   const order = data?.orders.find((item) => item.id === id);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

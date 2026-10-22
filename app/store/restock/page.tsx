@@ -16,7 +16,7 @@ const reasons: { value: RestockReason; label: string }[] = [
 ];
 
 export default function RestockAlertsPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("restock");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [reason, setReason] = useState<RestockReason>("needs_restock");

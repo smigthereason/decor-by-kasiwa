@@ -16,7 +16,7 @@ type Mode = "admin" | "store";
 
 export default function ProductCataloguePage({ mode }: { mode: Mode }) {
   const { data: session } = useSession();
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("catalog");
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [merchandisingFilter, setMerchandisingFilter] = useState("All");

@@ -22,7 +22,7 @@ function QuickLink({ href, label }: { href: string; label: string }) {
 }
 
 export default function StoreOverviewPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("store");
 
   if (!data) {
     return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;

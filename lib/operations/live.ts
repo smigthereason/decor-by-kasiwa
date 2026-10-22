@@ -14,6 +14,7 @@ import type {
   Order,
   RestockRequest,
   Shipment,
+  OperationsView,
 } from "./types";
 
 type RawProduct = {
@@ -465,26 +466,131 @@ function buildActivity({
     .slice(0, 10);
 }
 
-export async function getLiveOperationsSnapshot(storeLocationId?: string): Promise<OperationsSnapshot> {
-  const [products, orders, shipments, restockRequests] = await Promise.all([
-    getLiveProducts(storeLocationId),
-    getLiveOrders(storeLocationId),
-    getLiveShipments(storeLocationId),
-    getLiveRestockRequests(),
-  ]);
+/** Only fetch the collections actually used by a screen. */
+export async function getLiveOperationsSnapshot(
+  storeLocationId?: string,
+  view: Exclude<OperationsView, "dashboard"> = "all",
+): Promise<OperationsSnapshot> {
+  const all = view === "all";
+  const needsProducts = all || ["products", "catalog", "analytics", "store", "restock"].includes(view);
+  const needsOrders = all || ["orders", "customers", "customer-detail", "analytics", "store"].includes(view);
+  const needsShipments = all || ["shipments", "store"].includes(view);
+  const needsRestock = all || ["catalog", "store", "restock"].includes(view);
+  const needsCustomers = all || view === "customers" || view === "customer-detail";
 
-  const customers = await getLiveCustomers(orders);
-  const activity = buildActivity({ orders, shipments, customers });
+  const [products, queriedOrders, shipments, restockRequests] = await Promise.all([
+    needsProducts ? getLiveProducts(storeLocationId) : Promise.resolve([]),
+    needsOrders ? getLiveOrders(storeLocationId) : Promise.resolve([]),
+    needsShipments ? getLiveShipments(storeLocationId) : Promise.resolve([]),
+    needsRestock ? getLiveRestockRequests() : Promise.resolve([]),
+  ]);
+  const customers = needsCustomers ? await getLiveCustomers(queriedOrders) : [];
+  // The directory needs order-based customer metrics, but not the full orders
+  // payload. Customer detail retains orders for its on-page history.
+  const orders = view === "customers" ? [] : queriedOrders;
+  const activity = all ? buildActivity({ orders, shipments, customers }) : [];
 
   return {
     admin: adminMetrics({ orders, shipments, inventory: products }),
     store: storeMetrics({ shipments, inventory: products }),
-    products,
-    customers,
-    orders,
-    shipments,
-    restockRequests,
-    activity,
+    products, customers, orders, shipments, restockRequests, activity,
+    source: "sanity-live",
+  };
+}
+
+/** A single lightweight GROQ round-trip for Admin's landing dashboard.
+ * Metrics are calculated from all matching records, not from a paginated subset.
+ * Only five recent orders, three shipments and four activity customers are sent
+ * to the browser. The main order/customer directories remain fully functional
+ * via their own view-specific requests. */
+export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
+  type RevenueRow = { subtotal?: number; discountAmount?: number };
+  type StockRow = {
+    available?: boolean;
+    initialStock?: number;
+    variants?: Array<{ stockQuantity?: number }>;
+    inventory?: { reserved?: number; reorderPoint?: number } | null;
+  };
+  type RecentOrder = Pick<Order, "id" | "orderNumber" | "customerName" | "createdAt" | "status" | "paymentStatus" | "total"> & Partial<Order>;
+  type RecentShipment = Partial<Shipment> & { id: string; status: Shipment["status"] };
+  type RecentCustomer = { _id: string; name?: string; email?: string; lastOrderAt?: string };
+  type DashboardQuery = {
+    paidAmounts: RevenueRow[];
+    openOrders: number;
+    fulfilmentQueue: number;
+    stock: StockRow[];
+    recentOrders: RecentOrder[];
+    recentShipments: RecentShipment[];
+    recentCustomers: RecentCustomer[];
+  };
+
+  const result = await serverClient.fetch<DashboardQuery>(`{
+    "paidAmounts": *[_type == "commerceOrder" && paymentStatus == "paid"]{ subtotal, discountAmount },
+    "openOrders": count(*[_type == "commerceOrder" && !(status in ["delivered", "cancelled"])]),
+    "fulfilmentQueue": count(*[_type == "shipment" && status != "delivered"]),
+    "stock": *[_type == "product" && defined(slug.current)]{
+      available, initialStock, "variants": variants[]{ stockQuantity },
+      "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{ reserved, reorderPoint }
+    },
+    "recentOrders": *[_type == "commerceOrder"] | order(createdAt desc)[0...6]{
+      "id": _id, orderNumber, customerName, createdAt, updatedAt, soldAt, status,
+      paymentStatus, subtotal, total, salesChannel, paymentChannel, soldByName,
+      soldByRole, "storeLocationName": coalesce(storeLocation->name, assignedStore, ""),
+      "storeLocationId": storeLocation._ref, dispatchedByName, deliveredByName
+    },
+    "recentShipments": *[_type == "shipment"] | order(updatedAt desc)[0...6]{
+      "id": _id, shipmentNumber, orderNumber, customerName, destination, createdAt,
+      updatedAt, status, dispatchedByName, deliveredByName
+    },
+    "recentCustomers": *[_type == "customerUser"] | order(coalesce(lastPurchaseAt, lastLoginAt, createdAt) desc)[0...4]{
+      _id, name, email, "lastOrderAt": coalesce(lastPurchaseAt, lastLoginAt, createdAt)
+    }
+  }`, {}, { cache: "no-store" });
+
+  const revenue = (result.paidAmounts || []).reduce((sum, item) =>
+    sum + Math.max(0, Number(item.subtotal || 0) - Number(item.discountAmount || 0)), 0);
+  const lowStock = (result.stock || []).filter((item) => {
+    const onHand = effectiveOnHand(item.initialStock, item.variants);
+    const available = Math.max(0, onHand - Number(item.inventory?.reserved || 0));
+    const reorderPoint = item.inventory?.reorderPoint ?? 5;
+    return item.available === false || available <= reorderPoint;
+  }).length;
+
+  const main = await getMainStore();
+  const orders: Order[] = (result.recentOrders || []).map((row) => ({
+    ...row,
+    ...(main && (row.salesChannel === "ONLINE" || !row.salesChannel) && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
+      ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code, assignedStore: main.name } : {}),
+    id: row.id,
+    orderNumber: safeString(row.orderNumber, row.id),
+    customerId: "", customerName: safeString(row.customerName, "Customer"),
+    customerEmail: "", customerPhone: "", deliveryLocation: "",
+    createdAt: row.createdAt || new Date(0).toISOString(),
+    status: row.status || "pending", paymentStatus: row.paymentStatus || "pending",
+    subtotal: Number(row.subtotal || 0), deliveryFee: 0, total: Number(row.total || 0),
+    lineItems: [],
+  }));
+  const shipments: Shipment[] = (result.recentShipments || []).map((row) => ({
+    ...row,
+    id: row.id, shipmentNumber: safeString(row.shipmentNumber, row.id),
+    orderId: "", orderNumber: safeString(row.orderNumber),
+    customerName: safeString(row.customerName, "Customer"),
+    destination: safeString(row.destination, "Not supplied"),
+    createdAt: row.createdAt || new Date(0).toISOString(),
+    updatedAt: row.updatedAt || row.createdAt || new Date(0).toISOString(),
+    status: row.status || "awaiting_store", itemCount: 0, totalUnits: 0,
+  }));
+  const customers: Customer[] = (result.recentCustomers || []).map((row) => ({
+    id: row._id, name: safeString(row.name, "Customer"),
+    email: row.email || "", phone: "", location: "", orders: 0,
+    lifetimeValue: 0, lastOrderAt: row.lastOrderAt || "",
+  }));
+
+  return {
+    admin: { revenue, openOrders: result.openOrders || 0, fulfilmentQueue: result.fulfilmentQueue || 0, lowStock },
+    store: { awaitingReceipt: 0, beingPicked: 0, readyToDispatch: 0, lowStock },
+    products: [], customers: [], orders: orders.slice(0, 5), shipments: shipments.slice(0, 3),
+    restockRequests: [], activity: buildActivity({ orders, shipments, customers }),
     source: "sanity-live",
   };
 }

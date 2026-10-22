@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
-import { getLiveOperationsSnapshot } from "@/lib/operations/live";
+import { getAdminDashboardSnapshot, getLiveOperationsSnapshot } from "@/lib/operations/live";
+import type { OperationsView } from "@/lib/operations/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+const supportedViews = new Set<OperationsView>([
+  "all", "dashboard", "products", "catalog", "orders", "customers", "customer-detail",
+  "shipments", "analytics", "store", "restock",
+]);
+
+export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
 
   if (!staff.ok) {
@@ -18,7 +24,16 @@ export async function GET() {
 
   try {
     const scopeStoreId = (staff.role === "MANAGER" || staff.role === "STORE_STAFF") ? staff.storeLocationId || undefined : undefined;
-    const snapshot = await getLiveOperationsSnapshot(scopeStoreId);
+    const requested = new URL(request.url).searchParams.get("view") || "all";
+    if (!supportedViews.has(requested as OperationsView)) {
+      return NextResponse.json({ message: "Invalid overview view." }, { status: 400 });
+    }
+    if (requested === "dashboard" && staff.role !== "ADMIN") {
+      return NextResponse.json({ message: "Access denied." }, { status: 403 });
+    }
+    const snapshot = requested === "dashboard"
+      ? await getAdminDashboardSnapshot()
+      : await getLiveOperationsSnapshot(scopeStoreId, requested as Exclude<OperationsView, "dashboard">);
     const hideProcurement = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
 
     // Store roles need operational data but not the full customer directory.

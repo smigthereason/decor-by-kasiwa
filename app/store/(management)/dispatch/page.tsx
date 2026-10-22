@@ -11,7 +11,7 @@ import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 export default function StoreDispatchPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("orders");
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);

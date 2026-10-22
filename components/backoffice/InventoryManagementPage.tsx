@@ -119,7 +119,7 @@ function StoreSelect({
 
 export default function InventoryManagementPage() {
   const { data: session } = useSession();
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("products");
   const role = session?.user?.role;
   const canManage = role === "ADMIN" || role === "STORE" || role === "MANAGER" || role === "STORE_STAFF";
   const hideProcurement = role === "MANAGER" || role === "STORE_STAFF";

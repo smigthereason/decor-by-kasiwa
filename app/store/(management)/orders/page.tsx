@@ -11,7 +11,7 @@ import { useLiveOperations } from "@/lib/operations/client";
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 export default function StoreOrdersPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("orders");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [storeFilter, setStoreFilter] = useState("");

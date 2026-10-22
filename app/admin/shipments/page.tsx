@@ -12,7 +12,7 @@ import { formatDateTime } from "@/lib/operations/selectors";
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 export default function AdminShipmentsPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("shipments");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [storeFilter, setStoreFilter] = useState("");

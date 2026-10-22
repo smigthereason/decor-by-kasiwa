@@ -13,7 +13,7 @@ import { formatKes } from "@/lib/operations/selectors";
 type StoreLocation = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 
 export default function AdminAnalyticsPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("analytics");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [storeFilter, setStoreFilter] = useState("");

@@ -11,7 +11,7 @@ import { useLiveOperations } from "@/lib/operations/client";
 import { formatKes } from "@/lib/operations/selectors";
 
 export default function AdminCustomersPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("customers");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const customers = data?.customers || [];

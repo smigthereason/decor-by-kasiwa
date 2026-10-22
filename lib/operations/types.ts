@@ -1,3 +1,5 @@
+export type OperationsView = "all" | "dashboard" | "products" | "catalog" | "orders" | "customers" | "customer-detail" | "shipments" | "analytics" | "store" | "restock";
+
 export type StaffRole = "ADMIN" | "STORE" | "MANAGER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF";
 
 export type OrderStatus =

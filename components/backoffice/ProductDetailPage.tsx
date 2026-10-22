@@ -20,7 +20,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const productId = decodeURIComponent(params.id);
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("products");
   const product = data?.products.find((item) => item.id === productId);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);

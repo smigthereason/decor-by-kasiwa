@@ -9,7 +9,7 @@ import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 import { formatDateTime } from "@/lib/operations/selectors";
 
 export default function DeliveriesPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("shipments");
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});

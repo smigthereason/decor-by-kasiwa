@@ -20,7 +20,7 @@ const preparationWorkflow: ShipmentStatus[] = [
 ];
 
 export default function StoreShipmentsPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("shipments");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [savingId, setSavingId] = useState<string | null>(null);

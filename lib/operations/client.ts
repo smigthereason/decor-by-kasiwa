@@ -2,30 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { BackofficeNotifications, OperationsSnapshot } from "./types";
+import type { BackofficeNotifications, OperationsSnapshot, OperationsView } from "./types";
 
 // Share overlapping reads across mounted back-office pages. These are in-flight
 // only (no persistent stock/financial cache): a fresh read is made after the
 // previous one completes, and normal mutations remain server-authoritative.
-let operationsInFlight: Promise<OperationsSnapshot> | null = null;
+const operationsInFlight = new Map<OperationsView, Promise<OperationsSnapshot>>();
 
-async function loadOperationsSnapshot(): Promise<OperationsSnapshot> {
-  if (!operationsInFlight) {
-    const pending = (async () => {
-      const response = await fetch("/api/backoffice/overview", { cache: "no-store" });
-      if (!response.ok) throw new Error(`Back-office request failed (${response.status})`);
-      return (await response.json()) as OperationsSnapshot;
-    })();
-    operationsInFlight = pending;
-    void pending.then(
-      () => { if (operationsInFlight === pending) operationsInFlight = null; },
-      () => { if (operationsInFlight === pending) operationsInFlight = null; },
-    );
-  }
-  return operationsInFlight;
+async function loadOperationsSnapshot(view: OperationsView): Promise<OperationsSnapshot> {
+  const existing = operationsInFlight.get(view);
+  if (existing) return existing;
+  const pending = (async () => {
+    const response = await fetch(`/api/backoffice/overview?view=${encodeURIComponent(view)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Back-office request failed (${response.status})`);
+    return (await response.json()) as OperationsSnapshot;
+  })();
+  operationsInFlight.set(view, pending);
+  void pending.then(
+    () => { if (operationsInFlight.get(view) === pending) operationsInFlight.delete(view); },
+    () => { if (operationsInFlight.get(view) === pending) operationsInFlight.delete(view); },
+  );
+  return pending;
 }
 
-export function useLiveOperations() {
+export function useLiveOperations(view: OperationsView = "all") {
   const [data, setData] = useState<OperationsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export function useLiveOperations() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const payload = await loadOperationsSnapshot();
+      const payload = await loadOperationsSnapshot(view);
       setData(payload);
       setError(null);
     } catch (cause) {
@@ -42,7 +42,7 @@ export function useLiveOperations() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     void refresh();

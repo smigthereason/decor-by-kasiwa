@@ -35,7 +35,7 @@ function getNairobiDateTime(value?: string) {
 }
 
 export default function AdminOrdersPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("orders");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [fromDate, setFromDate] = useState("");

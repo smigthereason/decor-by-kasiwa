@@ -19,7 +19,7 @@ import { useLiveOperations } from "@/lib/operations/client";
 import { formatDateTime, formatKes } from "@/lib/operations/selectors";
 
 export default function AdminOverviewPage() {
-  const { data, loading, error, refresh } = useLiveOperations();
+  const { data, loading, error, refresh } = useLiveOperations("dashboard");
 
   if (!data) {
     return (

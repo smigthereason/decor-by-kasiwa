@@ -56,7 +56,7 @@ export default function AdminCustomerDetailPage() {
     loading,
     error,
     refresh,
-  } = useLiveOperations();
+  } = useLiveOperations("customer-detail");
 
   const customer =
     data?.customers.find(
