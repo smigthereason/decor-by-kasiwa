@@ -30,6 +30,7 @@ type ProductRow = {
   procurementCost?: number;
   inventory?: {
     _id?: string;
+    _rev?: string;
     location?: string;
     incoming?: number;
     unitCost?: number;
@@ -114,14 +115,14 @@ export async function POST(request: Request) {
     const action = body.action;
     const productId = typeof body.productId === "string" ? body.productId.trim() : "";
     const variantId = typeof body.variantId === "string" ? body.variantId.trim() : "";
-    const quantity = Math.floor(Number(body.quantity || 0));
+    const quantity = Number(body.quantity);
     const sourceStoreId = typeof body.sourceStoreId === "string" ? body.sourceStoreId.trim() : "";
     const destinationStoreId = typeof body.destinationStoreId === "string" ? body.destinationStoreId.trim() : "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
     if (!productId) return NextResponse.json({ message: "Select a product." }, { status: 400 });
     if (!action || !["PURCHASE", "RECEIVE", "TRANSFER"].includes(action)) return NextResponse.json({ message: "Choose Purchase stock, Receive stock or Transfer stock." }, { status: 400 });
-    if (!(quantity > 0)) return NextResponse.json({ message: "Quantity must be at least 1." }, { status: 400 });
+    if (!Number.isSafeInteger(quantity) || quantity < 1) return NextResponse.json({ message: "Quantity must be a positive whole number." }, { status: 400 });
     if ((action === "PURCHASE" || action === "RECEIVE") && !destinationStoreId) return NextResponse.json({ message: "Select the store/location for this stock." }, { status: 400 });
     if (action === "TRANSFER" && (!sourceStoreId || !destinationStoreId || sourceStoreId === destinationStoreId)) return NextResponse.json({ message: "Select different source and destination stores." }, { status: 400 });
 
@@ -138,7 +139,7 @@ export async function POST(request: Request) {
         `*[_type == "product" && _id == $productId][0]{
           _id,_rev,name,sku,initialStock,procurementCost,variants,
           "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
-            _id,location,incoming,unitCost,
+            _id,_rev,location,incoming,unitCost,
             "locationBalances": locationBalances[]{_key,store,"storeId":coalesce(store._ref,storeId),"storeName":coalesce(store->name,storeName),"storeCode":coalesce(store->code,storeCode),onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
           }
         }`,
@@ -217,7 +218,10 @@ export async function POST(request: Request) {
       reorderPoint: 5,
       unitCost,
     });
-    transaction.patch(inventoryId, (patch) => patch.set({ location: "Multi-location", locationBalances: nextBalances, incoming: incomingAfter }));
+    transaction.patch(inventoryId, (patch) => {
+      const current = product.inventory?._rev ? patch.ifRevisionId(product.inventory._rev) : patch;
+      return current.set({ location: "Multi-location", locationBalances: nextBalances, incoming: incomingAfter });
+    });
 
     const sourceName = action === "PURCHASE" ? "Supplier / purchase" : action === "RECEIVE" ? "Incoming stock" : sourceStoreId === UNALLOCATED ? "Unallocated legacy stock" : sourceStore?.name || "Store";
     const movementId = `inventoryMovement.${randomUUID().replaceAll("-", "")}`;

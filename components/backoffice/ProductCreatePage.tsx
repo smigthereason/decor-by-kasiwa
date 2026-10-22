@@ -242,10 +242,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     form.set("posEnabled", String(salesChannels.pos));
     for (const [key, value] of Object.entries(visibility)) form.set(key, String(value));
 
-    form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, ...variant }) => ({
+    form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
       ...variant,
       price: variant.price ? Number(variant.price) : null,
-      ...(!managerMode ? { stockQuantity: variant.stockQuantity !== "" ? Number(variant.stockQuantity) : 0 } : {}),
+      ...(!managerMode ? { stockQuantity: _stockQuantity !== "" ? Number(_stockQuantity) : 0 } : {}),
     }))));
     variants.forEach((variant, index) => {
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
@@ -399,9 +399,9 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             <OptionGroup title="Collections" items={options.collections} selected={selected.collections} onToggle={(id)=>toggle("collections",id)} />
             <OptionGroup title="Shop by Space" items={options.spaces} selected={selected.spaces} onToggle={(id)=>toggle("spaces",id)} />
             <OptionGroup title="Shop by Style" items={options.styles} selected={selected.styles} onToggle={(id)=>toggle("styles",id)} />
-            <OptionGroup title="Pair it with" items={options.products.filter((item) => item._id !== productId)} selected={selected.pairings} onToggle={(id)=>toggle("pairings",id)} />
+            <OptionGroup title="Pair it with" searchable items={options.products.filter((item) => item._id !== productId)} selected={selected.pairings} onToggle={(id)=>toggle("pairings",id)} />
             <p className="-mt-3 mb-5 text-[10px] leading-4 text-[var(--muted)]">Curate complementary products, for example flowers that should be suggested with a vase.</p>
-            <OptionGroup title="Merchandised samples" items={options.products.filter((item) => item._id !== productId)} selected={selected.merchandisedSamples} onToggle={(id)=>toggle("merchandisedSamples",id)} />
+            <OptionGroup title="Merchandised samples" searchable items={options.products.filter((item) => item._id !== productId)} selected={selected.merchandisedSamples} onToggle={(id)=>toggle("merchandisedSamples",id)} />
             <p className="-mt-3 text-[10px] leading-4 text-[var(--muted)]">Choose products that demonstrate a styled or merchandised arrangement alongside this item.</p>
           </Card>
 
@@ -447,7 +447,20 @@ function Card({ title, action, children }: { title: string; action?: ReactNode; 
 function Field({ label, hint, className="", children }: { label: string; hint?: string; className?: string; children: ReactNode }) { return <label className={`block ${className}`}><span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{label}</span>{hint&&<span className="ml-2 text-[9px] text-[var(--muted)]">{hint}</span>}<div className="mt-2 [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-11 [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:bg-[var(--paper)] [&_select]:px-3 [&_select]:text-sm [&_textarea]:w-full [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:p-3 [&_textarea]:text-sm">{children}</div></label>; }
 function FileField({ label, name, multiple=false }: { label: string; name: string; multiple?: boolean }) { return <label className="block rounded-xl border border-dashed hairline bg-[var(--paper-2)] p-4"><span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]"><ImagePlus size={14}/>{label}</span><input type="file" name={name} accept="image/*" multiple={multiple} className="mt-3 block w-full text-xs"/></label>; }
 function VisibilityToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked:boolean)=>void }) { return <label className="flex min-h-11 items-center gap-3 rounded-xl border hairline p-3 text-xs font-medium"><input type="checkbox" checked={checked} onChange={(event)=>onChange(event.target.checked)} className="size-4 accent-[var(--brand-green)]"/>{label}</label>; }
-function OptionGroup({ title, items, selected, onToggle }: { title: string; items: Option[]; selected: string[]; onToggle: (id:string)=>void }) { if(!items.length) return null; return <div className="mb-5 last:mb-0"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{title}</p><div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-xl border hairline p-3">{items.map((item)=><button key={item._id} type="button" onClick={()=>onToggle(item._id)} className={`rounded-full border px-3 py-2 text-[9px] font-semibold ${selected.includes(item._id)?"border-[var(--brand-green)] bg-[var(--brand-green)] !text-soft-cream":"hairline bg-[var(--paper)]"}`}>{item.title}</button>)}</div></div>; }
+function OptionGroup({ title, items, selected, onToggle, searchable = false }: { title: string; items: Option[]; selected: string[]; onToggle: (id:string)=>void; searchable?: boolean }) {
+  const [query, setQuery] = useState("");
+  if (!items.length) return null;
+  const filter = query.trim().toLocaleLowerCase();
+  const visible = searchable && filter ? items.filter((item) => item.title.toLocaleLowerCase().includes(filter) || item._id.toLocaleLowerCase().includes(filter)) : items;
+  return <div className="mb-5 last:mb-0">
+    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{title}{searchable ? ` (${selected.length} selected)` : ""}</p>
+    {searchable && <input type="search" aria-label={`Search ${title}`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by product name or ID" className="mb-2 min-h-11 w-full rounded-lg border hairline bg-[var(--paper)] px-3 text-sm" />}
+    <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-xl border hairline p-3">
+      {visible.map((item)=><button key={item._id} type="button" aria-pressed={selected.includes(item._id)} onClick={()=>onToggle(item._id)} className={`rounded-full border px-3 py-2 text-[9px] font-semibold ${selected.includes(item._id)?"border-[var(--brand-green)] bg-[var(--brand-green)] !text-soft-cream":"hairline bg-[var(--paper)]"}`}>{item.title}</button>)}
+      {visible.length === 0 && <p className="text-xs text-[var(--muted)]">No matching products. Try a different search.</p>}
+    </div>
+  </div>;
+}
 
 function ChannelToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex min-h-16 items-center justify-between gap-4 rounded-xl border hairline p-3 text-left">

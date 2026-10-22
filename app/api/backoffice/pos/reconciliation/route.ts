@@ -6,10 +6,10 @@ import { getPaymentReconciliation } from "@/lib/pos/operations";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
+  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
-  if (staff.role === "MANAGER" && !staff.storeLocationId) return NextResponse.json({ message: "Manager must be assigned to a store." }, { status: 403 });
+  if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") && !staff.storeLocationId) return NextResponse.json({ message: "Manager must be assigned to a store." }, { status: 403 });
   const requestedStoreId = new URL(request.url).searchParams.get("store")?.trim() || undefined;
-  const storeId = staff.role === "MANAGER" ? staff.storeLocationId : requestedStoreId;
+  const storeId = (staff.role === "MANAGER" || staff.role === "STORE_STAFF") ? staff.storeLocationId : requestedStoreId;
   return NextResponse.json({ payments: await getPaymentReconciliation(500, storeId) });
 }

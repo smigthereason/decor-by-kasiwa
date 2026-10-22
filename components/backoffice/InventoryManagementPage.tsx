@@ -129,6 +129,7 @@ export default function InventoryManagementPage() {
   const [action, setAction] = useState<InventoryAction | null>(null);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [variantSearch, setVariantSearch] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [sourceStoreId, setSourceStoreId] = useState("");
   const [destinationStoreId, setDestinationStoreId] = useState("");
@@ -143,6 +144,7 @@ export default function InventoryManagementPage() {
     setAction(nextAction);
     setMessage(null);
     setSelectedVariantId("");
+    setVariantSearch("");
     setSourceStoreId("");
     setDestinationStoreId("");
     window.requestAnimationFrame(() => actionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -189,7 +191,17 @@ export default function InventoryManagementPage() {
   const selectedProductRaw = inventory.find((item) => item.id === selectedProductId);
   const selectedProduct = selectedProductRaw ? inventoryView(selectedProductRaw, role === "MANAGER" && assignedStoreId ? assignedStoreId : "All") : undefined;
   const selectedVariant = selectedProduct?.variants?.find((variant) => variant.id === selectedVariantId);
+  const visibleVariants = selectedProductRaw?.variants?.filter((variant) =>
+    [variant.title, variant.colour, variant.size, variant.sku].some((value) => String(value || "").toLocaleLowerCase().includes(variantSearch.toLocaleLowerCase().trim()))
+  ) || [];
+  const destinationBalance = selectedProductRaw && destinationStoreId ? balanceFor(selectedProductRaw, destinationStoreId) : undefined;
+  const destinationVariantBalance = destinationBalance?.variants?.find((variant) => variant.variantId === selectedVariantId);
   const requiresVariant = Boolean(selectedProductRaw?.variants?.length);
+  const storeOnHandBefore = requiresVariant ? Number(destinationVariantBalance?.onHand || 0) : Number(destinationBalance?.onHand || 0);
+  const storeIncomingBefore = requiresVariant ? Number(destinationVariantBalance?.incoming || 0) : Number(destinationBalance?.incoming || 0);
+  const enteredQuantity = Number(quantity);
+  const projectedOnHand = action === "RECEIVE" ? storeOnHandBefore + enteredQuantity : storeOnHandBefore;
+  const projectedIncoming = action === "PURCHASE" ? storeIncomingBefore + enteredQuantity : action === "RECEIVE" ? storeIncomingBefore - enteredQuantity : storeIncomingBefore;
   const selectedSourceBalance = selectedProductRaw && sourceStoreId && sourceStoreId !== UNALLOCATED ? balanceFor(selectedProductRaw, sourceStoreId) : undefined;
   const unallocated = Math.max(0, Number(selectedProductRaw?.unallocatedOnHand || 0));
 
@@ -265,14 +277,29 @@ export default function InventoryManagementPage() {
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-12">
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select product</option>{inventory.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
-            {requiresVariant && <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">Variant<div className="relative min-w-0"><select value={selectedVariantId} onChange={(e)=>setSelectedVariantId(e.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select variant</option>{selectedProductRaw?.variants?.map((variant)=><option key={variant.id} value={variant.id}>{variant.title || [variant.colour,variant.size].filter(Boolean).join(" · ") || variant.sku || "Variant"}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>}
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");setVariantSearch("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select product</option>{inventory.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
+            {requiresVariant && <div className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">
+              <label htmlFor="inventory-variant-search">Find variant</label>
+              <input id="inventory-variant-search" type="search" value={variantSearch} onChange={(event) => setVariantSearch(event.target.value)} placeholder="Search colour, size or SKU" className="min-h-10 w-full rounded-xl border hairline bg-white px-3 font-normal" />
+              <label htmlFor="inventory-variant-select">Variant to {action === "PURCHASE" ? "purchase" : action === "RECEIVE" ? "receive" : "transfer"}</label>
+              <div className="relative min-w-0"><select id="inventory-variant-select" value={selectedVariantId} onChange={(event)=>setSelectedVariantId(event.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select a variant</option>{visibleVariants.map((variant)=><option key={variant.id} value={variant.id}>{variant.title || [variant.colour,variant.size].filter(Boolean).join(" · ") || variant.sku || "Variant"}</option>)}{selectedVariantId && !visibleVariants.some((variant) => variant.id === selectedVariantId) && selectedProductRaw?.variants?.filter((variant) => variant.id === selectedVariantId).map((variant) => <option key={variant.id} value={variant.id}>{variant.title || variant.sku || "Selected variant"}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]"/></div>
+              <p className="text-[10px] font-normal leading-4 text-[var(--muted)]">Record a separate quantity for each variant. Stock is tracked per variant at the selected store.</p>
+            </div>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity<input type="number" min="1" step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
             {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations}/>}
             {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} placeholder={action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
           </div>
 
+          {(action === "PURCHASE" || action === "RECEIVE") && selectedProductRaw && destinationStoreId && (!requiresVariant || selectedVariantId) && <div className="mt-4 rounded-xl border hairline bg-[var(--paper-2)] p-4 text-xs" role="status" aria-live="polite">
+            <p className="font-semibold">{requiresVariant ? "Selected variant" : "Product"} · {storeLocations.find((store) => store._id === destinationStoreId)?.name || "Store"}</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <p>On hand: <strong>{storeOnHandBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedOnHand) ? projectedOnHand.toLocaleString("en-KE") : "—"}</strong></p>
+              <p>Incoming: <strong>{storeIncomingBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedIncoming) ? projectedIncoming.toLocaleString("en-KE") : "—"}</strong></p>
+            </div>
+            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : "Receiving adds to existing on-hand stock; it does not replace the current balance."}</p>
+            {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <p className="mt-2 font-semibold text-red-700">Only {storeIncomingBefore.toLocaleString("en-KE")} incoming unit(s) are available for this {requiresVariant ? "variant" : "product"} at this store.</p>}
+          </div>}
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected source on hand</p><p className="mt-1 font-semibold">{sourceStoreId === UNALLOCATED ? unallocated : Math.max(0, Number(selectedSourceBalance?.onHand || 0))}</p></div>
@@ -281,7 +308,7 @@ export default function InventoryManagementPage() {
           </div>}
 
           {message && <div role="status" aria-live="polite" className="mt-5 rounded-xl border hairline bg-[var(--paper-2)] px-4 py-3 text-xs font-medium">{message}</div>}
-          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || Number(quantity)<=0 || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
+          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || enteredQuantity<=0 || (action === "RECEIVE" && destinationStoreId && (!requiresVariant || selectedVariantId) && enteredQuantity>storeIncomingBefore) || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
         </section>
       )}
 
