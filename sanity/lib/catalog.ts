@@ -1306,24 +1306,26 @@ export async function getStoreProductBySlug(
     return null;
   }
 
-  const record =
-    await client.fetch<
-      SanityProductRecord | null
-    >(
-      `*[
-        _type == "product" &&
-        slug.current == $slug &&
-        defined(price) &&
-        price > 0 &&
-        ecommerceEnabled != false
-      ][0]
-      ${productProjection}`,
+  const query = `*[
+    _type == "product" &&
+    slug.current == $slug &&
+    defined(price) &&
+    price > 0 &&
+    ecommerceEnabled != false
+  ][0] ${productProjection}`;
 
-      {
-        slug,
-      },
-      { next: { revalidate: 10 } },
-    );
+  // Keep the CDN for normal traffic, but do not show a 404 for a product
+  // that has reached the published Sanity API before the CDN catches up.
+  const cachedRecord = await client.fetch<SanityProductRecord | null>(
+    query,
+    { slug },
+    { next: { revalidate: 10 } },
+  );
+  const record = cachedRecord ?? await serverClient.fetch<SanityProductRecord | null>(
+    query,
+    { slug },
+    { cache: "no-store" },
+  );
 
   if (!record) return null;
 

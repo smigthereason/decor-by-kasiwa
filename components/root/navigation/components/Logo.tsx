@@ -11,7 +11,6 @@ export function Logo() {
         width={400}
         height={300}
         priority
-        quality={100}
         className="h-auto w-[125px] object-contain brightness-0 invert sm:w-[160px] lg:w-[190px]"
       />
     </Link>
