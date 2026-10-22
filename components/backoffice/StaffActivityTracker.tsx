@@ -6,6 +6,8 @@ import { useEffect, useRef } from "react";
 const STORAGE_KEY = "dbk_staff_activity_session";
 const SESSION_REUSE_MS = 30 * 60 * 1000;
 const HEARTBEAT_MS = 2 * 60 * 1000;
+const DUPLICATE_PAGE_VIEW_MS = 10_000;
+let lastPageView: { key: string; at: number } | null = null;
 
 type StoredSession = { id: string; lastSeenAt: number };
 
@@ -93,6 +95,12 @@ export default function StaffActivityTracker() {
 
   useEffect(() => {
     if (!sessionId.current) return;
+    const key = `${sessionId.current}:${pathname}`;
+    const now = Date.now();
+    // Strict Mode replays mount effects in development. Do not write the same
+    // page-view to Sanity twice; real route changes still record normally.
+    if (lastPageView?.key === key && now - lastPageView.at < DUPLICATE_PAGE_VIEW_MS) return;
+    lastPageView = { key, at: now };
     markSessionSeen(sessionId.current);
     void postActivity({ action: "PAGE_VIEW", sessionId: sessionId.current, route: pathname });
   }, [pathname]);

@@ -149,6 +149,7 @@ export default function InventoryManagementPage() {
   const [movementError, setMovementError] = useState<string | null>(null);
   const appliedMovementFilters = useRef<MovementFilters>(EMPTY_MOVEMENT_FILTERS);
   const movementRequestNumber = useRef(0);
+  const initiallyLoadedForRole = useRef("");
   const actionSectionRef = useRef<HTMLElement | null>(null);
 
   function openAction(nextAction: InventoryAction) {
@@ -224,7 +225,13 @@ export default function InventoryManagementPage() {
     }
   }
 
-  useEffect(() => { void Promise.all([loadMovements(), loadStores()]); }, [canManage, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!canManage || !role || initiallyLoadedForRole.current === role) return;
+    // One initial fetch per role. React Strict Mode may replay this effect,
+    // but product/stock writes still explicitly refresh the live data.
+    initiallyLoadedForRole.current = role;
+    void Promise.all([loadMovements(), loadStores()]);
+  }, [canManage, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inventory = data?.products || [];
   const filtered = useMemo(() => inventory.map((item) => inventoryView(item, location)).filter((item) => {
