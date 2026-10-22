@@ -1715,11 +1715,51 @@ export async function handleDarajaStkCallback(payload: DarajaStkCallbackPayload)
   return { matched: true, state: "paid" as const, order: summary(finalized) };
 }
 
-export async function verifyPosPayment(reference: string, options: { forceProviderQuery?: boolean } = {}) {
+export class PosPaymentAccessError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PosPaymentAccessError";
+  }
+}
+
+export async function verifyPosPayment(reference: string, options: {
+  forceProviderQuery?: boolean;
+  allowedStoreLocationId?: string;
+  failedTransactionOnly?: boolean;
+  allowInventoryRetry?: boolean;
+} = {}) {
   if (!/^DBK-POS-[A-Za-z0-9-]+$/.test(reference)) throw new Error("Invalid POS payment reference.");
   const order = await fetchPosOrder(reference);
   if (!order) throw new Error("POS order not found.");
+  // Manager and Sales Staff may never inspect or reconcile another store's POS payment.
+  if (options.allowedStoreLocationId && order.storeLocationId !== options.allowedStoreLocationId) {
+    throw new PosPaymentAccessError("This payment does not belong to your assigned store.");
+  }
+  if (options.failedTransactionOnly) {
+    // Sales Staff can query Safaricom again only for a failed/timed-out Daraja attempt.
+    // Check the recorded payment transaction server-side; never trust client UI status.
+    if (order.paymentProvider !== "daraja") {
+      throw new PosPaymentAccessError("Only failed M-PESA transactions can be verified by Sales Staff.");
+    }
+    const transaction = await serverClient.fetch<{ status?: string } | null>(
+      `*[_type == "paymentTransaction" && _id == $id][0]{status}`,
+      { id: paymentTransactionId(reference) },
+      { cache: "no-store" },
+    );
+    if (!transaction || !["failed", "timed_out"].includes(transaction.status || "")) {
+      throw new PosPaymentAccessError("Sales Staff may only verify failed or timed-out transactions.");
+    }
+  }
   if (order.paymentStatus === "paid") {
+    if (order.inventoryReviewRequired && options.allowInventoryRetry === false) {
+      return {
+        state: "paid" as const,
+        order: summary(order),
+        inventoryReviewRequired: true,
+        inventoryMessage: order.inventoryReconciliationReason || "Inventory review required.",
+        message: "Payment is already confirmed. Inventory reconciliation requires a manager.",
+      };
+    }
     if (order.inventoryReviewRequired) {
       const inventory = await reconcilePaidPosInventory(order);
       return {

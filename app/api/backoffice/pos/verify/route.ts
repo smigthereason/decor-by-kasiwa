@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
-import { markPosPaymentTimedOut, verifyPosPayment } from "@/lib/pos/server";
+import { markPosPaymentTimedOut, PosPaymentAccessError, verifyPosPayment } from "@/lib/pos/server";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +14,20 @@ export async function GET(request: Request) {
     const reference = url.searchParams.get("reference")?.trim();
     const forceProviderQuery = url.searchParams.get("forceProviderQuery") === "1";
     if (!reference) return NextResponse.json({ message: "POS payment reference is required." }, { status: 400 });
-    return NextResponse.json(await verifyPosPayment(reference, { forceProviderQuery }));
+    const scopedStaff = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
+    if (scopedStaff && !staff.storeLocationId) {
+      return NextResponse.json({ message: "An assigned store is required to verify payments." }, { status: 403 });
+    }
+    return NextResponse.json(await verifyPosPayment(reference, {
+      forceProviderQuery,
+      allowedStoreLocationId: scopedStaff ? staff.storeLocationId : undefined,
+      failedTransactionOnly: staff.role === "STORE_STAFF" && forceProviderQuery,
+      allowInventoryRetry: staff.role !== "STORE_STAFF",
+    }));
   } catch (cause) {
     return NextResponse.json(
       { message: cause instanceof Error ? cause.message : "Unable to verify POS payment." },
-      { status: 400 },
+      { status: cause instanceof PosPaymentAccessError ? 403 : 400 },
     );
   }
 }
