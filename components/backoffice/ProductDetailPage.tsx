@@ -8,6 +8,7 @@ import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Trash2, X } from "l
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import ProductCreatePage from "@/components/backoffice/ProductCreatePage";
+import ProductImageManager from "@/components/backoffice/ProductImageManager";
 import StatusPill from "@/components/backoffice/StatusPill";
 import { useLiveOperations } from "@/lib/operations/client";
 import type { InventoryItem } from "@/lib/operations/types";
@@ -222,6 +223,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
         {message && <p className="mt-4 text-xs text-[var(--muted)]">{message}</p>}
       </div>
 
+      {mode === "store" && session?.user?.role === "STORE" && <ProductImageManager productId={liveProductId} onRemoved={() => void refresh()} />}
       <div className="grid grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[0.85fr_1.5fr] lg:p-8">
         <div className="space-y-4">
           <div className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6">

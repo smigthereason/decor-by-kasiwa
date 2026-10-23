@@ -376,6 +376,21 @@ export async function PATCH(
     const hasNewGalleryFiles = Boolean(
       form?.getAll("galleryImages").some((entry) => entry instanceof File && entry.size > 0),
     );
+    // Image deletion is restricted to ADMIN/STORE even through the legacy
+    // product-edit PATCH. A Manager may add/replace images, but must retain
+    // every existing gallery image reference and its key.
+    if (staff.role === "MANAGER" && body.galleryExisting !== undefined) {
+      const existing = await serverClient.fetch<Array<{ _key?: string; assetRef?: string }>>(
+        `*[_type == "product" && _id == $productId][0].gallery[]{_key,"assetRef":asset._ref}`,
+        { productId }, { cache: "no-store" },
+      );
+      let retained: Array<{ key?: string; assetRef?: string }>;
+      try { retained = JSON.parse(cleanString(body.galleryExisting)) as Array<{ key?: string; assetRef?: string }>; }
+      catch { return NextResponse.json({ message: "Invalid gallery selection." }, { status: 400 }); }
+      if (!Array.isArray(retained) || (existing || []).some((image) =>
+        !retained.some((kept) => kept.key === image._key && kept.assetRef === image.assetRef)
+      )) return NextResponse.json({ message: "Only Admin or Store Manager may delete gallery images." }, { status: 403 });
+    }
     if (body.galleryExisting !== undefined || hasNewGalleryFiles) {
       let existingGallery: GalleryInput[] = [];
       try {
@@ -415,9 +430,10 @@ export async function PATCH(
 
       const managerVariants = staff.role === "MANAGER";
       const currentVariantStock = new Map<string, number>();
+      const currentVariantImages = new Map<string, string>();
       if (managerVariants) {
-        const current = await serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number }> } | null>(
-          `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity}}`,
+        const current = await serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number; imageAssetRef?: string }> } | null>(
+          `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity,"imageAssetRef":image.asset._ref}}`,
           { id: productId }, { cache: "no-store" },
         );
         if (!current) return NextResponse.json({ message: "Product not found." }, { status: 404 });
@@ -427,7 +443,14 @@ export async function PATCH(
         managerProductRevision = current._rev;
         for (const variant of current.variants || []) {
           if (variant._key) currentVariantStock.set(variant._key, Number(variant.stockQuantity || 0));
+          if (variant._key && variant.imageAssetRef) currentVariantImages.set(variant._key, variant.imageAssetRef);
         }
+        if ([...currentVariantImages].some(([key, assetRef]) => {
+          const index = variants.findIndex((variant) => variant._key === key);
+          if (index < 0) return true;
+          const replacement = form?.get(`variantImage-${index}`);
+          return variants[index].existingImageAssetRef !== assetRef && !(replacement instanceof File && replacement.size > 0);
+        })) return NextResponse.json({ message: "Only Admin or Store Manager may delete variant images." }, { status: 403 });
         if (variants.some(v => v.stockQuantity !== undefined && v.stockQuantity !== null)) {
           return NextResponse.json({ message: "Managers cannot edit variant stock quantities." }, { status: 403 });
         }

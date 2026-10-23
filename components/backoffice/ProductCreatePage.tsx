@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ImagePlus, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 
 type Option = { _id: string; title: string; slug?: string };
@@ -111,6 +112,9 @@ async function readApiResponse<T extends Record<string, unknown>>(response: Resp
 
 export default function ProductCreatePage({ productId, mode = "admin" }: { productId?: string; mode?: "admin" | "manager" }) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const canRemoveImages = session?.user?.role === "ADMIN" || session?.user?.role === "STORE";
+  const [removingImage, setRemovingImage] = useState<string | null>(null);
   const isEditing = Boolean(productId);
   const managerMode = mode === "manager";
   const [options, setOptions] = useState<OptionsPayload>({ categories: [], collections: [], spaces: [], styles: [], products: [], storeLocations: [] });
@@ -188,6 +192,36 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
       .catch((cause) => setMessage(cause instanceof Error ? cause.message : "Unable to load product."))
       .finally(() => setLoadingProduct(false));
   }, [productId]);
+
+  async function removeExistingImage(kind: "hero" | "gallery" | "variant", key?: string) {
+    if (!canRemoveImages || !productId || !product?._rev || removingImage) return;
+    if (!window.confirm("Remove this image from the product? This does not delete the original asset from Sanity.")) return;
+    const target = `${kind}:${key || ""}`;
+    setRemovingImage(target);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/backoffice/products/${encodeURIComponent(productId)}/images`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, key, expectedRevision: product._rev }),
+      });
+      const payload = await readApiResponse<{ revision?: string }>(response);
+      if (!response.ok || !payload.revision) throw new Error(payload.message || "Unable to remove image.");
+      setProduct((current) => current && ({
+        ...current, _rev: payload.revision,
+        ...(kind === "hero" ? { heroImage: null } : {}),
+        ...(kind === "gallery" ? { gallery: (current.gallery || []).filter((image) => image._key !== key) } : {}),
+        ...(kind === "variant" ? { variants: (current.variants || []).map((variant) => variant._key === key ? { ...variant, imageUrl: undefined, imageAssetRef: undefined } : variant) } : {}),
+      }));
+      if (kind === "gallery") setExistingGallery((current) => current.filter((image) => image._key !== key));
+      if (kind === "variant") setVariants((current) => current.map((variant) => variant._key === key ? { ...variant, existingImageAssetRef: undefined, imageUrl: undefined, image: undefined } : variant));
+      setMessage("Image removed. Other product changes can still be saved normally.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Unable to remove image.");
+    } finally {
+      setRemovingImage(null);
+    }
+  }
 
   function toggle(group: keyof typeof selected, id: string) {
     setSelected((current) => ({
@@ -339,12 +373,12 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
           </Card>
 
           <Card title="Images">
-            {product?.heroImage?.url && <div className="mb-4"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Current hero image</p><img src={product.heroImage.url} alt="Current product hero" className="h-36 w-36 rounded-xl border hairline object-cover" /></div>}
+            {product?.heroImage?.url && <div className="mb-4"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Current hero image</p><img src={product.heroImage.url} alt="Current product hero" className="h-36 w-36 rounded-xl border hairline object-cover" />{canRemoveImages && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("hero")} className="ml-3 inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove hero image</button>}</div>}
             <div className="grid gap-4 sm:grid-cols-2">
               <FileField label={isEditing ? "Replace hero image" : "Hero image"} name="heroImage" />
               <FileField label={isEditing ? "Add gallery images" : "Gallery images"} name="galleryImages" multiple />
             </div>
-            {isEditing && existingGallery.length > 0 && <div className="mt-5"><p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Current gallery</p><div className="flex flex-wrap gap-3">{existingGallery.map((image, index)=><div key={image._key} className="relative"><div className="h-24 w-24 overflow-hidden rounded-xl border hairline bg-[var(--paper-2)]">{image.url ? <img src={image.url} alt={`Gallery ${index+1}`} className="h-full w-full object-cover"/> : null}</div><button type="button" onClick={()=>setExistingGallery((current)=>current.filter((item)=>item._key!==image._key))} className="absolute -right-2 -top-2 grid size-7 place-items-center rounded-full border bg-[var(--paper)] shadow" aria-label={`Remove gallery image ${index+1}`}><Trash2 size={12}/></button></div>)}</div></div>}
+            {isEditing && existingGallery.length > 0 && <div className="mt-5"><p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">Current gallery</p><div className="flex flex-wrap gap-3">{existingGallery.map((image, index)=><div key={image._key} className="relative"><div className="h-24 w-24 overflow-hidden rounded-xl border hairline bg-[var(--paper-2)]">{image.url ? <img src={image.url} alt={`Gallery ${index+1}`} className="h-full w-full object-cover"/> : null}</div>{canRemoveImages && <button type="button" disabled={Boolean(removingImage) || saving} onClick={()=>void removeExistingImage("gallery", image._key)} className="absolute -right-2 -top-2 grid size-7 place-items-center rounded-full border bg-[var(--paper)] shadow disabled:opacity-50" aria-label={`Remove gallery image ${index+1}`}><Trash2 size={12}/></button>}</div>)}</div></div>}
           </Card>
 
           <Card title="Product details & care">
@@ -358,7 +392,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
           <Card title="Variants" action={<button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>}>
             <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">Stock quantities are company totals. Saving allocates the unassigned remainder to the inventory location below; stock already at other stores is preserved.</p>
-            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <img src={variant.imageUrl} alt="Current variant" className="mb-3 h-20 w-20 rounded-lg border hairline object-cover"/>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={managerMode && key === "stockQuantity"} aria-readonly={managerMode && key === "stockQuantity"} onChange={(e)=>{if (managerMode && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label></div>)}</div>}
+            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <div className="mb-3 flex items-center gap-2"><img src={variant.imageUrl} alt="Current variant" className="h-20 w-20 rounded-lg border hairline object-cover"/>{canRemoveImages && variant._key && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("variant", variant._key)} className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove variant image</button>}</div>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={managerMode && key === "stockQuantity"} aria-readonly={managerMode && key === "stockQuantity"} onChange={(e)=>{if (managerMode && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label>{variant.image && <button type="button" onClick={() => setVariants((current) => current.map((item, i) => i === index ? { ...item, image: undefined } : item))} className="mt-2 inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={12}/>Clear selected variant image</button>}</div>)}</div>}
           </Card>
         </div>
 
@@ -445,7 +479,29 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
 function Card({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) { return <section className="rounded-2xl border hairline bg-[var(--paper)] p-5 sm:p-6"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-lg font-semibold tracking-[-0.02em]">{title}</h2>{action}</div>{children}</section>; }
 function Field({ label, hint, className="", children }: { label: string; hint?: string; className?: string; children: ReactNode }) { return <label className={`block ${className}`}><span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{label}</span>{hint&&<span className="ml-2 text-[9px] text-[var(--muted)]">{hint}</span>}<div className="mt-2 [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:text-sm [&_select]:min-h-11 [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:bg-[var(--paper)] [&_select]:px-3 [&_select]:text-sm [&_textarea]:w-full [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:p-3 [&_textarea]:text-sm">{children}</div></label>; }
-function FileField({ label, name, multiple=false }: { label: string; name: string; multiple?: boolean }) { return <label className="block rounded-xl border border-dashed hairline bg-[var(--paper-2)] p-4"><span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]"><ImagePlus size={14}/>{label}</span><input type="file" name={name} accept="image/*" multiple={multiple} className="mt-3 block w-full text-xs"/></label>; }
+function FileField({ label, name, multiple=false }: { label: string; name: string; multiple?: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  function removeFile(index: number) {
+    const remaining = files.filter((_, i) => i !== index);
+    if (input.current) {
+      // Keep the actual file input in sync, because submit() reads FormData.
+      if (remaining.length && typeof DataTransfer !== "undefined") {
+        const next = new DataTransfer();
+        for (const file of remaining) next.items.add(file);
+        input.current.files = next.files;
+      } else {
+        input.current.value = "";
+        if (remaining.length) { setFiles([]); return; }
+      }
+    }
+    setFiles(remaining);
+  }
+  return <div className="rounded-xl border border-dashed hairline bg-[var(--paper-2)] p-4">
+    <label className="block"><span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]"><ImagePlus size={14}/>{label}</span><input ref={input} type="file" name={name} accept="image/*" multiple={multiple} onChange={(event) => setFiles(Array.from(event.currentTarget.files || []))} className="mt-3 block w-full text-xs"/></label>
+    {files.length > 0 && <div className="mt-3 space-y-2">{files.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center justify-between gap-2 text-xs"><span className="min-w-0 truncate">{file.name}</span><button type="button" onClick={() => removeFile(index)} aria-label={`Remove selected image ${file.name}`} className="flex shrink-0 items-center gap-1 text-red-700"><Trash2 size={12}/>Remove</button></div>)}</div>}
+  </div>;
+}
 function VisibilityToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked:boolean)=>void }) { return <label className="flex min-h-11 items-center gap-3 rounded-xl border hairline p-3 text-xs font-medium"><input type="checkbox" checked={checked} onChange={(event)=>onChange(event.target.checked)} className="size-4 accent-[var(--brand-green)]"/>{label}</label>; }
 function OptionGroup({ title, items, selected, onToggle, searchable = false }: { title: string; items: Option[]; selected: string[]; onToggle: (id:string)=>void; searchable?: boolean }) {
   const [query, setQuery] = useState("");

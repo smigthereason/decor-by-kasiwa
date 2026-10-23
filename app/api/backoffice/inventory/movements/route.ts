@@ -124,9 +124,9 @@ export async function GET(request: Request) {
         lower(coalesce(movementNumber, "")) match $needle || lower(coalesce(note, "")) match $needle ||
         lower(coalesce(actorName, "")) match $needle || lower(coalesce(product->sku, "")) match $needle)
     ] | order(createdAt desc, _id desc)[${offset}...${offset + MOVEMENT_PAGE_SIZE + 1}]{
-      _id,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,stockBefore,stockAfter,
+      _id,_rev,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,correctedQuantity,correctedAt,correctedBy,correctionReason,stockBefore,stockAfter,
       incomingBefore,incomingAfter,sourceLocation,destination,"sourceStoreId":sourceStore._ref,"destinationStoreId":destinationStore._ref,
-      unitCost,movementValue,actorName,note,createdAt
+      unitCost,"movementValue":coalesce(correctedMovementValue,movementValue),actorName,note,createdAt
     }`,
     { scope, type: movementType, from: from || "", to: to || "", needle },
     { cache: "no-store" },
@@ -311,5 +311,153 @@ export async function POST(request: Request) {
   } catch (cause) {
     console.error("Inventory movement failed:", cause);
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to update inventory." }, { status: 500 });
+  }
+}
+
+
+// Correct historical stock quantities without rewriting the original movement.
+// The original quantity remains on the movement; every correction has an immutable
+// companion audit document and a revision-protected atomic ledger adjustment.
+export async function PATCH(request: Request) {
+  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  if (!staff.ok) return NextResponse.json({ message: "Only Admin and Store Manager can correct stock movements." }, { status: staff.status });
+
+  let input: { movementId?: string; expectedRevision?: string; quantity?: unknown; reason?: string };
+  try {
+    input = await request.json();
+  } catch {
+    return NextResponse.json({ message: "Invalid correction request." }, { status: 400 });
+  }
+  const movementId = typeof input?.movementId === "string" ? input.movementId.trim() : "";
+  const revision = typeof input?.expectedRevision === "string" ? input.expectedRevision : "";
+  const newQuantity = Number(input?.quantity);
+  const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
+  if (!movementId.startsWith("inventoryMovement.") || !revision) return NextResponse.json({ message: "Reload the movement and try again." }, { status: 400 });
+  if (!Number.isSafeInteger(newQuantity) || newQuantity < 1) return NextResponse.json({ message: "Corrected quantity must be a positive whole number." }, { status: 400 });
+  if (reason.length < 5 || reason.length > 500) return NextResponse.json({ message: "Enter a reason for this correction (5–500 characters)." }, { status: 400 });
+
+  try {
+    type EditableMovement = {
+      _id: string; _rev: string; movementType: "PURCHASE" | "RECEIPT" | "TRANSFER";
+      productId?: string; product?: { _ref?: string }; variantId?: string; variantLabel?: string;
+      sourceStore?: { _ref?: string }; destinationStore?: { _ref?: string };
+      sourceLocation?: string; quantityChange?: number; correctedQuantity?: number;
+      unitCost?: number; movementNumber?: string;
+    };
+    const original = await serverClient.fetch<EditableMovement | null>(
+      `*[_type == "inventoryMovement" && _id == $movementId][0]{_id,_rev,movementType,productId,product,variantId,variantLabel,sourceStore,destinationStore,sourceLocation,quantityChange,correctedQuantity,unitCost,movementNumber}`,
+      { movementId }, { cache: "no-store" },
+    );
+    if (!original || !["PURCHASE", "RECEIPT", "TRANSFER"].includes(original.movementType)) return NextResponse.json({ message: "Stock movement not found." }, { status: 404 });
+    if (original._rev !== revision) return NextResponse.json({ message: "This movement has already changed. Reload before editing." }, { status: 409 });
+    const oldQuantity = original.correctedQuantity ?? Math.abs(Number(original.quantityChange || 0));
+    if (!Number.isSafeInteger(oldQuantity) || oldQuantity < 1) return NextResponse.json({ message: "This historical movement cannot be safely corrected automatically." }, { status: 409 });
+    if (oldQuantity === newQuantity) return NextResponse.json({ message: "Quantity is unchanged. Enter a different quantity to record a correction." }, { status: 400 });
+    const delta = newQuantity - oldQuantity;
+    const productId = original.product?._ref || original.productId || "";
+    const destinationId = original.destinationStore?._ref || "";
+    const sourceId = original.sourceStore?._ref || "";
+    const fromUnallocated = original.movementType === "TRANSFER" && !sourceId && original.sourceLocation === "Unallocated legacy stock";
+    if (!productId || !destinationId || (original.movementType === "TRANSFER" && !sourceId && !fromUnallocated)) {
+      return NextResponse.json({ message: "This movement has incomplete store references. Contact Admin for a reviewed correction." }, { status: 409 });
+    }
+    const [product, destination, source] = await Promise.all([
+      serverClient.fetch<ProductRow | null>(
+        `*[_type == "product" && _id == $productId][0]{_id,_rev,name,sku,initialStock,variants,"inventory":*[_type == "inventoryRecord" && product._ref == ^._id][0]{_id,_rev,incoming,locationBalances[]{_key,store,storeId,storeName,storeCode,onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}}}`,
+        { productId }, { cache: "no-store" },
+      ),
+      getStore(destinationId),
+      sourceId ? getStore(sourceId) : Promise.resolve(null),
+    ]);
+    if (!product || !product.inventory?._id || !product.inventory._rev || !destination) return NextResponse.json({ message: "Product or inventory store is missing. Correction was not applied." }, { status: 409 });
+    if (sourceId && !source) return NextResponse.json({ message: "Source store is unavailable. Correction was not applied." }, { status: 409 });
+    const variants = product.variants || [];
+    const variantId = original.variantId || undefined;
+    const variant = variantId ? variants.find((entry) => entry._key === variantId) : undefined;
+    if ((hasVariants(variants) && !variant) || (!hasVariants(variants) && variantId)) {
+      return NextResponse.json({ message: "Product variants have changed since this movement. A reviewed correction is required." }, { status: 409 });
+    }
+    const balances = product.inventory.locationBalances || [];
+    const dest = findLocationBalance(balances, destinationId);
+    const src = sourceId ? findLocationBalance(balances, sourceId) : undefined;
+    const hasEnough = (current: number, reduction: number, label: string) =>
+      reduction <= 0 || current >= reduction ? null : `${label}: only ${current} units remain; correction requires ${reduction}.`;
+
+    let error: string | null = null;
+    if (original.movementType === "PURCHASE") {
+      error = hasEnough(locationIncoming(dest, variantId), -delta, "Incoming stock");
+    } else if (original.movementType === "RECEIPT") {
+      error = delta > 0
+        ? hasEnough(locationIncoming(dest, variantId), delta, "Incoming stock")
+        : hasEnough(locationOnHand(dest, variantId), -delta, "On-hand stock");
+    } else {
+      if (delta > 0) {
+        const company = effectiveOnHand(product.initialStock, product.variants);
+        const unallocated = Math.max(0, (variantId ? Number(variant?.stockQuantity || 0) : company) - allocatedOnHand(balances, variantId));
+        error = fromUnallocated ? hasEnough(unallocated, delta, "Unallocated source stock") : hasEnough(locationOnHand(src, variantId), delta, "Source stock");
+      } else {
+        error = hasEnough(locationOnHand(dest, variantId), -delta, "Destination stock");
+      }
+    }
+    if (error) return NextResponse.json({ message: error }, { status: 409 });
+
+    let nextBalances = balances;
+    let nextVariants = product.variants;
+    let companyAfter = effectiveOnHand(product.initialStock, product.variants);
+    const incomingBefore = Math.max(0, Number(product.inventory.incoming || 0));
+    if (original.movementType === "PURCHASE") {
+      nextBalances = adjustLocationBalance(nextBalances, destination, { incomingDelta: delta, variantId, variantLabel: original.variantLabel });
+    } else if (original.movementType === "RECEIPT") {
+      nextBalances = adjustLocationBalance(nextBalances, destination, { incomingDelta: -delta, onHandDelta: delta, variantId, variantLabel: original.variantLabel });
+      if (variantId && product.variants) {
+        if (Number(variant?.stockQuantity || 0) + delta < 0) return NextResponse.json({ message: "Company variant stock cannot be negative." }, { status: 409 });
+        nextVariants = updateVariantOnHand(product.variants, variantId, delta);
+        companyAfter = variantStockTotal(nextVariants);
+      } else {
+        companyAfter += delta;
+        if (companyAfter < 0) return NextResponse.json({ message: "Company stock cannot be negative." }, { status: 409 });
+      }
+    } else {
+      if (source) nextBalances = adjustLocationBalance(nextBalances, source, { onHandDelta: -delta, variantId, variantLabel: original.variantLabel });
+      nextBalances = adjustLocationBalance(nextBalances, destination, { onHandDelta: delta, variantId, variantLabel: original.variantLabel });
+    }
+    const originalAllocatedIncoming = allocatedIncoming(balances);
+    const legacyIncoming = incomingBefore - originalAllocatedIncoming;
+    if (legacyIncoming < 0) return NextResponse.json({ message: "Existing incoming ledger is inconsistent. Review before correcting." }, { status: 409 });
+    const incomingAfter = legacyIncoming + allocatedIncoming(nextBalances);
+    const now = new Date().toISOString();
+    const correctionId = `inventoryMovementCorrection.${randomUUID().replaceAll("-", "")}`;
+    const tx = serverClient.transaction();
+    if (original.movementType === "RECEIPT") {
+      tx.patch(productId, (patch) => patch.ifRevisionId(product._rev).set({
+        initialStock: companyAfter,
+        ...(nextVariants ? { variants: nextVariants } : {}),
+        available: companyAfter > 0,
+      }));
+    }
+    tx.patch(product.inventory._id, (patch) => patch.ifRevisionId(product.inventory!._rev!).set({
+      locationBalances: nextBalances, incoming: incomingAfter,
+    }));
+    tx.patch(movementId, (patch) => patch.ifRevisionId(revision).set({
+      correctedQuantity: newQuantity,
+      correctedMovementValue: Math.max(0, Number(original.unitCost || 0)) * newQuantity,
+      correctedAt: now, correctedBy: staff.customerName, correctionReason: reason,
+    }));
+    tx.create({
+      _id: correctionId, _type: "inventoryMovementCorrection",
+      originalMovement: { _type: "reference", _ref: movementId },
+      movementNumber: original.movementNumber, product: { _type: "reference", _ref: productId },
+      movementType: original.movementType,
+      variantId: variantId || null, sourceStoreId: sourceId || (fromUnallocated ? UNALLOCATED : null), destinationStoreId: destinationId,
+      previousQuantity: oldQuantity, correctedQuantity: newQuantity, difference: delta,
+      companyOnHandAfter: companyAfter, incomingAfter,
+      reason, actor: { _type: "reference", _ref: staff.customerId }, actorName: staff.customerName,
+      actorRole: staff.role, createdAt: now,
+    });
+    await tx.commit();
+    return NextResponse.json({ ok: true, movementId, oldQuantity, newQuantity, incomingAfter, companyOnHandAfter: companyAfter });
+  } catch (cause) {
+    console.error("Stock movement correction failed:", cause);
+    return NextResponse.json({ message: cause instanceof Error && /revision|conflict/i.test(cause.message) ? "Stock changed during correction. Refresh and try again." : "Unable to correct stock. No partial correction was saved." }, { status: 409 });
   }
 }

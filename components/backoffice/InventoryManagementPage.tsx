@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowDownToLine, ArrowUpRight, Boxes, ChevronDown, History, PackagePlus, Search, Send } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, Boxes, ChevronDown, History, PackagePlus, Pencil, Search, Send } from "lucide-react";
 
 import ExportButtons from "@/components/backoffice/ExportButtons";
 import InventoryOverviewChart from "@/components/backoffice/InventoryOverviewChart";
@@ -20,7 +20,12 @@ type StoreLocation = { _id: string; name: string; code?: string; active?: boolea
 
 type InventoryMovement = {
   _id: string;
+  _rev?: string;
   movementNumber?: string;
+  correctedQuantity?: number;
+  correctedAt?: string;
+  correctedBy?: string;
+  correctionReason?: string;
   movementType: "PURCHASE" | "RECEIPT" | "TRANSFER";
   productName?: string;
   variantId?: string;
@@ -124,6 +129,7 @@ export default function InventoryManagementPage() {
   const canManage = role === "ADMIN" || role === "STORE" || role === "MANAGER" || role === "STORE_STAFF";
   const hideProcurement = role === "MANAGER" || role === "STORE_STAFF";
   const canChangeStock = canManage && role !== "MANAGER";
+  const canCorrectStock = role === "ADMIN" || role === "STORE";
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("All");
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
@@ -147,6 +153,10 @@ export default function InventoryManagementPage() {
   const [movementNextOffset, setMovementNextOffset] = useState(0);
   const [movementLoading, setMovementLoading] = useState(false);
   const [movementError, setMovementError] = useState<string | null>(null);
+  const [editingMovement, setEditingMovement] = useState<InventoryMovement | null>(null);
+  const [correctedQuantity, setCorrectedQuantity] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctingMovement, setCorrectingMovement] = useState(false);
   const appliedMovementFilters = useRef<MovementFilters>(EMPTY_MOVEMENT_FILTERS);
   const movementRequestNumber = useRef(0);
   const initiallyLoadedForRole = useRef("");
@@ -199,6 +209,36 @@ export default function InventoryManagementPage() {
     const filters = { q: movementQuery.trim(), from: movementFrom, to: movementTo, type: movementType };
     appliedMovementFilters.current = filters;
     void loadMovements(filters);
+  }
+
+  function beginCorrection(movement: InventoryMovement) {
+    if (!canCorrectStock || !movement._rev) return;
+    setEditingMovement(movement);
+    setCorrectedQuantity(String(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))));
+    setCorrectionReason("");
+    setMovementError(null);
+  }
+
+  async function submitCorrection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canCorrectStock || !editingMovement?._rev || correctingMovement) return;
+    setCorrectingMovement(true);
+    setMovementError(null);
+    try {
+      await mutateBackoffice("/api/backoffice/inventory/movements", {
+        movementId: editingMovement._id,
+        expectedRevision: editingMovement._rev,
+        quantity: Number(correctedQuantity),
+        reason: correctionReason.trim(),
+      }, "PATCH");
+      setEditingMovement(null);
+      await Promise.all([refresh(), loadMovements()]);
+      setMessage("Stock movement corrected. The original entry and the correction are retained in the audit trail.");
+    } catch (cause) {
+      setMovementError(cause instanceof Error ? cause.message : "Unable to correct stock movement.");
+    } finally {
+      setCorrectingMovement(false);
+    }
   }
 
   function clearMovementFilters() {
@@ -301,7 +341,7 @@ export default function InventoryManagementPage() {
     {key:"price",label:"Retail Price"},
   ];
 
-  const movementHeadings = ["Date","Movement","Product / variant","Qty","From / To",...(!hideProcurement ? ["Procurement value"] : []),"Recorded by","Reference / note"];
+  const movementHeadings = ["Date","Movement","Product / variant","Qty","From / To",...(!hideProcurement ? ["Procurement value"] : []),"Recorded by","Reference / note",...(canCorrectStock ? ["Correct"] : [])];
   const inventoryHeadings = ["Product","SKU","Location","On hand","Reserved","Available","Incoming","Status",...(!hideProcurement ? ["Cost"] : []),"Retail",""];
 
   return (
@@ -407,11 +447,23 @@ export default function InventoryManagementPage() {
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
                 const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.quantityChange && movement.quantityChange > 0 ? `+${movement.quantityChange}` : movement.quantityChange ?? 0}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}</td></tr>;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">Corrected</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={!movement._rev || correctingMovement} onClick={() => beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/>Edit</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}
           </div>
+          {canCorrectStock && editingMovement && <form onSubmit={(event) => void submitCorrection(event)} className="mx-4 my-4 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:mx-5" aria-label="Correct stock movement">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h3 className="text-sm font-semibold">Correct recorded stock movement</h3><p className="mt-1 text-xs text-[var(--muted)]">{editingMovement.movementNumber || editingMovement._id} · {editingMovement.productName} · {editingMovement.variantLabel || "No variant"}</p></div>
+              <button type="button" onClick={() => setEditingMovement(null)} disabled={correctingMovement} className="rounded-full border px-3 py-2 text-xs">Cancel</button>
+            </div>
+            <p className="mt-3 text-xs leading-5">This changes the recorded quantity and updates the current store ledger. The product, variant, movement type and source/destination cannot be changed here. Previous entries remain in the audit trail. Reductions that would make stock negative are rejected.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold">Correct quantity<input required type="number" min="1" step="1" value={correctedQuantity} onChange={(event) => setCorrectedQuantity(event.target.value)} className="min-h-11 rounded-lg border bg-white px-3 font-normal" /></label>
+              <label className="grid gap-1 text-xs font-semibold">Reason for correction<input required minLength={5} maxLength={500} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="e.g. Supplier delivery note had the wrong count" className="min-h-11 rounded-lg border bg-white px-3 font-normal" /></label>
+            </div>
+            <button type="submit" disabled={correctingMovement || !Number.isSafeInteger(Number(correctedQuantity)) || Number(correctedQuantity) < 1 || correctionReason.trim().length < 5} className="mt-3 rounded-full bg-[var(--brand-green)] px-4 py-3 text-xs font-semibold !text-white disabled:opacity-50">{correctingMovement ? "Saving correction…" : "Save audited correction"}</button>
+          </form>}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t hairline px-4 py-3 sm:px-5">
             <span className="text-xs text-[var(--muted)]">{movementLoading ? "Loading stock movements…" : `${movements.length} movement${movements.length === 1 ? "" : "s"} shown`}</span>
             {movementHasMore && <button type="button" disabled={movementLoading} onClick={() => void loadMovements(appliedMovementFilters.current, movementNextOffset)} className="rounded-full border hairline px-4 py-2 text-xs font-semibold disabled:opacity-50">Load more</button>}
