@@ -17,6 +17,7 @@ export default function AdminAnalyticsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [storeFilter, setStoreFilter] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
 
   useEffect(() => {
@@ -51,13 +52,15 @@ export default function AdminAnalyticsPage() {
       : product.onHand;
     return sum + product.retailPrice * onHand;
   }, 0);
-  const productRevenue = new Map<string, number>();
+  const productRevenue = new Map<string, { revenue: number; quantity: number }>();
   for (const order of paidOrders) {
     for (const line of order.lineItems) {
-      productRevenue.set(line.name, (productRevenue.get(line.name) || 0) + line.unitPrice * line.quantity);
+      const current = productRevenue.get(line.name) || { revenue: 0, quantity: 0 };
+      productRevenue.set(line.name, { revenue: current.revenue + line.unitPrice * line.quantity, quantity: current.quantity + line.quantity });
     }
   }
-  const topProducts = [...productRevenue.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const matchedProducts = [...productRevenue.entries()].filter(([name]) => name.toLowerCase().includes(productSearch.trim().toLowerCase())).sort((a, b) => b[1].revenue - a[1].revenue);
+  const topProducts = matchedProducts.slice(0, productSearch.trim() ? matchedProducts.length : 8);
   const customerRevenue = new Map<string, { id: string; name: string; orders: number; lifetimeValue: number }>();
   for (const order of paidOrders) {
     const key = order.customerId || order.customerEmail || order.customerName;
@@ -78,7 +81,7 @@ export default function AdminAnalyticsPage() {
     { section: "Business totals", metric: "Average revenue / order", value: avgOrder, detail: "Delivery excluded" },
     { section: "Business totals", metric: "Purchasing customers", value: activeCustomerCount, detail: rangeLabel },
     { section: "Business totals", metric: "Inventory retail value", value: inventoryRetailValue, detail: "Retail price x stock" },
-    ...topProducts.map(([name, value]) => ({ section: "Top products", metric: name, value, detail: "Paid order revenue" })),
+    ...topProducts.map(([name, value]) => ({ section: "Top products", metric: name, value: value.revenue, detail: `${value.quantity} unit(s) sold · paid order revenue` })),
     ...topCustomers.map((customer) => ({ section: "Customer value", metric: customer.name, value: customer.lifetimeValue, detail: `${customer.orders} orders` })),
   ];
 
@@ -100,7 +103,7 @@ export default function AdminAnalyticsPage() {
       <div className="px-4 pt-4 text-[10px] text-[var(--muted)] sm:px-6 lg:px-10">Store filtering applies to sales, customers and inventory metrics below. Website/GA4 traffic remains company-wide because web sessions are not tied to a physical store.</div>
       <WebAnalyticsPanel fromDate={fromDate} toDate={toDate} />
       <section className="mt-4 grid grid-cols-1 border-y hairline sm:grid-cols-2 xl:grid-cols-5"><MetricCard index="01" label="Business revenue" value={formatKes(revenue)} detail="Paid product revenue; delivery payables excluded." icon={CircleDollarSign} /><MetricCard index="02" label="Delivery payables" value={formatKes(deliveryPayables)} detail="Delivery money collected on behalf of fulfilment." icon={ShoppingBag} /><MetricCard index="03" label="Money In" value={formatKes(moneyIn)} detail="Total customer payments including delivery payables." icon={CircleDollarSign} /><MetricCard index="04" label="Purchasing customers" value={String(activeCustomerCount)} detail={`Customers with paid orders · ${rangeLabel}.`} icon={Users} /><MetricCard index="05" label="Inventory retail value" value={formatKes(inventoryRetailValue)} detail="Retail price multiplied by current on-hand stock." icon={Boxes} /></section>
-      <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2 lg:p-8"><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><div className="flex items-center gap-3"><BarChart3 size={18} /><div><p className="kicker text-[var(--muted)]">Top products</p><p className="mt-1 text-xs text-[var(--muted)]">Based on paid order revenue.</p></div></div><div className="mt-5 divide-y hairline">{topProducts.length ? topProducts.map(([name, value], index) => <div key={name} className="flex items-center justify-between gap-4 py-3"><div className="flex items-center gap-3"><span className="text-[10px] text-[var(--muted)]">{String(index + 1).padStart(2, "0")}</span><span className="text-sm font-medium">{name}</span></div><span className="text-sm font-semibold">{formatKes(value)}</span></div>) : <p className="py-10 text-center text-sm text-[var(--muted)]">No paid order data yet.</p>}</div></section><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><p className="kicker text-[var(--muted)]">Customer value</p><div className="mt-5 divide-y hairline">{topCustomers.map((customer) => <div key={customer.id} className="flex items-center justify-between gap-4 py-3"><div><p className="text-sm font-medium">{customer.name}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{customer.orders} orders</p></div><span className="text-sm font-semibold">{formatKes(customer.lifetimeValue)}</span></div>)}</div></section></div>
+      <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-2 lg:p-8"><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><div className="flex items-center gap-3"><BarChart3 size={18} /><div><p className="kicker text-[var(--muted)]">Top products</p><p className="mt-1 text-xs text-[var(--muted)]">Based on paid order revenue and quantity sold.</p></div></div><label className="mt-4 grid gap-1.5 text-xs font-semibold">Filter by product<input type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Search product name" aria-label="Filter top products by product name" className="min-h-11 w-full rounded-lg border hairline bg-white px-3 text-sm font-normal" /></label><p className="mt-2 text-xs text-[var(--muted)]">Showing {topProducts.length} of {productRevenue.size} products. Quantities and revenue reflect the selected store and date range.</p><div className="mt-4 divide-y hairline">{topProducts.length ? topProducts.map(([name, value], index) => <div key={name} className="flex items-center justify-between gap-4 py-3"><div className="flex items-center gap-3"><span className="text-[10px] text-[var(--muted)]">{String(index + 1).padStart(2, "0")}</span><span className="text-sm font-medium">{name}</span></div><div className="text-right"><span className="block text-sm font-semibold">{formatKes(value.revenue)}</span><span className="mt-1 block text-xs text-[var(--muted)]">Qty sold: {value.quantity.toLocaleString("en-KE")}</span></div></div>) : <p className="py-10 text-center text-sm text-[var(--muted)]">No paid order data yet.</p>}</div></section><section className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6"><p className="kicker text-[var(--muted)]">Customer value</p><div className="mt-5 divide-y hairline">{topCustomers.map((customer) => <div key={customer.id} className="flex items-center justify-between gap-4 py-3"><div><p className="text-sm font-medium">{customer.name}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{customer.orders} orders</p></div><span className="text-sm font-semibold">{formatKes(customer.lifetimeValue)}</span></div>)}</div></section></div>
     </div>
   );
 }

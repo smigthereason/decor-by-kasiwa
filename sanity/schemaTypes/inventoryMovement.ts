@@ -18,6 +18,8 @@ export const inventoryMovement = defineType({
     defineField({ name: "correctedMovementValue", title: "Corrected Movement Value", type: "number" }),
     defineField({ name: "correctionReason", title: "Latest Correction Reason", type: "text" }),
     defineField({ name: "correctedAt", title: "Last Corrected At", type: "datetime" }),
+    defineField({ name: "voidedAt", title: "Voided At", type: "datetime" }),
+    defineField({ name: "voidedBy", title: "Voided By", type: "string" }),
     defineField({ name: "correctedBy", title: "Last Corrected By", type: "string" }),
     defineField({ name: "stockBefore", title: "Stock Before", type: "number" }),
     defineField({ name: "stockAfter", title: "Stock After", type: "number" }),

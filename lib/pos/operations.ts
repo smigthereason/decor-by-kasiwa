@@ -141,7 +141,7 @@ export async function listSalesHistory({ limit = 100, channel, cashier, query, f
       && (!defined($channel) || coalesce(salesChannel,"ONLINE") == $channel)
       && (!defined($cashier) || soldByName == $cashier)
       && ${storeOrderPredicate}
-      && (!defined($searchPattern) || [orderNumber,receiptNumber,customerName,customerPhone,customerEmail,providerReceiptNumber,paymentReference] match $searchPattern)
+      && (!defined($searchPattern) || ([orderNumber,receiptNumber,customerName,customerPhone,customerEmail,providerReceiptNumber,paymentReference] match $searchPattern || lineItems[].name match $searchPattern))
       && (!defined($start) || coalesce(soldAt,paidAt,createdAt) >= $start)
       && (!defined($end) || coalesce(soldAt,paidAt,createdAt) <= $end)
     ] | order(coalesce(soldAt,paidAt,createdAt) desc)[0...$limit]${historyProjection}`,
@@ -489,6 +489,8 @@ type RefundInput = {
   reason: string;
   restock: boolean;
   cancelOutstanding?: boolean;
+  manualRefundConfirmed?: boolean;
+  manualRefundReference?: string;
   items?: Array<{ productId: string; variantId?: string; quantity: number }>;
 };
 
@@ -530,6 +532,21 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
   const availableRefund = Math.max(0, Number(order.amountPaid || 0) - alreadyRefunded);
   const refundAmount = Number(input.refundAmount);
   if (!Number.isFinite(refundAmount) || refundAmount < 0 || refundAmount > availableRefund) throw new Error(`Refund amount must be between KES 0 and KES ${availableRefund.toLocaleString("en-KE")}.`);
+  // Recording a non-Paystack refund does not transfer money. Require evidence that
+  // payment was completed externally before changing financial reports.
+  const manualRefund = refundAmount > 0 && order.paymentProvider?.toLowerCase() !== "paystack";
+  const manualRefundReference = cleanText(input.manualRefundReference);
+  if (manualRefund && (!input.manualRefundConfirmed || manualRefundReference.length < 4)) {
+    throw new Error("Complete the refund outside the system and provide its receipt/reference before recording it.");
+  }
+  if (refundAmount === 0 && !input.restock && !input.cancelOutstanding) throw new Error("No refund, return, or balance adjustment was requested.");
+  if (manualRefund) {
+    const alreadyRecorded = await serverClient.fetch<number>(
+      `count(*[_type == "returnTransaction" && manualRefundReference == $reference])`,
+      { reference: manualRefundReference }, { cache: "no-store" },
+    );
+    if (alreadyRecorded > 0) throw new Error("This external refund reference has already been recorded. Verify the existing refund before proceeding.");
+  }
 
   const requestedItems = Array.isArray(input.items) && input.items.length > 0
     ? input.items.map((row) => ({ productId: cleanText(row.productId), variantId: cleanText(row.variantId) || undefined, quantity: Math.max(0, Math.floor(Number(row.quantity || 0))) })).filter((row) => row.productId && row.quantity > 0)
@@ -616,6 +633,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     _id: returnId, _type: "returnTransaction", returnNumber,
     order: { _type: "reference", _ref: order.id }, orderNumber: order.orderNumber, reason, refundAmount,
     restock: Boolean(input.restock), status: providerStatus, providerRefundId: providerRefundId || undefined,
+    manualRefundReference: manualRefund ? manualRefundReference : undefined,
     items: requestedItems.map((row, index) => {
       const soldLine = order.lineItems.find((line) => line.productId === row.productId && (!row.variantId || line.variantId === row.variantId));
       return { _key: `${index}-${safeId(row.productId)}`, _type: "object", product: { _type: "reference", _ref: row.productId }, productId: row.productId, name: soldLine?.name || "Product", variantId: row.variantId, quantity: row.quantity, unitPrice: Number(soldLine?.unitPrice || 0), unitCost: typeof soldLine?.unitCost === "number" ? soldLine.unitCost : undefined };
@@ -627,7 +645,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     _id: `auditEvent.${hashId(`return|${returnId}`)}`, _type: "auditEvent", eventNumber: `AUD-${hashId(`return|${returnId}`).slice(0, 12).toUpperCase()}`,
     eventType: "RETURN_REFUND_PROCESSED", entityType: "commerceOrder", entityId: order.id, entityLabel: order.orderNumber,
     actor: { _type: "reference", _ref: seller.id }, actorName: seller.name, actorRole: seller.role,
-    detail: `${returnNumber} · refund KES ${refundAmount.toLocaleString("en-KE")} · ${input.restock ? "restocked" : "not restocked"} · ${reason}`, createdAt: now,
+    detail: `${returnNumber} · refund KES ${refundAmount.toLocaleString("en-KE")} · ${input.restock ? "restocked" : "not restocked"} · ${manualRefund ? `external reference ${manualRefundReference} · ` : ""}${reason}`, createdAt: now,
   });
   if (refundAmount > 0) {
     const paymentRef = `${order.orderNumber}-REF-${hashId(key).slice(0, 8)}`;

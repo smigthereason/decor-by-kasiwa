@@ -15,6 +15,7 @@ export const inventoryMovementCorrection = defineType({
     defineField({ name: "previousQuantity", title: "Before (units)", type: "number" }),
     defineField({ name: "correctedQuantity", title: "After (units)", type: "number" }),
     defineField({ name: "difference", title: "Adjustment (units)", type: "number" }),
+    defineField({ name: "correctionType", title: "Correction Type", type: "string", options: { list: [{ title: "Edit quantity", value: "EDIT" }, { title: "Void movement", value: "VOID" }] } }),
     defineField({ name: "companyOnHandAfter", title: "Company On Hand After", type: "number" }),
     defineField({ name: "incomingAfter", title: "Incoming After", type: "number" }),
     defineField({ name: "reason", title: "Correction Reason", type: "text" }),

@@ -60,6 +60,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [historyChannel, setHistoryChannel] = useState<"" | "POS" | "ONLINE">("");
   const [historyCashier, setHistoryCashier] = useState("");
   const [historySearch, setHistorySearch] = useState("");
+  const [reportProductSearch, setReportProductSearch] = useState("");
   const [appliedHistory, setAppliedHistory] = useState({ from: "", to: "", channel: "", cashier: "", search: "" });
   const [receivables, setReceivables] = useState<HistoryOrder[]>([]);
   const [report, setReport] = useState<Report | null>(null);
@@ -80,6 +81,16 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [reconciliationProcessedBy, setReconciliationProcessedBy] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [refundOrder, setRefundOrder] = useState<HistoryOrder | null>(null);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundRestock, setRefundRestock] = useState(false);
+  const [refundQuantities, setRefundQuantities] = useState<Record<string, string>>({});
+  const [refundCancelOutstanding, setRefundCancelOutstanding] = useState(false);
+  const [refundManualReference, setRefundManualReference] = useState("");
+  const [refundManualConfirmed, setRefundManualConfirmed] = useState(false);
+  const [refundSaving, setRefundSaving] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
   const [expenseForm, setExpenseForm] = useState({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "", storeLocationId: "" });
 
   useEffect(() => {
@@ -149,6 +160,22 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const reconciliationStatuses = useMemo(() => [...new Set(payments.map((payment) => payment.status).filter(Boolean))].sort(), [payments]);
   const ledgerAccountSuggestions = useMemo(() => [...new Set(expenses.map((expense) => expense.ledgerAccount.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en-KE")), [expenses]);
   const reconciliationProcessors = useMemo(() => [...new Set(payments.map((payment) => payment.processedByName).filter((value): value is string => Boolean(value)))].sort(), [payments]);
+
+  const filteredReportProducts = useMemo(() => {
+    const term = reportProductSearch.trim().toLocaleLowerCase();
+    return (report?.byProduct || []).filter((product) => !term || product.name.toLocaleLowerCase().includes(term));
+  }, [report?.byProduct, reportProductSearch]);
+
+  const refundLines = useMemo(() => {
+    const byKey = new Map<string, { key: string; productId: string; variantId?: string; name: string; quantity: number }>();
+    for (const line of refundOrder?.lineItems || []) {
+      const key = `${line.productId}|${line.variantId || ""}`;
+      const existing = byKey.get(key);
+      if (existing) existing.quantity += Number(line.quantity || 0);
+      else byKey.set(key, { key, productId: line.productId, variantId: line.variantId, name: line.name, quantity: Number(line.quantity || 0) });
+    }
+    return [...byKey.values()];
+  }, [refundOrder]);
 
   const relatedPaidAttempts = useMemo(() => {
     const normalizePhone = (value?: string) => (value || "").replace(/\D/g, "").slice(-9);
@@ -268,21 +295,51 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     setAppliedReportTo("");
   }
 
-  async function processRefund(order: HistoryOrder) {
+  function openRefund(order: HistoryOrder) {
     if (!manager) return;
-    const available = Math.max(0, order.amountPaid - order.refundedAmount);
-    const raw = window.prompt(`Refundable amount: ${formatMoney(available)}. Enter refund amount (0 for return-only):`, String(available));
-    if (raw === null) return;
-    const refundAmount = Number(raw);
-    const reason = window.prompt("Reason for return/refund:", "Customer return")?.trim();
-    if (!reason) return;
-    const restock = window.confirm("Restock all items from this order? Select Cancel to record refund without restocking.");
-    const cancelOutstanding = order.balanceDue > 0 ? window.confirm("Clear the remaining outstanding balance as part of this return?") : false;
-    const response = await fetch("/api/backoffice/pos/refunds", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: order.id, refundAmount, reason, restock, cancelOutstanding }) });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.message || "Unable to process return/refund.");
-    setMessage(`${payload.returnNumber || "Return"} recorded successfully.`);
-    await load("history");
+    setMessage(null);
+    setRefundOrder(order);
+    setRefundError(null);
+    setRefundAmount(String(Math.max(0, order.amountPaid - order.refundedAmount)));
+    setRefundReason("");
+    setRefundRestock(false);
+    setRefundQuantities({});
+    setRefundCancelOutstanding(false);
+    setRefundManualReference("");
+    setRefundManualConfirmed(false);
+  }
+
+  async function processRefund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!manager || !refundOrder || refundSaving) return;
+    const amount = Number(refundAmount);
+    const maximum = Math.max(0, refundOrder.amountPaid - refundOrder.refundedAmount);
+    if (!Number.isFinite(amount) || amount < 0 || amount > maximum) return setRefundError(`Refund amount must be between KES 0 and ${formatMoney(maximum)}.`);
+    if (!refundReason.trim()) return setRefundError("Provide a reason for this return or refund.");
+    const items = refundRestock ? refundLines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: Number(refundQuantities[line.key] || 0) })).filter((line) => Number.isSafeInteger(line.quantity) && line.quantity > 0) : [];
+    if (refundRestock && (items.length === 0 || refundLines.some((line) => Number(refundQuantities[line.key] || 0) > line.quantity))) return setRefundError("Choose a valid returned quantity for at least one item.");
+    if (amount === 0 && items.length === 0 && !refundCancelOutstanding) return setRefundError("Nothing to refund, return or clear.");
+    const manual = amount > 0 && refundOrder.paymentProvider?.toLowerCase() !== "paystack";
+    if (manual && (!refundManualConfirmed || refundManualReference.trim().length < 4)) return setRefundError("Confirm the external refund was actually paid and enter its payment reference.");
+    setRefundSaving(true);
+    setRefundError(null);
+    try {
+      const response = await fetch("/api/backoffice/pos/refunds", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: refundOrder.id, refundAmount: amount, reason: refundReason.trim(), restock: refundRestock,
+          cancelOutstanding: refundCancelOutstanding, items, manualRefundConfirmed: manual ? refundManualConfirmed : undefined,
+          manualRefundReference: manual ? refundManualReference.trim() : undefined }),
+      });
+      const payload = await response.json() as { message?: string; returnNumber?: string; providerStatus?: string };
+      if (!response.ok) throw new Error(payload.message || "Unable to record the return/refund.");
+      setRefundOrder(null);
+      await load("history");
+      setMessage(`${payload.returnNumber || "Return"} recorded. ${payload.providerStatus === "pending_provider" ? "Paystack refund is pending provider confirmation." : "Review the refund record in the audit trail."}`);
+    } catch (error) {
+      setRefundError(error instanceof Error ? error.message : "Unable to record the return/refund.");
+    } finally {
+      setRefundSaving(false);
+    }
   }
 
   async function reconcilePayment(payment: Payment) {
@@ -354,7 +411,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
           {section:"BALANCES",name:"Outstanding receivables",orders:"",quantity:"",amount:report.outstandingReceivables},
           {section:"BALANCES",name:"Refunds",orders:"",quantity:"",amount:report.refunds},
           ...report.byDate.map((row)=>({section:"BY DATE",name:row.date,orders:row.orders,quantity:"",amount:row.revenue})),
-          ...report.byProduct.map((row)=>({section:"BY PRODUCT",name:row.name,orders:"",quantity:row.quantity,amount:row.revenue})),
+          ...filteredReportProducts.map((row)=>({section:"BY PRODUCT",name:row.name,orders:"",quantity:row.quantity,amount:row.revenue})),
           ...report.byCashier.map((row)=>({section:"BY CASHIER",name:row.name,orders:row.orders,quantity:"",amount:row.revenue})),
         ],
       };
@@ -363,7 +420,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     if (tab === "expenses") return { title:`Expenditure and Petty Cash - ${selectedStore?.name || "All stores"}`, columns:[{key:"date",label:"Date"},{key:"store",label:"Store"},{key:"ledger",label:"Ledger Account"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}], rows:expenses.map((expense)=>({date:expense.expenseDate,store:expense.storeLocationName||"Company-wide",ledger:expense.ledgerAccount,type:expense.expenseType,payee:expense.staffName||"—",description:expense.description,amount:expense.amount,method:expense.paymentMethod||"—",recordedBy:expense.createdByName||"—"})) };
     if (tab === "reconciliation") return { title:`Payment Reconciliation - ${selectedStore?.name || "All stores"}`, columns:[{key:"time",label:"Time"},{key:"store",label:"Store"},{key:"reference",label:"Reference"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"provider",label:"Provider"},{key:"channel",label:"Channel"},{key:"status",label:"Status"},{key:"amount",label:"Amount (KES)"},{key:"providerRef",label:"Provider Transaction"},{key:"processedBy",label:"Processed By"},{key:"relatedPaid",label:"Possible Paid Retry"},{key:"inventoryReview",label:"Inventory Review"}], rows:filteredPayments.map((payment)=>({time:payment.createdAt,store:payment.storeLocationName||"Company / online",reference:payment.reference,order:payment.orderNumber||"—",customer:payment.customerName||"—",phone:payment.customerPhone||"—",provider:payment.provider||"—",channel:payment.channel||"—",status:payment.status,amount:payment.amount,providerRef:payment.providerReceiptNumber||payment.providerTransactionId||"—",processedBy:payment.processedByName||"—",relatedPaid:relatedPaidAttempts.get(payment.reference)?.orderNumber||"—",inventoryReview:payment.inventoryReviewRequired ? payment.inventoryReconciliationReason || "Required" : "—"})) };
     return { title:"POS Audit Trail", columns:[{key:"time",label:"Time"},{key:"event",label:"Event"},{key:"entity",label:"Entity"},{key:"actor",label:"Actor"},{key:"role",label:"Role"},{key:"detail",label:"Detail"}], rows:audit.map((item)=>({time:item.createdAt,event:item.eventType,entity:item.entityLabel||"—",actor:item.actorName||"System",role:item.actorRole||"—",detail:item.detail||"—"})) };
-  }, [audit, expenses, filteredPayments, orders, receivables, relatedPaidAttempts, report, selectedStore, tab]);
+  }, [audit, expenses, filteredPayments, filteredReportProducts, orders, receivables, relatedPaidAttempts, report, selectedStore, tab]);
 
   async function submitExpense(event: FormEvent) {
     event.preventDefault();
@@ -401,7 +458,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
         {tab === "history" && <div className="space-y-4">
           <div className="rounded-2xl border hairline bg-[var(--paper)] p-4 sm:p-5">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1.4fr)_1fr_1fr_150px_200px_auto] lg:items-end">
-              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Search receipt / order / customer<div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={historySearch} onChange={(event)=>setHistorySearch(event.target.value)} onKeyDown={(event)=>{ if(event.key === "Enter") applyHistoryFilters(); }} placeholder="Order, receipt, name or phone" className="min-h-10 w-full rounded-lg border hairline bg-[var(--paper)] py-2 pl-9 pr-3 text-xs font-normal normal-case text-[var(--ink)]" /></div></label>
+              <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Search sale or product<div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={historySearch} onChange={(event)=>setHistorySearch(event.target.value)} onKeyDown={(event)=>{ if(event.key === "Enter") applyHistoryFilters(); }} placeholder="Product name, receipt, order, customer or phone" className="min-h-10 w-full rounded-lg border hairline bg-[var(--paper)] py-2 pl-9 pr-3 text-xs font-normal normal-case text-[var(--ink)]" /></div></label>
               <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={historyFrom} onChange={(event)=>setHistoryFrom(event.target.value)} className="min-h-10 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
               <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={historyTo} onChange={(event)=>setHistoryTo(event.target.value)} className="min-h-10 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
               <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Channel<span className="relative"><select value={historyChannel} onChange={(event)=>setHistoryChannel(event.target.value as ""|"POS"|"ONLINE")} className="min-h-10 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-xs font-normal normal-case text-[var(--ink)]"><option value="">All channels</option><option value="POS">POS</option><option value="ONLINE">Online</option></select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span></label>
@@ -414,11 +471,11 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
               <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span></div>
               <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs"><DataPoint label="Store" value={order.storeLocationName || "Company / online"} /><DataPoint label="Customer" value={`${order.customerName} · ${order.customerPhone}`} /><DataPoint label="Channel" value={`${order.salesChannel} · ${order.paymentChannel || "—"}`} /><DataPoint label="Cashier" value={order.soldByName || "—"} /><DataPoint label="Revenue" value={formatMoney(Math.max(0, order.subtotal - order.discountAmount))} /><DataPoint label="Delivery" value={order.deliveryFee > 0 ? `${formatMoney(order.deliveryFee)} · ${order.deliveryLocation}` : "—"} /><DataPoint label="Money In" value={formatMoney(order.total)} /></div>
               {order.refundedAmount > 0 && <p className="mt-3 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}
-              <div className="mt-4 flex flex-wrap gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="inline-flex min-h-10 items-center rounded-full border hairline px-4 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => void processRefund(order)} className="inline-flex min-h-10 items-center gap-1 rounded-full border hairline px-4 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return</button>}</div>
+              <div className="mt-4 flex flex-wrap gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="inline-flex min-h-10 items-center rounded-full border hairline px-4 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex min-h-10 items-center gap-1 rounded-full border hairline px-4 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}</div>
             </article>)}
             {orders.length === 0 && <p className="rounded-2xl border hairline bg-[var(--paper)] p-8 text-center text-sm text-[var(--muted)]">No sales match the selected filters.</p>}
           </div>
-          <div className="hidden overflow-hidden rounded-2xl border hairline bg-[var(--paper)] md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs"><thead className="bg-[var(--paper-2)] text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]"><tr><th className="p-4">Sale</th><th className="p-4">Store</th><th className="p-4">Customer</th><th className="p-4">Channel</th><th className="p-4">Cashier</th><th className="p-4">Revenue</th><th className="p-4">Delivery</th><th className="p-4">Money In</th><th className="p-4">Status</th><th className="p-4">Actions</th></tr></thead><tbody className="divide-y hairline">{orders.map((order) => <tr key={order.id}><td className="p-4"><p className="font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></td><td className="p-4">{order.storeLocationName || "Company / online"}</td><td className="p-4"><p className="font-medium">{order.customerName}</p><p className="text-[10px] text-[var(--muted)]">{order.customerPhone}</p></td><td className="p-4">{order.salesChannel}<br/><span className="text-[10px] text-[var(--muted)]">{order.paymentChannel || "—"}</span></td><td className="p-4">{order.soldByName}</td><td className="p-4 font-semibold">{formatMoney(Math.max(0,order.subtotal-order.discountAmount))}</td><td className="p-4">{order.deliveryFee > 0 ? <><p>{formatMoney(order.deliveryFee)}</p><p className="text-[10px] text-[var(--muted)]">{order.deliveryLocation}</p></> : "—"}</td><td className="p-4 font-semibold">{formatMoney(order.total)}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span>{order.refundedAmount > 0 && <p className="mt-2 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}</td><td className="p-4"><div className="flex gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => void processRefund(order)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return</button>}</div></td></tr>)}{orders.length === 0 && <tr><td colSpan={10} className="p-10 text-center text-[var(--muted)]">No sales match the selected filters.</td></tr>}</tbody></table></div></div>
+          <div className="hidden overflow-hidden rounded-2xl border hairline bg-[var(--paper)] md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs"><thead className="bg-[var(--paper-2)] text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]"><tr><th className="p-4">Sale</th><th className="p-4">Store</th><th className="p-4">Customer</th><th className="p-4">Channel</th><th className="p-4">Cashier</th><th className="p-4">Revenue</th><th className="p-4">Delivery</th><th className="p-4">Money In</th><th className="p-4">Status</th><th className="p-4">Actions</th></tr></thead><tbody className="divide-y hairline">{orders.map((order) => <tr key={order.id}><td className="p-4"><p className="font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></td><td className="p-4">{order.storeLocationName || "Company / online"}</td><td className="p-4"><p className="font-medium">{order.customerName}</p><p className="text-[10px] text-[var(--muted)]">{order.customerPhone}</p></td><td className="p-4">{order.salesChannel}<br/><span className="text-[10px] text-[var(--muted)]">{order.paymentChannel || "—"}</span></td><td className="p-4">{order.soldByName}</td><td className="p-4 font-semibold">{formatMoney(Math.max(0,order.subtotal-order.discountAmount))}</td><td className="p-4">{order.deliveryFee > 0 ? <><p>{formatMoney(order.deliveryFee)}</p><p className="text-[10px] text-[var(--muted)]">{order.deliveryLocation}</p></> : "—"}</td><td className="p-4 font-semibold">{formatMoney(order.total)}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span>{order.refundedAmount > 0 && <p className="mt-2 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}</td><td className="p-4"><div className="flex gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}</div></td></tr>)}{orders.length === 0 && <tr><td colSpan={10} className="p-10 text-center text-[var(--muted)]">No sales match the selected filters.</td></tr>}</tbody></table></div></div>
         </div>}
 
         {tab === "reports" && report && <div className="space-y-6">
@@ -436,7 +493,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
           ["Business revenue", formatMoney(report.totalSales)],["Delivery payables", formatMoney(report.deliveryPayables)],["Money In", formatMoney(report.moneyIn)],["Total orders", String(report.orders)],["Average revenue / order", formatMoney(report.orders ? report.totalSales/report.orders : 0)],["Online revenue", formatMoney(report.onlineSales)],["POS revenue", formatMoney(report.posSales)],["Manual payment money in", formatMoney(report.manualPayments)],["M-PESA money in", formatMoney(report.mpesaPayments)],["Paystack money in", formatMoney(report.paystackPayments)],["Receivables", formatMoney(report.outstandingReceivables)],["Refunds", formatMoney(report.refunds)]
-        ].map(([label,value]) => <div key={String(label)} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><p className="text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>)}</div><ProfitLossStatement report={report}/><div className="grid gap-5 lg:grid-cols-3"><ReportTable title="Sales by date" headers={["Date","Orders","Revenue","Delivery","Money In"]} rows={report.byDate.map((row)=>[row.date,String(row.orders),formatMoney(row.revenue),formatMoney(row.deliveryPayables),formatMoney(row.moneyIn)])} totalRow={["TOTAL",String(report.byDate.reduce((sum,row)=>sum+row.orders,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.revenue,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.deliveryPayables,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.moneyIn,0))]}/><ReportTable title="Sales by product" headers={["Product","Qty","Revenue"]} rows={report.byProduct.map((row)=>[row.name,String(row.quantity),formatMoney(row.revenue)])} totalRow={["TOTAL",String(report.byProduct.reduce((sum,row)=>sum+row.quantity,0)),formatMoney(report.byProduct.reduce((sum,row)=>sum+row.revenue,0))]}/><ReportTable title="Sales by cashier" headers={["Cashier","Orders","Revenue"]} rows={report.byCashier.map((row)=>[row.name,String(row.orders),formatMoney(row.revenue)])} totalRow={["TOTAL",String(report.byCashier.reduce((sum,row)=>sum+row.orders,0)),formatMoney(report.byCashier.reduce((sum,row)=>sum+row.revenue,0))]}/></div><p className="text-xs text-[var(--muted)]">Pending payments: {report.pendingPayments} · Failed payments: {report.failedPayments} · Total orders in period: {report.orders}</p></div>}
+        ].map(([label,value]) => <div key={String(label)} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><p className="text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>)}</div><ProfitLossStatement report={report}/><div className="grid gap-5 lg:grid-cols-3"><ReportTable title="Sales by date" headers={["Date","Orders","Revenue","Delivery","Money In"]} rows={report.byDate.map((row)=>[row.date,String(row.orders),formatMoney(row.revenue),formatMoney(row.deliveryPayables),formatMoney(row.moneyIn)])} totalRow={["TOTAL",String(report.byDate.reduce((sum,row)=>sum+row.orders,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.revenue,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.deliveryPayables,0)),formatMoney(report.byDate.reduce((sum,row)=>sum+row.moneyIn,0))]}/><div className="min-w-0 rounded-2xl border hairline bg-[var(--paper)] p-3"><label className="mb-2 grid gap-1 text-[10px] font-semibold uppercase text-[var(--muted)]" htmlFor="sales-product-filter">Find product in sales report<div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input id="sales-product-filter" value={reportProductSearch} onChange={(event)=>setReportProductSearch(event.target.value)} placeholder="Search product by name" className="min-h-10 w-full rounded-lg border hairline bg-white pl-9 pr-3 text-xs font-normal normal-case text-[var(--ink)]" /></div></label><p className="mb-2 text-[10px] text-[var(--muted)]">Showing {filteredReportProducts.length} of {report.byProduct.length} products. Totals below reflect matched products only.</p><ReportTable title="Sales by product" headers={["Product","Qty","Revenue"]} rows={filteredReportProducts.map((row)=>[row.name,String(row.quantity),formatMoney(row.revenue)])} totalRow={["TOTAL",String(filteredReportProducts.reduce((sum,row)=>sum+row.quantity,0)),formatMoney(filteredReportProducts.reduce((sum,row)=>sum+row.revenue,0))]}/></div><ReportTable title="Sales by cashier" headers={["Cashier","Orders","Revenue"]} rows={report.byCashier.map((row)=>[row.name,String(row.orders),formatMoney(row.revenue)])} totalRow={["TOTAL",String(report.byCashier.reduce((sum,row)=>sum+row.orders,0)),formatMoney(report.byCashier.reduce((sum,row)=>sum+row.revenue,0))]}/></div><p className="text-xs text-[var(--muted)]">Pending payments: {report.pendingPayments} · Failed payments: {report.failedPayments} · Total orders in period: {report.orders}</p></div>}
 
         {tab === "receivables" && <div className="grid gap-3">{receivables.map((order) => <div key={order.id} className="flex flex-col gap-4 rounded-2xl border hairline bg-[var(--paper)] p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{order.customerName}</p><p className="mt-1 text-xs text-[var(--muted)]">{order.customerPhone} · {order.orderNumber}{order.storeLocationName ? ` · ${order.storeLocationName}` : ""}</p></div><div className="sm:text-right"><p className="text-[10px] uppercase text-[var(--muted)]">Outstanding</p><p className="mt-1 text-xl font-semibold text-amber-700">{formatMoney(order.balanceDue)}</p><p className="mt-2 text-[10px] text-[var(--muted)]">Historical outstanding balance. New POS sales are cashless.</p></div></div>)}{receivables.length === 0 && <p className="rounded-2xl border hairline bg-[var(--paper)] p-10 text-center text-sm text-[var(--muted)]">No outstanding receivables.</p>}</div>}
 
@@ -491,6 +548,24 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
         </div>}
         {tab === "audit" && manager && <SimpleTable headers={["Time","Event","Entity","Actor","Role","Detail"]} rows={audit.map((a)=>[new Date(a.createdAt).toLocaleString("en-KE"),a.eventType.replaceAll("_"," "),a.entityLabel||"—",a.actorName||"System",a.actorRole||"—",a.detail||"—"])} />}
       </main>
+      {refundOrder && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4" role="presentation" onMouseDown={(event)=>{ if(event.target === event.currentTarget && !refundSaving) setRefundOrder(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="refund-dialog-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-[var(--paper)] p-5 shadow-xl sm:p-7">
+          <h2 id="refund-dialog-title" className="text-xl font-semibold">Return / refund · {refundOrder.orderNumber}</h2>
+          <p className="mt-2 text-xs text-[var(--muted)]">Customer: {refundOrder.customerName} · Payment: {refundOrder.paymentProvider || refundOrder.paymentChannel || "manual"}</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Paid {formatMoney(refundOrder.amountPaid)} · Already refunded {formatMoney(refundOrder.refundedAmount)} · Refundable {formatMoney(Math.max(0,refundOrder.amountPaid-refundOrder.refundedAmount))}</p>
+          <form onSubmit={(event)=>void processRefund(event)} className="mt-5 grid gap-4">
+            <label className="grid gap-1 text-xs font-semibold">Refund amount (KES)<input type="number" min="0" step="0.01" max={Math.max(0,refundOrder.amountPaid-refundOrder.refundedAmount)} value={refundAmount} onChange={(event)=>setRefundAmount(event.target.value)} required className="min-h-11 rounded-lg border hairline bg-white px-3 font-normal" /></label>
+            <label className="grid gap-1 text-xs font-semibold">Reason<textarea value={refundReason} onChange={(event)=>setRefundReason(event.target.value)} required rows={2} placeholder="Reason and condition of returned items" className="rounded-lg border hairline bg-white p-3 font-normal" /></label>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundRestock} onChange={(event)=>setRefundRestock(event.target.checked)} className="mt-1"/><span>Return physical items to stock (select quantities below). Do not enable for lost, damaged or unreturned items.</span></label>
+            {refundRestock && <div className="grid gap-2 rounded-xl border hairline p-3"><p className="text-xs font-semibold">Quantities physically received</p>{refundLines.map((line)=><label key={line.key} className="flex items-center justify-between gap-3 text-xs"><span>{line.name} {line.variantId ? `(${line.variantId})` : ""} · sold {line.quantity}</span><input type="number" min="0" max={line.quantity} step="1" value={refundQuantities[line.key] || "0"} onChange={(event)=>setRefundQuantities((current)=>({...current,[line.key]:event.target.value}))} className="w-20 rounded-lg border hairline bg-white p-2 text-right" /></label>)}</div>}
+            {refundOrder.balanceDue > 0 && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundCancelOutstanding} onChange={(event)=>setRefundCancelOutstanding(event.target.checked)} className="mt-1"/><span>Cancel remaining unpaid balance ({formatMoney(refundOrder.balanceDue)})</span></label>}
+            {Number(refundAmount) > 0 && refundOrder.paymentProvider?.toLowerCase() !== "paystack" && <div className="grid gap-3 rounded-xl border border-amber-400 bg-amber-50 p-3 text-xs text-amber-950"><p><strong>Manual refund confirmation required.</strong> This app will NOT send money through M-PESA, a bank or cash automatically. First complete the actual refund outside this system, then record its proof here.</p><label className="grid gap-1 font-semibold">External refund reference / receipt<input value={refundManualReference} onChange={(event)=>setRefundManualReference(event.target.value)} placeholder="M-PESA reversal / bank / cash voucher reference" className="min-h-10 rounded-lg border border-amber-300 bg-white px-3 font-normal" /></label><label className="flex gap-2"><input type="checkbox" checked={refundManualConfirmed} onChange={(event)=>setRefundManualConfirmed(event.target.checked)} /><span>I confirm the customer has actually received the refund externally.</span></label></div>}
+            {Number(refundAmount) > 0 && refundOrder.paymentProvider?.toLowerCase() === "paystack" && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-950">Paystack: submitting this form requests a provider refund. If Paystack returns pending, do not treat it as confirmed until the provider settles it.</p>}
+            {refundError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-800">{refundError}</p>}
+            <div className="flex justify-end gap-3 border-t hairline pt-4"><button type="button" onClick={()=>setRefundOrder(null)} disabled={refundSaving} className="min-h-10 rounded-full border hairline px-4 text-xs">Cancel</button><button type="submit" disabled={refundSaving} className="min-h-10 rounded-full bg-[var(--brand-green)] px-5 text-xs font-semibold !text-soft-cream disabled:opacity-50">{refundSaving ? "Recording…" : "Confirm return / refund"}</button></div>
+          </form>
+        </section>
+      </div>}
     </div>
   );
 }

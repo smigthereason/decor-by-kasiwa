@@ -15,6 +15,7 @@ export const returnTransaction = defineType({
       { title: "Completed", value: "completed" }, { title: "Pending Provider Refund", value: "pending_provider" }, { title: "Failed", value: "failed" },
     ] } }),
     defineField({ name: "providerRefundId", title: "Provider Refund ID", type: "string" }),
+    defineField({ name: "manualRefundReference", title: "External Refund Receipt / Reference", type: "string", readOnly: true }),
     defineField({ name: "items", title: "Returned Items", type: "array", of: [defineArrayMember({ type: "object", fields: [
       defineField({ name: "product", title: "Product", type: "reference", to: [{ type: "product" }] }),
       defineField({ name: "productId", title: "Product ID", type: "string" }),

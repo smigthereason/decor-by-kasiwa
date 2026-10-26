@@ -124,7 +124,7 @@ export async function GET(request: Request) {
         lower(coalesce(movementNumber, "")) match $needle || lower(coalesce(note, "")) match $needle ||
         lower(coalesce(actorName, "")) match $needle || lower(coalesce(product->sku, "")) match $needle)
     ] | order(createdAt desc, _id desc)[${offset}...${offset + MOVEMENT_PAGE_SIZE + 1}]{
-      _id,_rev,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,correctedQuantity,correctedAt,correctedBy,correctionReason,stockBefore,stockAfter,
+      _id,_rev,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,correctedQuantity,correctedAt,correctedBy,correctionReason,voidedAt,voidedBy,stockBefore,stockAfter,
       incomingBefore,incomingAfter,sourceLocation,destination,"sourceStoreId":sourceStore._ref,"destinationStoreId":destinationStore._ref,
       unitCost,"movementValue":coalesce(correctedMovementValue,movementValue),actorName,note,createdAt
     }`,
@@ -322,7 +322,7 @@ export async function PATCH(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Only Admin and Store Manager can correct stock movements." }, { status: staff.status });
 
-  let input: { movementId?: string; expectedRevision?: string; quantity?: unknown; reason?: string };
+  let input: { movementId?: string; expectedRevision?: string; quantity?: unknown; reason?: string; voidMovement?: boolean };
   try {
     input = await request.json();
   } catch {
@@ -332,8 +332,9 @@ export async function PATCH(request: Request) {
   const revision = typeof input?.expectedRevision === "string" ? input.expectedRevision : "";
   const newQuantity = Number(input?.quantity);
   const reason = typeof input?.reason === "string" ? input.reason.trim() : "";
+  const isVoid = input?.voidMovement === true;
   if (!movementId.startsWith("inventoryMovement.") || !revision) return NextResponse.json({ message: "Reload the movement and try again." }, { status: 400 });
-  if (!Number.isSafeInteger(newQuantity) || newQuantity < 1) return NextResponse.json({ message: "Corrected quantity must be a positive whole number." }, { status: 400 });
+  if (!Number.isSafeInteger(newQuantity) || (isVoid ? newQuantity !== 0 : newQuantity < 1)) return NextResponse.json({ message: isVoid ? "Voiding requires a zero quantity." : "Corrected quantity must be a positive whole number." }, { status: 400 });
   if (reason.length < 5 || reason.length > 500) return NextResponse.json({ message: "Enter a reason for this correction (5–500 characters)." }, { status: 400 });
 
   try {
@@ -342,14 +343,15 @@ export async function PATCH(request: Request) {
       productId?: string; product?: { _ref?: string }; variantId?: string; variantLabel?: string;
       sourceStore?: { _ref?: string }; destinationStore?: { _ref?: string };
       sourceLocation?: string; quantityChange?: number; correctedQuantity?: number;
-      unitCost?: number; movementNumber?: string;
+      unitCost?: number; movementNumber?: string; voidedAt?: string;
     };
     const original = await serverClient.fetch<EditableMovement | null>(
-      `*[_type == "inventoryMovement" && _id == $movementId][0]{_id,_rev,movementType,productId,product,variantId,variantLabel,sourceStore,destinationStore,sourceLocation,quantityChange,correctedQuantity,unitCost,movementNumber}`,
+      `*[_type == "inventoryMovement" && _id == $movementId][0]{_id,_rev,movementType,productId,product,variantId,variantLabel,sourceStore,destinationStore,sourceLocation,quantityChange,correctedQuantity,unitCost,movementNumber,voidedAt}`,
       { movementId }, { cache: "no-store" },
     );
     if (!original || !["PURCHASE", "RECEIPT", "TRANSFER"].includes(original.movementType)) return NextResponse.json({ message: "Stock movement not found." }, { status: 404 });
     if (original._rev !== revision) return NextResponse.json({ message: "This movement has already changed. Reload before editing." }, { status: 409 });
+    if (original.voidedAt) return NextResponse.json({ message: "This movement has already been voided." }, { status: 409 });
     const oldQuantity = original.correctedQuantity ?? Math.abs(Number(original.quantityChange || 0));
     if (!Number.isSafeInteger(oldQuantity) || oldQuantity < 1) return NextResponse.json({ message: "This historical movement cannot be safely corrected automatically." }, { status: 409 });
     if (oldQuantity === newQuantity) return NextResponse.json({ message: "Quantity is unchanged. Enter a different quantity to record a correction." }, { status: 400 });
@@ -442,6 +444,7 @@ export async function PATCH(request: Request) {
       correctedQuantity: newQuantity,
       correctedMovementValue: Math.max(0, Number(original.unitCost || 0)) * newQuantity,
       correctedAt: now, correctedBy: staff.customerName, correctionReason: reason,
+      ...(isVoid ? { voidedAt: now, voidedBy: staff.customerName } : {}),
     }));
     tx.create({
       _id: correctionId, _type: "inventoryMovementCorrection",
@@ -450,12 +453,13 @@ export async function PATCH(request: Request) {
       movementType: original.movementType,
       variantId: variantId || null, sourceStoreId: sourceId || (fromUnallocated ? UNALLOCATED : null), destinationStoreId: destinationId,
       previousQuantity: oldQuantity, correctedQuantity: newQuantity, difference: delta,
+      correctionType: isVoid ? "VOID" : "EDIT",
       companyOnHandAfter: companyAfter, incomingAfter,
       reason, actor: { _type: "reference", _ref: staff.customerId }, actorName: staff.customerName,
       actorRole: staff.role, createdAt: now,
     });
     await tx.commit();
-    return NextResponse.json({ ok: true, movementId, oldQuantity, newQuantity, incomingAfter, companyOnHandAfter: companyAfter });
+    return NextResponse.json({ ok: true, movementId, oldQuantity, newQuantity, voided: isVoid, incomingAfter, companyOnHandAfter: companyAfter });
   } catch (cause) {
     console.error("Stock movement correction failed:", cause);
     return NextResponse.json({ message: cause instanceof Error && /revision|conflict/i.test(cause.message) ? "Stock changed during correction. Refresh and try again." : "Unable to correct stock. No partial correction was saved." }, { status: 409 });

@@ -24,6 +24,7 @@ type InventoryMovement = {
   movementNumber?: string;
   correctedQuantity?: number;
   correctedAt?: string;
+  voidedAt?: string;
   correctedBy?: string;
   correctionReason?: string;
   movementType: "PURCHASE" | "RECEIPT" | "TRANSFER";
@@ -136,6 +137,7 @@ export default function InventoryManagementPage() {
   const [assignedStoreId, setAssignedStoreId] = useState("");
   const [action, setAction] = useState<InventoryAction | null>(null);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [movementProductSearch, setMovementProductSearch] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [variantSearch, setVariantSearch] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -157,14 +159,19 @@ export default function InventoryManagementPage() {
   const [correctedQuantity, setCorrectedQuantity] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctingMovement, setCorrectingMovement] = useState(false);
+  const [voidMovement, setVoidMovement] = useState(false);
   const appliedMovementFilters = useRef<MovementFilters>(EMPTY_MOVEMENT_FILTERS);
   const movementRequestNumber = useRef(0);
   const initiallyLoadedForRole = useRef("");
   const actionSectionRef = useRef<HTMLElement | null>(null);
 
-  function openAction(nextAction: InventoryAction) {
+  function openAction(nextAction: InventoryAction, productId?: string) {
     if (!canChangeStock) return;
     setAction(nextAction);
+    if (productId) {
+      setSelectedProductId(productId);
+      setMovementProductSearch("");
+    }
     setMessage(null);
     setSelectedVariantId("");
     setVariantSearch("");
@@ -215,6 +222,7 @@ export default function InventoryManagementPage() {
     if (!canCorrectStock || !movement._rev) return;
     setEditingMovement(movement);
     setCorrectedQuantity(String(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))));
+    setVoidMovement(false);
     setCorrectionReason("");
     setMovementError(null);
   }
@@ -222,18 +230,20 @@ export default function InventoryManagementPage() {
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canCorrectStock || !editingMovement?._rev || correctingMovement) return;
+    if (voidMovement && !window.confirm("Void this movement? The inventory ledger will be adjusted, and the original record will remain in the audit trail. This cannot be undone as a simple edit.")) return;
     setCorrectingMovement(true);
     setMovementError(null);
     try {
       await mutateBackoffice("/api/backoffice/inventory/movements", {
         movementId: editingMovement._id,
         expectedRevision: editingMovement._rev,
-        quantity: Number(correctedQuantity),
+        quantity: voidMovement ? 0 : Number(correctedQuantity),
+        voidMovement,
         reason: correctionReason.trim(),
       }, "PATCH");
       setEditingMovement(null);
       await Promise.all([refresh(), loadMovements()]);
-      setMessage("Stock movement corrected. The original entry and the correction are retained in the audit trail.");
+      setMessage(voidMovement ? "Movement voided. Stock balances were adjusted and the audit record was retained." : "Stock movement corrected. The original entry and the correction are retained in the audit trail.");
     } catch (cause) {
       setMovementError(cause instanceof Error ? cause.message : "Unable to correct stock movement.");
     } finally {
@@ -275,13 +285,17 @@ export default function InventoryManagementPage() {
 
   const inventory = data?.products || [];
   const filtered = useMemo(() => inventory.map((item) => inventoryView(item, location)).filter((item) => {
-    if (search) {
-      const term = search.toLowerCase();
-      if (![item.name, item.sku, item.category].some((value) => value.toLowerCase().includes(term))) return false;
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      if (![item.name, item.sku, item.category, ...(item.variants || []).flatMap((variant) => [variant.title, variant.sku, variant.colour, variant.size])].some((value) => String(value || "").toLowerCase().includes(term))) return false;
     }
     return true;
   }), [inventory, location, search]);
 
+  const movementProductOptions = useMemo(() => inventory.filter((item) =>
+    !movementProductSearch.trim() || [item.name, item.sku].some((value) => String(value || "").toLocaleLowerCase().includes(movementProductSearch.trim().toLocaleLowerCase()))
+    || item.id === selectedProductId
+  ), [inventory, movementProductSearch, selectedProductId]);
   const selectedProductRaw = inventory.find((item) => item.id === selectedProductId);
   const selectedProduct = selectedProductRaw ? inventoryView(selectedProductRaw, role === "MANAGER" && assignedStoreId ? assignedStoreId : "All") : undefined;
   const selectedVariant = selectedProduct?.variants?.find((variant) => variant.id === selectedVariantId);
@@ -341,7 +355,7 @@ export default function InventoryManagementPage() {
     {key:"price",label:"Retail Price"},
   ];
 
-  const movementHeadings = ["Date","Movement","Product / variant","Qty","From / To",...(!hideProcurement ? ["Procurement value"] : []),"Recorded by","Reference / note",...(canCorrectStock ? ["Correct"] : [])];
+  const movementHeadings = ["Date","Movement","Product / variant","Qty","From / To",...(!hideProcurement ? ["Procurement value"] : []),"Recorded by","Reference / note",...(canCorrectStock ? ["Correct / Void"] : [])];
   const inventoryHeadings = ["Product","SKU","Location","On hand","Reserved","Available","Incoming","Status",...(!hideProcurement ? ["Cost"] : []),"Retail",""];
 
   return (
@@ -371,7 +385,7 @@ export default function InventoryManagementPage() {
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-12">
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");setVariantSearch("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select product</option>{inventory.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={movementProductSearch} onChange={(event)=>setMovementProductSearch(event.target.value)} placeholder="Search product name or SKU" aria-label="Search stock movement products" className="min-h-11 w-full rounded-xl border hairline bg-white py-2.5 pl-10 pr-4 font-normal" /></div><div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");setVariantSearch("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">{movementProductOptions.length ? "Select product" : "No matching products"}</option>{movementProductOptions.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
             {requiresVariant && <div className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">
               <label htmlFor="inventory-variant-search">Find variant</label>
               <input id="inventory-variant-search" type="search" value={variantSearch} onChange={(event) => setVariantSearch(event.target.value)} placeholder="Search colour, size or SKU" className="min-h-10 w-full rounded-xl border hairline bg-white px-3 font-normal" />
@@ -407,7 +421,8 @@ export default function InventoryManagementPage() {
       )}
 
       <div className={`${action ? "mt-6" : "mt-4"} border-y hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8`}><div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search product, SKU or category..." className="min-h-12 w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none focus:border-[var(--brand-green)]"/></div>
+        <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search STOCK INVENTORY by product, SKU, category or variant..." aria-label="Search stock inventory products" className="min-h-12 w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none focus:border-[var(--brand-green)]"/></div>
+        <span className="self-center text-xs text-[var(--muted)]">{filtered.length} / {inventory.length} inventory products</span>
         <div className="relative min-w-52"><select value={location} disabled={Boolean(assignedStoreId && (role === "MANAGER" || role === "STORE_STAFF"))} onChange={(e)=>setLocation(e.target.value)} className="min-h-12 w-full appearance-none rounded-full border hairline bg-[var(--paper)] py-3 pl-4 pr-11 text-sm disabled:opacity-70"><option value="All">Company total</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.code?` · ${store.code}`:""}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div>
         <div className="sm:ml-auto"><ExportButtons title="Store Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/></div>
       </div></div>
@@ -447,7 +462,7 @@ export default function InventoryManagementPage() {
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
                 const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">Corrected</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={!movement._rev || correctingMovement} onClick={() => beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/>Edit</button></td>}</tr>;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={!movement._rev || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : "Edit / Void"}</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}
@@ -457,12 +472,13 @@ export default function InventoryManagementPage() {
               <div><h3 className="text-sm font-semibold">Correct recorded stock movement</h3><p className="mt-1 text-xs text-[var(--muted)]">{editingMovement.movementNumber || editingMovement._id} · {editingMovement.productName} · {editingMovement.variantLabel || "No variant"}</p></div>
               <button type="button" onClick={() => setEditingMovement(null)} disabled={correctingMovement} className="rounded-full border px-3 py-2 text-xs">Cancel</button>
             </div>
-            <p className="mt-3 text-xs leading-5">This changes the recorded quantity and updates the current store ledger. The product, variant, movement type and source/destination cannot be changed here. Previous entries remain in the audit trail. Reductions that would make stock negative are rejected.</p>
+            <p className="mt-3 text-xs leading-5">Edit changes the quantity. Void safely reverses the remaining effect of the movement, without deleting its audit history. Product, variant and stores cannot be changed. Corrections that would make stock or incoming negative are rejected.</p>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={voidMovement} onChange={(event) => setVoidMovement(event.target.checked)} /> Void this movement instead of editing its quantity</label>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs font-semibold">Correct quantity<input required type="number" min="1" step="1" value={correctedQuantity} onChange={(event) => setCorrectedQuantity(event.target.value)} className="min-h-11 rounded-lg border bg-white px-3 font-normal" /></label>
+              <label className="grid gap-1 text-xs font-semibold">Correct quantity<input required={!voidMovement} disabled={voidMovement} type="number" min="1" step="1" value={voidMovement ? "0" : correctedQuantity} onChange={(event) => setCorrectedQuantity(event.target.value)} className="min-h-11 rounded-lg border bg-white px-3 font-normal disabled:opacity-60" /></label>
               <label className="grid gap-1 text-xs font-semibold">Reason for correction<input required minLength={5} maxLength={500} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} placeholder="e.g. Supplier delivery note had the wrong count" className="min-h-11 rounded-lg border bg-white px-3 font-normal" /></label>
             </div>
-            <button type="submit" disabled={correctingMovement || !Number.isSafeInteger(Number(correctedQuantity)) || Number(correctedQuantity) < 1 || correctionReason.trim().length < 5} className="mt-3 rounded-full bg-[var(--brand-green)] px-4 py-3 text-xs font-semibold !text-white disabled:opacity-50">{correctingMovement ? "Saving correction…" : "Save audited correction"}</button>
+            <button type="submit" disabled={correctingMovement || (!voidMovement && (!Number.isSafeInteger(Number(correctedQuantity)) || Number(correctedQuantity) < 1)) || correctionReason.trim().length < 5} className="mt-3 rounded-full bg-[var(--brand-green)] px-4 py-3 text-xs font-semibold !text-white disabled:opacity-50">{correctingMovement ? "Saving…" : voidMovement ? "Void movement (audited)" : "Save audited correction"}</button>
           </form>}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t hairline px-4 py-3 sm:px-5">
             <span className="text-xs text-[var(--muted)]">{movementLoading ? "Loading stock movements…" : `${movements.length} movement${movements.length === 1 ? "" : "s"} shown`}</span>
@@ -471,7 +487,7 @@ export default function InventoryManagementPage() {
         </div>
       </section>}
 
-      <section className="p-4 sm:p-6 lg:p-8">{filtered.length ? <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]"><div className="max-h-[75vh] max-w-full overflow-auto overscroll-contain" role="region" aria-label="Inventory products, scroll to view more rows"><table className="w-full min-w-[1000px] text-left"><thead><tr className="border-b hairline">{inventoryHeadings.map((heading)=><th key={heading} scope="col" className="sticky top-0 z-20 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead><tbody>{filtered.map((item)=><tr key={item.id} className="border-b hairline last:border-0"><td className="px-4 py-4 text-sm font-semibold">{item.name}{item.variants?.length?<span className="ml-2 text-[9px] font-normal text-[var(--muted)]">{item.variants.length} variants</span>:null}</td><td className="px-4 py-4 text-xs">{item.sku}</td><td className="px-4 py-4 text-xs text-[var(--muted)]">{item.location}</td><td className="px-4 py-4 text-xs font-semibold">{item.onHand}</td><td className="px-4 py-4 text-xs">{item.reserved}</td><td className="px-4 py-4 text-xs font-semibold">{availableStock(item)}</td><td className="px-4 py-4 text-xs">{item.incoming}</td><td className="px-4 py-4"><StatusPill value={stockStatus(item)}/></td>{!hideProcurement&&<td className="px-4 py-4 text-xs">{formatKes(item.unitCost)}</td>}<td className="px-4 py-4 text-xs font-semibold">{formatKes(item.retailPrice)}</td><td className="px-4 py-4 text-right"><Link href={`/shop/${item.slug||""}`} className="group inline-grid size-9 place-items-center rounded-full border hairline hover:border-[var(--brand-green)]" aria-label={`Open ${item.name} in shop`}><ArrowUpRight size={14}/></Link></td></tr>)}</tbody></table></div></div> : <div className="rounded-xl border hairline bg-[var(--paper)] p-12 text-center"><Boxes size={32} className="mx-auto text-[var(--muted)]"/><p className="mt-4 text-sm font-medium">No matching inventory found</p></div>}</section>
+      <section className="p-4 sm:p-6 lg:p-8">{filtered.length ? <div className="overflow-hidden rounded-xl border hairline bg-[var(--paper)]"><div className="max-h-[75vh] max-w-full overflow-auto overscroll-contain" role="region" aria-label="Inventory products, scroll to view more rows"><table className="w-full min-w-[1000px] text-left"><thead><tr className="border-b hairline">{inventoryHeadings.map((heading)=><th key={heading} scope="col" className="sticky top-0 z-20 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead><tbody>{filtered.map((item)=><tr key={item.id} className="border-b hairline last:border-0"><td className="px-4 py-4 text-sm font-semibold">{item.name}{item.variants?.length?<span className="ml-2 text-[9px] font-normal text-[var(--muted)]">{item.variants.length} variants</span>:null}</td><td className="px-4 py-4 text-xs">{item.sku}</td><td className="px-4 py-4 text-xs text-[var(--muted)]">{item.location}</td><td className="px-4 py-4 text-xs font-semibold">{item.onHand}</td><td className="px-4 py-4 text-xs">{item.reserved}</td><td className="px-4 py-4 text-xs font-semibold">{availableStock(item)}</td><td className="px-4 py-4 text-xs">{item.incoming}</td><td className="px-4 py-4"><StatusPill value={stockStatus(item)}/></td>{!hideProcurement&&<td className="px-4 py-4 text-xs">{formatKes(item.unitCost)}</td>}<td className="px-4 py-4 text-xs font-semibold">{formatKes(item.retailPrice)}</td><td className="px-4 py-4 text-right"><div className="flex items-center justify-end gap-2">{canCorrectStock && <button type="button" onClick={() => openAction("PURCHASE", item.id)} className="min-h-9 rounded-full border hairline px-3 text-[10px] font-semibold hover:border-[var(--brand-green)]" aria-label={`Purchase additional stock for ${item.name}`}>+ Stock</button>}<Link href={`/shop/${item.slug||""}`} className="group inline-grid size-9 place-items-center rounded-full border hairline hover:border-[var(--brand-green)]" aria-label={`Open ${item.name} in shop`}><ArrowUpRight size={14}/></Link></div></td></tr>)}</tbody></table></div></div> : <div className="rounded-xl border hairline bg-[var(--paper)] p-12 text-center"><Boxes size={32} className="mx-auto text-[var(--muted)]"/><p className="mt-4 text-sm font-medium">No matching inventory found</p></div>}</section>
     </div>
   );
 }
