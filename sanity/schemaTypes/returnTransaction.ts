@@ -8,6 +8,7 @@ export const returnTransaction = defineType({
     defineField({ name: "returnNumber", title: "Return Number", type: "string", validation: (Rule) => Rule.required() }),
     defineField({ name: "order", title: "Order", type: "reference", to: [{ type: "commerceOrder" }], validation: (Rule) => Rule.required() }),
     defineField({ name: "orderNumber", title: "Order Number", type: "string" }),
+    defineField({ name: "receiptNumber", title: "Original Sale Receipt Number", type: "string", readOnly: true }),
     defineField({ name: "reason", title: "Reason", type: "text", rows: 3, validation: (Rule) => Rule.required() }),
     defineField({ name: "refundAmount", title: "Refund Amount", type: "number", validation: (Rule) => Rule.required().min(0) }),
     defineField({ name: "restock", title: "Restock Returned Items", type: "boolean", initialValue: true }),

@@ -485,6 +485,7 @@ export async function createExpense(input: ExpenseInput, seller: PosSeller) {
 
 type RefundInput = {
   orderId: string;
+  receiptNumber: string;
   refundAmount: number;
   reason: string;
   restock: boolean;
@@ -520,6 +521,10 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     { id: input.orderId }, { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
+  const receiptNumber = cleanText(input.receiptNumber);
+  if (!receiptNumber || receiptNumber !== order.receiptNumber) {
+    throw new Error("The selected receipt does not match this sale. Open the refund from the correct receipt and try again.");
+  }
   const mainForReturn = order.salesChannel === "ONLINE" && !order.storeLocationId && isLegacyStoreName(order.storeLocationName)
     ? await getMainStore() : null;
   const effectiveOrderStore = order.storeLocationId || mainForReturn?.id;
@@ -528,12 +533,33 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
   }
   const reason = cleanText(input.reason);
   if (!reason) throw new Error("Refund / return reason is required.");
-  const alreadyRefunded = Number(order.refundedAmount || 0);
-  const availableRefund = Math.max(0, Number(order.amountPaid || 0) - alreadyRefunded);
+  // A refund is limited by money actually received on this specific receipt,
+  // never by an unpaid balance or by the product catalogue total alone.
+  const receivedCents = Math.round(Math.min(Number(order.amountPaid || 0), Number(order.total || 0)) * 100);
+  const alreadyRefundedCents = Math.round(Number(order.refundedAmount || 0) * 100);
+  if (!Number.isSafeInteger(receivedCents) || !Number.isSafeInteger(alreadyRefundedCents) || receivedCents < 0 || alreadyRefundedCents < 0) {
+    throw new Error("Invalid payment or prior refund amount on this receipt.");
+  }
+  const availableCents = Math.max(0, receivedCents - alreadyRefundedCents);
   const refundAmount = Number(input.refundAmount);
-  if (!Number.isFinite(refundAmount) || refundAmount < 0 || refundAmount > availableRefund) throw new Error(`Refund amount must be between KES 0 and KES ${availableRefund.toLocaleString("en-KE")}.`);
+  const requestedCents = Math.round(refundAmount * 100);
+  if (!Number.isFinite(refundAmount) || refundAmount < 0 || !Number.isSafeInteger(requestedCents) || Math.abs(requestedCents / 100 - refundAmount) > 0.000001 || requestedCents > availableCents) {
+    throw new Error(`Refund amount must be between KES 0 and KES ${(availableCents / 100).toLocaleString("en-KE")} with at most two decimal places.`);
+  }
   // Recording a non-Paystack refund does not transfer money. Require evidence that
   // payment was completed externally before changing financial reports.
+  // Fail closed if historical return records indicate a larger refund than the
+  // order summary: the ledger must be reconciled before taking another refund.
+  if (requestedCents > 0) {
+    const recordedRefunds = await serverClient.fetch<Array<{ refundAmount?: number }>>(
+      `*[_type == "returnTransaction" && order._ref == $orderId && status != "failed"]{refundAmount}`,
+      { orderId: order.id }, { cache: "no-store" },
+    );
+    const ledgerCents = recordedRefunds.reduce((sum, row) => sum + Math.round(Number(row.refundAmount || 0) * 100), 0);
+    if (ledgerCents > alreadyRefundedCents) {
+      throw new Error("Recorded refunds exceed the order refund summary. Reconcile this receipt before another refund.");
+    }
+  }
   const manualRefund = refundAmount > 0 && order.paymentProvider?.toLowerCase() !== "paystack";
   const manualRefundReference = cleanText(input.manualRefundReference);
   if (manualRefund && (!input.manualRefundConfirmed || manualRefundReference.length < 4)) {
@@ -548,39 +574,91 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     if (alreadyRecorded > 0) throw new Error("This external refund reference has already been recorded. Verify the existing refund before proceeding.");
   }
 
-  const requestedItems = Array.isArray(input.items) && input.items.length > 0
-    ? input.items.map((row) => ({ productId: cleanText(row.productId), variantId: cleanText(row.variantId) || undefined, quantity: Math.max(0, Math.floor(Number(row.quantity || 0))) })).filter((row) => row.productId && row.quantity > 0)
-    : refundAmount >= availableRefund && input.restock
-      ? order.lineItems.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: line.quantity }))
-      : [];
-
-  for (const returned of requestedItems) {
-    const sold = order.lineItems.filter((line) => line.productId === returned.productId && (!returned.variantId || line.variantId === returned.variantId)).reduce((sum, line) => sum + line.quantity, 0);
-    const priorReturned = await serverClient.fetch<number>(
-      `coalesce(math::sum(*[_type == "returnTransaction" && order._ref == $orderId].items[productId == $productId && (!defined($variantId) || variantId == $variantId)].quantity),0)`,
-      { orderId: order.id, productId: returned.productId, variantId: returned.variantId || null },
-    );
-    if (returned.quantity + Number(priorReturned || 0) > sold) throw new Error("Return quantity exceeds the quantity originally sold.");
+  if (input.items !== undefined && !Array.isArray(input.items)) throw new Error("Returned items must be a list.");
+  if (!input.restock && (input.items?.length || 0) > 0) throw new Error("Do not submit stock quantities unless the return-to-stock option is selected.");
+  const requestedItems: Array<{ productId: string; variantId?: string; quantity: number }> = [];
+  const returnKeys = new Set<string>();
+  for (const row of input.items || []) {
+    const productId = cleanText(row.productId);
+    const variantId = cleanText(row.variantId) || undefined;
+    const quantity = Number(row.quantity);
+    if (!productId || !Number.isSafeInteger(quantity) || quantity <= 0) {
+      throw new Error("Every returned item must have a product and a positive whole-number quantity.");
+    }
+    const key = `${productId}|${variantId || ""}`;
+    if (returnKeys.has(key)) throw new Error("Each product variant may appear only once in a return.");
+    returnKeys.add(key);
+    requestedItems.push({ productId, variantId, quantity });
+  }
+  if (input.restock && requestedItems.length === 0) {
+    throw new Error("Select the actual quantities received back before restocking. A refund alone must not increase stock.");
+  }
+  if (refundAmount === 0 && requestedItems.length === 0 && !input.cancelOutstanding) {
+    throw new Error("No refund, returned goods or balance adjustment was requested.");
   }
 
-  let providerRefundId = "";
-  let providerStatus = "completed";
-  if (refundAmount > 0 && order.paymentProvider === "paystack") {
-    const refund = await paystackRefund(order.paymentReference, refundAmount);
-    providerRefundId = refund?.id ? String(refund.id) : "";
-    providerStatus = refund?.status && !["processed", "success"].includes(refund.status) ? "pending_provider" : "completed";
+  // Query previous returned quantities once, then compare exact variant keys.
+  // Checking rows independently allowed duplicate rows to bypass the sold quantity.
+  const previousReturns = requestedItems.length ? await serverClient.fetch<Array<{ items?: Array<{ productId?: string; variantId?: string; quantity?: number }> }>>(
+    `*[_type == "returnTransaction" && order._ref == $orderId && restock == true && status != "failed"]{items[]{productId,variantId,quantity}}`,
+    { orderId: order.id }, { cache: "no-store" },
+  ) : [];
+  const previouslyReturned = new Map<string, number>();
+  for (const recorded of previousReturns) for (const line of recorded.items || []) {
+    const key = `${line.productId || ""}|${line.variantId || ""}`;
+    previouslyReturned.set(key, (previouslyReturned.get(key) || 0) + Number(line.quantity || 0));
+  }
+  for (const returned of requestedItems) {
+    const key = `${returned.productId}|${returned.variantId || ""}`;
+    const sold = order.lineItems
+      .filter((line) => line.productId === returned.productId && (line.variantId || "") === (returned.variantId || ""))
+      .reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    if (!Number.isSafeInteger(sold) || sold <= 0 || returned.quantity + (previouslyReturned.get(key) || 0) > sold) {
+      throw new Error(`Return quantity for ${returned.productId}${returned.variantId ? ` (${returned.variantId})` : ""} exceeds the units remaining on this receipt.`);
+    }
   }
 
   const productIds = [...new Set(requestedItems.map((row) => row.productId))];
-  const products = productIds.length ? await serverClient.fetch<Array<{ _id: string; _rev: string; name?: string; initialStock?: number; variants?: Array<Record<string, unknown>>; inventory?: { _id?: string; locationBalances?: LocationBalance[] } | null }>>(
+  const products = productIds.length ? await serverClient.fetch<Array<{ _id: string; _rev: string; name?: string; initialStock?: number; variants?: Array<Record<string, unknown>>; inventory?: { _id?: string; _rev?: string; locationBalances?: LocationBalance[] } | null }>>(
     `*[_type == "product" && _id in $ids]{
       _id,_rev,name,initialStock,variants,
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{
-        _id,
+        _id,_rev,
         "locationBalances": locationBalances[]{_key,store,"storeId":coalesce(store._ref,storeId),"storeName":coalesce(store->name,storeName),"storeCode":coalesce(store->code,storeCode),onHand,incoming,variants[]{_key,variantId,variantLabel,onHand,incoming}}
       }
     }`, { ids: productIds }, { cache: "no-store" },
   ) : [];
+
+  // Validate the product / variant / store before any external refund is started.
+  for (const requested of requestedItems) {
+    const product = products.find((candidate) => candidate._id === requested.productId);
+    if (!product) throw new Error(`Product ${requested.productId} was not found; stock cannot be returned.`);
+    if (hasVariants(product.variants)) {
+      const variant = product.variants?.find((candidate) => candidate._key === requested.variantId);
+      if (!variant || typeof variant.stockQuantity !== "number" || !Number.isFinite(variant.stockQuantity)) {
+        throw new Error(`Select a valid stocked variant for ${product.name || "this product"}.`);
+      }
+    } else if (requested.variantId) {
+      throw new Error(`${product.name || "This product"} does not have the selected variant.`);
+    }
+    if (effectiveOrderStore && (!product.inventory?._id || !product.inventory._rev)) {
+      throw new Error(`${product.name || "This product"} has no verifiable store inventory record for this return.`);
+    }
+  }
+
+  let providerRefundId = "";
+  let providerStatus = "completed";
+  if (refundAmount > 0 && order.paymentProvider?.toLowerCase() === "paystack") {
+    // Do not initiate another refund while the previous provider attempt needs reconciliation.
+    const pending = await serverClient.fetch<number>(
+      `count(*[_type == "returnTransaction" && order._ref == $orderId && status == "pending_provider"])`,
+      { orderId: order.id }, { cache: "no-store" },
+    );
+    if (pending > 0) throw new Error("A Paystack refund for this receipt is pending. Reconcile it with Paystack before another refund.");
+    const refund = await paystackRefund(order.paymentReference, refundAmount);
+    providerRefundId = refund?.id ? String(refund.id) : "";
+    providerStatus = refund?.status && !["processed", "success"].includes(refund.status) ? "pending_provider" : "completed";
+  }
 
   const now = new Date().toISOString();
   const key = `${order.orderNumber}|${now}|${refundAmount}|${reason}`;
@@ -609,29 +687,30 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
         for (const row of rows) {
           nextBalances = adjustLocationBalance(nextBalances, store, { onHandDelta: row.quantity, variantId: row.variantId });
         }
-        transaction.patch(product.inventory._id, (patch) => patch.set({ location: "Multi-location", locationBalances: nextBalances }));
+        transaction.patch(product.inventory._id, (patch) => patch.ifRevisionId(product.inventory!._rev!).set({ location: "Multi-location", locationBalances: nextBalances }));
       }
 
       rows.forEach((row) => movements.push({ productId: product._id, productName: product.name || "Product", variantId: row.variantId, quantityChange: row.quantity, stockBefore: currentStock, stockAfter: nextStock, destinationStoreId: effectiveOrderStore, destination: order.storeLocationName || mainForReturn?.name }));
     }
   }
 
-  const nextRefunded = alreadyRefunded + refundAmount;
+  const nextRefunded = (alreadyRefundedCents + requestedCents) / 100;
   const nextBalance = input.cancelOutstanding ? 0 : Number(order.balanceDue || 0);
-  const fullyRefunded = nextRefunded >= Number(order.amountPaid || 0) && nextBalance <= 0;
+  const fullyRefunded = alreadyRefundedCents + requestedCents >= receivedCents && nextBalance <= 0;
   const totalSoldQuantity = order.lineItems.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
   const returnedQuantity = requestedItems.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+  const totalReturnedQuantity = returnedQuantity + [...previouslyReturned.values()].reduce((sum, qty) => sum + qty, 0);
   transaction.patch(order.id, (patch) => patch.ifRevisionId(order._rev).set({
     refundedAmount: nextRefunded,
     balanceDue: nextBalance,
     paymentStatus: fullyRefunded ? "refunded" : order.paymentStatus,
-    returnStatus: returnedQuantity > 0 && returnedQuantity >= totalSoldQuantity ? "returned" : "partial",
+    ...(requestedItems.length > 0 ? { returnStatus: totalReturnedQuantity >= totalSoldQuantity ? "returned" : "partial" } : {}),
     lastRefundAt: now,
     updatedAt: now,
   }));
   transaction.create({
     _id: returnId, _type: "returnTransaction", returnNumber,
-    order: { _type: "reference", _ref: order.id }, orderNumber: order.orderNumber, reason, refundAmount,
+    order: { _type: "reference", _ref: order.id }, orderNumber: order.orderNumber, receiptNumber, reason, refundAmount,
     restock: Boolean(input.restock), status: providerStatus, providerRefundId: providerRefundId || undefined,
     manualRefundReference: manualRefund ? manualRefundReference : undefined,
     items: requestedItems.map((row, index) => {
@@ -645,7 +724,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     _id: `auditEvent.${hashId(`return|${returnId}`)}`, _type: "auditEvent", eventNumber: `AUD-${hashId(`return|${returnId}`).slice(0, 12).toUpperCase()}`,
     eventType: "RETURN_REFUND_PROCESSED", entityType: "commerceOrder", entityId: order.id, entityLabel: order.orderNumber,
     actor: { _type: "reference", _ref: seller.id }, actorName: seller.name, actorRole: seller.role,
-    detail: `${returnNumber} · refund KES ${refundAmount.toLocaleString("en-KE")} · ${input.restock ? "restocked" : "not restocked"} · ${manualRefund ? `external reference ${manualRefundReference} · ` : ""}${reason}`, createdAt: now,
+    detail: `${returnNumber} · receipt ${receiptNumber} · refund KES ${refundAmount.toLocaleString("en-KE")} · ${input.restock ? "restocked" : "not restocked"} · ${manualRefund ? `external reference ${manualRefundReference} · ` : ""}${reason}`, createdAt: now,
   });
   if (refundAmount > 0) {
     const paymentRef = `${order.orderNumber}-REF-${hashId(key).slice(0, 8)}`;
@@ -665,7 +744,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     const currentBalance = await serverClient.fetch<number>(`coalesce(*[_id == $id][0].outstandingBalance,0)`, { id: order.customerId });
     await serverClient.patch(order.customerId).set({ outstandingBalance: Math.max(0, Number(currentBalance || 0) - Number(order.balanceDue || 0)), updatedAt: now }).commit();
   }
-  return { returnId, returnNumber, providerStatus, refundAmount, restockedItems: requestedItems.length };
+  return { returnId, returnNumber, receiptNumber, providerStatus, refundAmount, restockedItems: requestedItems.length };
 }
 
 export async function getAuditTrail(limit = 100) {
