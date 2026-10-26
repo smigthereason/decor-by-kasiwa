@@ -114,7 +114,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
             <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">{order.customerName}</h1>
             <p className="mt-2 text-sm text-[var(--muted)]">{formatDateTime(order.createdAt)} · {order.deliveryLocation}</p>
           </div>
-          <div className="flex flex-wrap gap-2"><StatusPill value={order.status} /><StatusPill value={order.paymentStatus} /></div>
+          <div className="flex flex-wrap gap-2"><StatusPill value={order.status} /><StatusPill value={order.paymentStatus} />{Number(order.overpaidAmount || 0) > 0 && <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase text-amber-800">Overpaid · {formatKes(Number(order.overpaidAmount))} excess</span>}</div>
         </div>
         {message && <p className="mt-4 text-xs text-[var(--muted)]">{message}</p>}
       </div>

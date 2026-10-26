@@ -133,6 +133,8 @@ export default function PointOfSalePage() {
   const [manualPaymentName, setManualPaymentName] = useState("");
   const [manualPaymentReference, setManualPaymentReference] = useState("");
   const [manualAmountReceived, setManualAmountReceived] = useState("");
+  const [manualPartialPaymentConfirmed, setManualPartialPaymentConfirmed] = useState(false);
+  const [manualOverpaymentConfirmed, setManualOverpaymentConfirmed] = useState(false);
   const [manualPaymentConfirmed, setManualPaymentConfirmed] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -362,6 +364,10 @@ export default function PointOfSalePage() {
   const productRevenue = Math.max(0, subtotal - discountAmount);
   const deliveryPayable = deliveryEnabled ? Math.max(0, Number(deliveryFee || 0)) : 0;
   const total = productRevenue + deliveryPayable;
+  const totalCents = Math.round(total * 100);
+  const manualReceivedCents = Math.round(Number(manualAmountReceived || 0) * 100);
+  const manualRemaining = Math.max(0, totalCents - manualReceivedCents) / 100;
+  const manualExcess = Math.max(0, manualReceivedCents - totalCents) / 100;
   const units = cart.reduce((sum, line) => sum + line.quantity, 0);
   const cartStockIssue = catalogStoreId === saleStoreId && saleStoreId
     ? cart.map((line) => {
@@ -511,6 +517,14 @@ export default function PointOfSalePage() {
         setMessage("Enter the amount received outside the system.");
         return;
       }
+      if (!manualPartialPaymentConfirmed && manualRemaining > 0) {
+        setMessage(`This is a partial payment. Confirm the outstanding ${formatMoney(manualRemaining)} before recording it.`);
+        return;
+      }
+      if (!manualOverpaymentConfirmed && manualExcess > 0) {
+        setMessage(`This payment exceeds the sale by ${formatMoney(manualExcess)}. Confirm the excess will be reconciled with the customer.`);
+        return;
+      }
       if (!manualPaymentConfirmed) {
         setMessage("Confirm that you independently checked the external payment before recording it.");
         return;
@@ -553,6 +567,8 @@ export default function PointOfSalePage() {
           manualPaymentReference: paymentMethod === "manual" ? manualPaymentReference.trim() : undefined,
           manualAmountReceived: paymentMethod === "manual" ? Number(manualAmountReceived) : undefined,
           manualPaymentConfirmed: paymentMethod === "manual" ? manualPaymentConfirmed : undefined,
+          manualPartialPaymentConfirmed: paymentMethod === "manual" ? manualPartialPaymentConfirmed : undefined,
+          manualOverpaymentConfirmed: paymentMethod === "manual" ? manualOverpaymentConfirmed : undefined,
           discount: canDiscount && discountNumeric > 0
             ? { type: discountType, value: discountNumeric, reason: discountReason }
             : undefined,
@@ -582,7 +598,7 @@ export default function PointOfSalePage() {
         setCart([]); setProcessing(false); setSelectedCustomerId(""); setCustomerSearch(""); setCustomerName(""); setCustomerEmail(""); setCustomerPhone("+254");
         void loadProducts(saleStoreId, true, storeRequestController.current?.signal);
         setDiscountValue(""); setDiscountReason(""); setDeliveryEnabled(false); setDeliveryLocation(""); setDeliveryAddressLine(""); setDeliveryRecipientName(""); setDeliveryRecipientPhone(""); setDeliveryFee("");
-        setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived(""); setManualPaymentConfirmed(false);
+        setManualPaymentName(""); setManualPaymentReference(""); setManualAmountReceived(""); setManualPaymentConfirmed(false); setManualPartialPaymentConfirmed(false); setManualOverpaymentConfirmed(false);
         return;
       }
 
@@ -1206,7 +1222,19 @@ export default function PointOfSalePage() {
                 <div className="grid gap-2 rounded-xl border hairline bg-[var(--paper-2)] p-3">
                   <input value={manualPaymentName} onChange={(event) => setManualPaymentName(event.target.value)} placeholder="Paid by / payer name" className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
                   <input value={manualPaymentReference} onChange={(event) => setManualPaymentReference(event.target.value.toUpperCase())} placeholder="M-PESA code / payment reference" className="h-9 rounded-lg border hairline bg-white px-3 text-xs uppercase outline-none focus:border-[var(--brand-green)]" />
-                  <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => setManualAmountReceived(event.target.value)} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
+                  <input type="number" min="0" step="0.01" value={manualAmountReceived} onChange={(event) => { setManualAmountReceived(event.target.value); setManualPartialPaymentConfirmed(false); setManualOverpaymentConfirmed(false); }} placeholder={`Amount received · ${formatMoney(total)}`} className="h-9 rounded-lg border hairline bg-white px-3 text-xs outline-none focus:border-[var(--brand-green)]" />
+                  {Number(manualAmountReceived || 0) > 0 && manualRemaining > 0 && (
+                    <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">
+                      <input type="checkbox" checked={manualPartialPaymentConfirmed} onChange={(event) => setManualPartialPaymentConfirmed(event.target.checked)} className="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]" />
+                      <span><strong>Partially paid:</strong> {formatMoney(manualRemaining)} is outstanding. I have checked the actual payment and confirm the customer still owes this balance.</span>
+                    </label>
+                  )}
+                  {Number(manualAmountReceived || 0) > 0 && manualExcess > 0 && (
+                    <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">
+                      <input type="checkbox" checked={manualOverpaymentConfirmed} onChange={(event) => setManualOverpaymentConfirmed(event.target.checked)} className="mt-0.5 size-4 shrink-0 accent-[var(--brand-green)]" />
+                      <span><strong>Overpaid:</strong> {formatMoney(manualExcess)} received above sale total. This is not additional sales revenue and must be reconciled or returned.</span>
+                    </label>
+                  )}
                   <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-4 text-amber-900">
                     <input
                       type="checkbox"

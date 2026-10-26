@@ -7,6 +7,7 @@ import { createHash, createHmac } from "node:crypto";
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
+import { manualPaymentBreakdown } from "@/lib/pos/manual-payment";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -62,6 +63,8 @@ export type PosSaleInput = {
   manualPaymentReference?: string;
   manualAmountReceived?: number;
   manualPaymentConfirmed?: boolean;
+  manualPartialPaymentConfirmed?: boolean;
+  manualOverpaymentConfirmed?: boolean;
   deliveryLocation?: string;
   deliveryAddressLine?: string;
   deliveryRecipientName?: string;
@@ -931,10 +934,14 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
   const delivery = deliveryPayable(input);
-  const total = Math.max(0, subtotal - discount.discountAmount + delivery.deliveryFee);
-  const amountPaid = Math.min(requestedPayment, total);
-  const balanceDue = Math.max(0, total - amountPaid);
-  const paymentStatus = balanceDue > 0 ? "partially_paid" : "paid";
+  const calculatedTotal = Math.max(0, subtotal - discount.discountAmount + delivery.deliveryFee);
+  const { total, received, amountPaid, balanceDue, overpaidAmount, paymentStatus } = manualPaymentBreakdown(calculatedTotal, requestedPayment);
+  if (balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
+    throw new Error(`Confirm the partial payment: KES ${balanceDue.toFixed(2)} remains outstanding.`);
+  }
+  if (overpaidAmount > 0 && input.manualOverpaymentConfirmed !== true) {
+    throw new Error(`Confirm the excess payment: KES ${overpaidAmount.toFixed(2)} must be reconciled or returned to the customer.`);
+  }
   const workflow = await workflowForProducts(lines.map((line) => line.productId));
   const now = new Date().toISOString();
   const orderNumber = await createShortOrderNumber("POS", reference, new Date(now));
@@ -965,9 +972,10 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
     total,
     amountPaid,
     balanceDue,
+    overpaidAmount,
     manualPaymentName: payerName,
     manualPaymentReference: externalReference,
-    manualAmountReceived: requestedPayment,
+    manualAmountReceived: received,
     refundedAmount: 0,
     receiptNumber,
     currency: CURRENCY,
@@ -991,11 +999,11 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
 
   addPaymentRecordToTransaction({
     transaction, reference, orderId, orderNumber, customerName: customer.name, customerPhone: customer.phone,
-    provider: "manual", channel: "external", providerReceiptNumber: externalReference, status: paymentStatus, amount: requestedPayment, seller, now,
+    provider: "manual", channel: "external", providerReceiptNumber: externalReference, status: paymentStatus, amount: received, seller, now,
   });
   addAuditToTransaction({
     transaction, key: `pos-sale|${reference}`, eventType: "POS_MANUAL_PAYMENT_RECORDED", entityId: orderId, entityLabel: orderNumber, seller,
-    detail: `${paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} manual/external sale · payer ${payerName} · reference ${externalReference} · recorded KES ${amountPaid.toLocaleString("en-KE")} · expected KES ${total.toLocaleString("en-KE")} · balance KES ${balanceDue.toLocaleString("en-KE")}`,
+    detail: `${overpaidAmount > 0 ? "Overpaid" : paymentStatus === "partially_paid" ? "Partially paid" : "Paid"} manual/external sale · payer ${payerName} · reference ${externalReference} · received KES ${received.toFixed(2)} · credited KES ${amountPaid.toFixed(2)} · expected KES ${total.toFixed(2)} · balance KES ${balanceDue.toFixed(2)} · excess KES ${overpaidAmount.toFixed(2)}`,
     now,
   });
 
@@ -1967,6 +1975,7 @@ export async function getPosReceipt(orderId: string) {
       total?: number;
       amountPaid?: number;
       balanceDue?: number;
+      overpaidAmount?: number;
       cashTendered?: number;
       cashChangeDue?: number;
       refundedAmount?: number;
@@ -1995,7 +2004,7 @@ export async function getPosReceipt(orderId: string) {
     `{
       "receipt": *[_type == "commerceOrder" && _id == $orderId][0]{
         _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountType,discountValue,discountAmount,discountReason,discountAuthorizedByName,
-        deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,total,amountPaid,balanceDue,cashTendered,cashChangeDue,
+        deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,total,amountPaid,balanceDue,overpaidAmount,cashTendered,cashChangeDue,
         refundedAmount,paymentStatus,paymentProvider,paymentChannel,paymentReference,providerReceiptNumber,
         mpesaMerchantRequestId,mpesaCheckoutRequestId,mpesaResultCode,mpesaResultDescription,
         manualPaymentName,manualPaymentReference,soldByName,soldByRole,soldAt,

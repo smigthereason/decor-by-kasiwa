@@ -171,6 +171,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
             {hasCapturedDelivery && <div className="flex justify-between gap-4 py-0.5"><span>Delivery</span><span>{formatMoney(Number(receipt.deliveryFee || 0))}</span></div>}
             <div className="mt-1 flex justify-between gap-4 border-t hairline py-2 text-sm font-semibold"><span>Total</span><span>{formatMoney(Number(receipt.total || 0))}</span></div>
             <div className="flex justify-between gap-4 py-0.5"><span>Paid</span><span>{formatMoney(Number(receipt.amountPaid || 0))}</span></div>
+            {Number(receipt.overpaidAmount || 0) > 0 && <div className="flex justify-between gap-4 py-0.5 font-semibold"><span>Excess payment — to reconcile</span><span>{formatMoney(Number(receipt.overpaidAmount))}</span></div>}
             {Number(receipt.cashTendered || 0) > 0 && <div className="flex justify-between gap-4 py-0.5"><span>Cash tendered</span><span>{formatMoney(Number(receipt.cashTendered || 0))}</span></div>}
             {Number(receipt.cashChangeDue || 0) > 0 && <div className="flex justify-between gap-4 py-0.5 font-semibold"><span>Change</span><span>{formatMoney(Number(receipt.cashChangeDue || 0))}</span></div>}
             {Number(receipt.balanceDue || 0) > 0 && <div className="flex justify-between gap-4 py-0.5 font-semibold"><span>Balance due</span><span>{formatMoney(Number(receipt.balanceDue || 0))}</span></div>}
@@ -179,7 +180,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
         </section>
 
         <section className="receipt-payment-box mt-3 rounded-xl border hairline bg-[var(--paper-2)] p-2.5 text-[10px] leading-4 print:bg-white">
-          <p><strong>Payment:</strong> {paymentLabel(receipt.paymentProvider, receipt.paymentChannel)} · <span className="capitalize">{receipt.paymentStatus || "—"}</span></p>
+          <p><strong>Payment:</strong> {paymentLabel(receipt.paymentProvider, receipt.paymentChannel)} · <span className="capitalize">{Number(receipt.overpaidAmount || 0) > 0 ? "Overpaid (sale paid in full)" : receipt.paymentStatus?.replaceAll("_", " ") || "—"}</span></p>
           <p className="mt-1 break-all"><strong>Reference:</strong> {transactionReference || "—"}</p>
           {receipt.paymentProvider === "daraja" && receipt.providerReceiptNumber && <p className="mt-1"><strong>M-PESA receipt:</strong> {receipt.providerReceiptNumber}</p>}
           {receipt.manualPaymentName && <p className="mt-1"><strong>Payer:</strong> {receipt.manualPaymentName}</p>}
