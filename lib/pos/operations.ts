@@ -8,6 +8,7 @@ import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { expenseBackendIsNeon, expenseReadsIncludeNeon, insertNeonExpense, listNeonExpenses, listNeonExpensesInRange, listNeonExpenseAudit, countNeonExpenseAudits } from "@/lib/db/expenses-neon";
+import { auditArchiveReadsEnabled, listArchivedAudits, archivedAuditIds, mergeUniqueById } from "@/lib/db/audit-archive-neon";
 import { getMainStore, isLegacyStoreName, storeOrderPredicate, relatedOrderPredicate } from "@/lib/stores/main-store";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -777,9 +778,11 @@ export async function getAuditTrail(limit = 100) {
     `*[_type == "auditEvent"] | order(createdAt desc)[0...$limit]{"id":_id,eventNumber,eventType,entityLabel,actorName,actorRole,detail,createdAt,resolutionStatus,resolvedAt,resolvedBy}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
-  if (!expenseReadsIncludeNeon()) return sanity;
-  const neon = await listNeonExpenseAudit(limit);
-  return [...sanity, ...neon].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,limit);
+  const [archived, neonExpenses] = await Promise.all([
+    auditArchiveReadsEnabled() ? listArchivedAudits(limit) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? listNeonExpenseAudit(limit) : Promise.resolve([]),
+  ]);
+  return mergeUniqueById(archived, sanity, neonExpenses).slice(0, Math.max(1,Math.min(500,limit)));
 }
 
 export async function getDeveloperAuditTrail(days = 31) {
@@ -792,11 +795,23 @@ export async function getDeveloperAuditTrail(days = 31) {
     ),
     serverClient.fetch<number>(`count(*[_type == "auditEvent"])`, {}, { cache: "no-store" }),
   ]);
-  if (!expenseReadsIncludeNeon()) return { events, total };
-  const [neonEvents, neonTotal] = await Promise.all([listNeonExpenseAudit(10000, since), countNeonExpenseAudits()]);
+  const [archive, neonEvents, neonTotal] = await Promise.all([
+    auditArchiveReadsEnabled() ? listArchivedAudits(25000,since) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? listNeonExpenseAudit(10000,since) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? countNeonExpenseAudits() : Promise.resolve(0),
+  ]);
+  let auditTotal=total;
+  if (auditArchiveReadsEnabled()) {
+    // Prevent counting the 9k DBK-46 copies twice while they still exist in Sanity.
+    const [archivedIds, sanityIds] = await Promise.all([
+      archivedAuditIds(),
+      serverClient.fetch<string[]>(`*[_type == "auditEvent"]._id`, {}, {cache:"no-store"}),
+    ]);
+    auditTotal = new Set([...archivedIds, ...sanityIds]).size;
+  }
   return {
-    events: [...events, ...neonEvents].sort((a,b) => b.createdAt.localeCompare(a.createdAt)),
-    total: total + neonTotal,
+    events: mergeUniqueById(archive, events, neonEvents),
+    total: auditTotal + neonTotal,
   };
 }
 

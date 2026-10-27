@@ -9,6 +9,7 @@ import {
   touchStaffSessionNeon, recordStaffActivityNeon, endStaffSessionNeon,
   getStaffActivityFromNeon,
 } from "@/lib/db/staff-activity-neon";
+import { auditArchiveReadsEnabled, getArchivedStaffHistory } from "@/lib/db/audit-archive-neon";
 
 const useNeonStaffActivity = () => process.env.DBK_STAFF_ACTIVITY_BACKEND === "neon";
 
@@ -260,6 +261,19 @@ export async function getStaffActivitySummary(staffId: string) {
       { cache: "no-store" },
     ),
   ]);
+
+  if (auditArchiveReadsEnabled()) {
+    // Bring archived historical staff sessions and audits back into the staff UI.
+    const archived = await getArchivedStaffHistory(id);
+    const sessionsById = new Map(archived.sessions.map(row => [row._id, row]));
+    for (const row of sessions) sessionsById.set(row._id, row);
+    sessions.splice(0,sessions.length,...[...sessionsById.values()]
+      .sort((a,b) => b.loginAt.localeCompare(a.loginAt)).slice(0,120));
+    const eventsById = new Map(archived.audits.map(row => [row.id,row]));
+    for (const row of activity) eventsById.set(row.id,row);
+    activity.splice(0,activity.length,...[...eventsById.values()]
+      .sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,150));
+  }
 
   if (useNeonStaffActivity()) {
     // Merge new PostgreSQL technical records with historic Sanity records so
