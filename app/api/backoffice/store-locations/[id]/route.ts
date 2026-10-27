@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { expenseReadsIncludeNeon, countNeonStoreExpenses } from "@/lib/db/expenses-neon";
 
 type StoreInput = { name?: string; code?: string; address?: string; locationType?: string; active?: boolean };
 function clean(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
@@ -54,7 +55,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     { id },
     { cache: "no-store" },
   );
-  if (usage > 0) return NextResponse.json({ message: "This store is already referenced by staff, inventory, sales, shipments or expenditure. Mark it inactive instead of deleting it." }, { status: 409 });
+  if (usage > 0 || (expenseReadsIncludeNeon() && (await countNeonStoreExpenses(id)) > 0)) return NextResponse.json({ message: "This store is already referenced by staff, inventory, sales, shipments or expenditure. Mark it inactive instead of deleting it." }, { status: 409 });
   await serverClient.delete(id);
   return NextResponse.json({ ok: true });
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ClipboardList, CreditCard, FileClock, HandCoins, ReceiptText, RefreshCcw, RotateCcw, Search, WalletCards } from "lucide-react";
 
 import ExternalTillReconciliation from "@/components/backoffice/ExternalTillReconciliation";
@@ -91,6 +91,9 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [refundManualConfirmed, setRefundManualConfirmed] = useState(false);
   const [refundSaving, setRefundSaving] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
+  const expenseRequestKey = useRef<string | null>(null);
+  const expenseInFlight = useRef(false);
+  const [expenseSaving, setExpenseSaving] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "", storeLocationId: "" });
 
   useEffect(() => {
@@ -424,12 +427,29 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
 
   async function submitExpense(event: FormEvent) {
     event.preventDefault();
-    const response = await fetch("/api/backoffice/pos/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount) }) });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.message || "Unable to record expenditure.");
-    setMessage(`${payload.expenseNumber || "Expense"} recorded.`);
-    setExpenseForm({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "", storeLocationId: assignedStoreId || storeFilter || "" });
-    await load("expenses");
+    if (expenseInFlight.current) return;
+    expenseInFlight.current = true;
+    setExpenseSaving(true);
+    // Retry the same key if a request times out or the response is lost.
+    // A new key is issued only after successful confirmation.
+    expenseRequestKey.current ||= crypto.randomUUID();
+    try {
+      const response = await fetch("/api/backoffice/pos/expenses", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), idempotencyKey: expenseRequestKey.current }),
+      });
+      const payload = await response.json();
+      if (!response.ok) { setMessage(payload.message || "Unable to record expenditure. Check history before retrying."); return; }
+      expenseRequestKey.current = null;
+      setExpenseForm({ expenseType: "EXPENSE", ledgerAccount: "", expenseDate: "", staffName: "", description: "", amount: "", paymentMethod: "cash", transactionReference: "", storeLocationId: assignedStoreId || storeFilter || "" });
+      await load("expenses");
+      setMessage(`${payload.expenseNumber || "Expense"} recorded.`);
+    } catch {
+      setMessage("Could not verify expenditure. Review the history before retrying the same submission.");
+    } finally {
+      expenseInFlight.current = false;
+      setExpenseSaving(false);
+    }
   }
 
   return (
@@ -523,7 +543,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
                 <span className="relative"><select value={expenseForm.paymentMethod} onChange={(e)=>setExpenseForm({...expenseForm,paymentMethod:e.target.value})} className="min-h-11 w-full appearance-none rounded-lg border hairline bg-[var(--paper)] pl-4 pr-11 text-sm font-normal normal-case text-[var(--ink)]"><option value="cash">Cash</option><option value="mpesa">M-PESA</option><option value="paystack">Bank / Paystack</option><option value="other">Other</option></select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]" /></span>
               </label>
               <input value={expenseForm.transactionReference} onChange={(e)=>setExpenseForm({...expenseForm,transactionReference:e.target.value})} placeholder="Transaction reference (optional)" className="min-h-11 rounded-lg border hairline px-3 text-sm"/>
-              <button className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream">Save expenditure</button>
+              <button disabled={expenseSaving} className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream disabled:opacity-60">{expenseSaving ? "Saving…" : "Save expenditure"}</button>
             </div>
           </form>
           <SimpleTable headers={["Date","Store","Ledger Account","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.storeLocationName || "Company-wide",expense.ledgerAccount,expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} />
