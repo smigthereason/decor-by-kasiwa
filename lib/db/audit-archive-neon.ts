@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getNeonSql } from "@/lib/db/neon";
+import { neonAuditReadsEnabled } from "@/lib/db/audit-write-neon";
 
 // DBK-47: historical audit views. This module NEVER writes to either database.
 // The DBK-46 archive is only a snapshot: new Sanity events must still be read.
@@ -76,13 +77,27 @@ export async function listArchivedAudits(limit=500,since?:string,actorId?:string
       AND (${actor}::text IS NULL OR document_json->'actor'->>'_ref' = ${actor}::text)
     ORDER BY COALESCE(document_json->>'createdAt',document_json->>'_createdAt','') DESC, sanity_id DESC
     LIMIT ${bounded}`;
-  return (rows as ArchiveRow[]).map(asAudit);
+  const snapshots = (rows as ArchiveRow[]).map(asAudit);
+  if (!neonAuditReadsEnabled()) return snapshots;
+
+  // DBK-48A live events are authoritative for their own IDs. Historical
+  // Sanity archive rows remain read-only and independently verifiable.
+  const liveRows = await sql`
+    SELECT id AS sanity_id, document_json FROM public.dbk_live_audit_events
+    WHERE (${date}::text IS NULL OR created_at >= ${date}::timestamptz)
+      AND (${actor}::text IS NULL OR document_json->'actor'->>'_ref' = ${actor}::text)
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${bounded}`;
+  return mergeUniqueById(snapshots, (liveRows as ArchiveRow[]).map(asAudit)).slice(0, bounded);
 }
 
 export async function archivedAuditIds(): Promise<string[]> {
   const sql=getNeonSql();
   const rows=await sql`SELECT sanity_id FROM public.dbk_sanity_operational_archive WHERE document_type='auditEvent'`;
-  return (rows as {sanity_id:string}[]).map(row=>row.sanity_id);
+  const archived=(rows as {sanity_id:string}[]).map(row=>row.sanity_id);
+  if (!neonAuditReadsEnabled()) return archived;
+  const live=await sql`SELECT id FROM public.dbk_live_audit_events`;
+  return [...new Set([...archived,...(live as {id:string}[]).map(row=>row.id)])];
 }
 
 export async function getArchivedStaffHistory(staffId:string) {
