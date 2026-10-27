@@ -148,8 +148,8 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
 
   useEffect(() => {
     if (!canViewReports && tab === "reports") { setTab("history"); return; }
-    if (salesStaff && tab !== "history" && tab !== "expenses" && tab !== "reconciliation") {
-      setTab("history");
+    if (salesStaff && tab !== "expenses" && tab !== "reconciliation") {
+      setTab("expenses");
       return;
     }
     void load(tab);
@@ -220,7 +220,6 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   }
 
   const tabs = useMemo(() => salesStaff ? [
-    { id: "history" as const, label: "Sales History", icon: ClipboardList },
     { id: "expenses" as const, label: "Expenditure", icon: WalletCards },
     { id: "reconciliation" as const, label: "Reconciliation", icon: CreditCard },
   ] : [

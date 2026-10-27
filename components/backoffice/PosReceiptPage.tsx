@@ -1,12 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 
 import PrintReceiptButton from "@/components/backoffice/PrintReceiptButton";
 import { formatMoney } from "@/lib/money";
 import { getPosReceipt } from "@/lib/pos/server";
-import { getApiStaff } from "@/lib/auth/api-authorization";
-import { canViewPosReceipt } from "@/lib/pos/receipt-access";
 
 function paymentLabel(provider?: string, channel?: string) {
   if (provider === "daraja") return "Safaricom M-PESA";
@@ -29,10 +26,7 @@ function discountDescription(type?: "percent" | "fixed", value?: number, reason?
 }
 
 export default async function PosReceiptPage({ orderId, basePath }: { orderId: string; basePath: "/admin" | "/store" }) {
-  const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
-  if (!staff.ok) notFound();
   const receipt = await getPosReceipt(orderId);
-  if (receipt && !canViewPosReceipt(staff.role, staff.storeLocationId, receipt.storeLocationId)) notFound();
   if (!receipt) {
     return <div className="p-8"><p className="text-sm">Receipt not found.</p></div>;
   }

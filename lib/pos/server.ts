@@ -636,7 +636,7 @@ async function fetchPosOrderByCheckoutRequestId(checkoutRequestId: string) {
       deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,fulfilmentStages,currentFulfilmentStage,receiptNumber,
       paymentReference,paymentProvider,paymentChannel,providerReceiptNumber,mpesaMerchantRequestId,mpesaCheckoutRequestId,
       mpesaResultCode,mpesaResultDescription,inventoryReviewRequired,inventoryReconciliationReason,inventoryReviewRaisedAt,inventoryReconciledAt,"customerId":customer._ref,customerName,customerEmail,customerPhone,soldByName,"storeLocationId":storeLocation._ref,"storeLocationName":coalesce(storeLocation->name,assignedStore,""),soldAt,
-      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice}
+      "lineItems":lineItems[]{_key,"productId":coalesce(product._ref,productId),name,category,finish,size,variantId,quantity,unitPrice,unitCost}
     }`,
     { checkoutRequestId },
     { cache: "no-store" },
@@ -1951,7 +1951,6 @@ export async function getPosReceipt(orderId: string) {
       _id: string;
       orderNumber: string;
       receiptNumber?: string;
-      storeLocationId?: string;
       customerName?: string;
       customerPhone?: string;
       customerEmail?: string;
@@ -2004,7 +2003,7 @@ export async function getPosReceipt(orderId: string) {
   }>(
     `{
       "receipt": *[_type == "commerceOrder" && _id == $orderId][0]{
-        _id,orderNumber,receiptNumber,"storeLocationId":storeLocation._ref,customerName,customerPhone,customerEmail,subtotal,discountType,discountValue,discountAmount,discountReason,discountAuthorizedByName,
+        _id,orderNumber,receiptNumber,customerName,customerPhone,customerEmail,subtotal,discountType,discountValue,discountAmount,discountReason,discountAuthorizedByName,
         deliveryFee,deliveryLocation,deliveryAddress,fulfilmentType,total,amountPaid,balanceDue,overpaidAmount,cashTendered,cashChangeDue,
         refundedAmount,paymentStatus,paymentProvider,paymentChannel,paymentReference,providerReceiptNumber,
         mpesaMerchantRequestId,mpesaCheckoutRequestId,mpesaResultCode,mpesaResultDescription,
