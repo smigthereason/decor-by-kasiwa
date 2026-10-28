@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
+import { dbk61ReadHistory, dbk61SandboxAllowed } from "@/lib/db/dbk61-pos-compat";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,19 @@ export async function GET(request: Request) {
   const limit = Number(params.get("limit") || 150);
   const requestedStoreId = params.get("store")?.trim() || undefined;
   const storeId = staff.role === "MANAGER" ? staff.storeLocationId : requestedStoreId;
+  if (params.has("dbk61")) {
+    if (params.get("dbk61") !== "test" || staff.role !== "ADMIN" || !dbk61SandboxAllowed(request)) {
+      return NextResponse.json({ message: "Not found" }, { status: 404 });
+    }
+    try {
+      const orders = await dbk61ReadHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to, storeId });
+      return NextResponse.json({ orders, cashiers: [...new Set(orders.map(o=>o.soldByName))].sort(), testOnly: true },
+        { headers: { "Cache-Control": "private, no-store" } });
+    } catch {
+      return NextResponse.json({ message: "Test-branch history unavailable" }, { status: 409 });
+    }
+  }
+
   try {
     const [orders, cashiers] = await Promise.all([
       listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to, storeId }),

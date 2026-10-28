@@ -2171,6 +2171,7 @@ export async function previewDBK58ManualPosSale(input: PosSaleInput, seller: Pos
     simulatedPayment: true,
     noWritesPerformed: true,
     candidate,
+    productNames: lines.map(line => line.name),
     calculation: {
       subtotalMinor: toCents(subtotal, "subtotal"),
       discountMinor: candidate.order.discountMinor,

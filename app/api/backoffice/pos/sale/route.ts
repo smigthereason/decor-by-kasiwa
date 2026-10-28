@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { dbk61SandboxAllowed, dbk61StageManualSale } from "@/lib/db/dbk61-pos-compat";
 import {
   createPosManualSale,
   createPosMpesaSale,
@@ -15,6 +16,16 @@ export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
+  const sandboxHeader = request.headers.get("x-dbk61-sandbox");
+  if (sandboxHeader !== null) {
+    if (sandboxHeader !== "synthetic-manual" || !dbk61SandboxAllowed(request)) {
+      return NextResponse.json({ message: "Not found" }, { status: 404 });
+    }
+    if (staff.role !== "ADMIN" || request.headers.get("origin") !== new URL(request.url).origin ||
+        !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+      return NextResponse.json({ message: "Synthetic local ADMIN requests only" }, { status: 403 });
+    }
+  }
   try {
     const body = (await request.json()) as PosSaleInput;
     if (!["mpesa", "manual"].includes(body.paymentMethod)) {
@@ -51,6 +62,12 @@ export async function POST(request: Request) {
       storeLocationName: storeLocation.name || "Store",
       storeLocationCode: storeLocation.code || "",
     };
+
+    if (sandboxHeader !== null) {
+      if (body.paymentMethod !== "manual") return NextResponse.json({ message: "Synthetic manual only" }, { status: 400 });
+      const testResult = await dbk61StageManualSale(body, seller);
+      return NextResponse.json(testResult, { headers: { "Cache-Control": "private, no-store" } });
+    }
 
     const result = body.paymentMethod === "mpesa"
       ? await createPosMpesaSale(body, seller)
