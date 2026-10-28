@@ -1,3 +1,4 @@
+import { dbk65OnlineReadsEnabled, dbk65ListOnlineOrders, dbk65ListOnlineShipments } from "@/lib/db/dbk65-online-fulfilment";
 import "server-only";
 
 import { effectiveOnHand, type StockVariant } from "@/lib/inventory/stock";
@@ -233,7 +234,7 @@ export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> 
     { cache: "no-store" },
   );
 
-  return rows.map((row) => ({
+  const legacyOrders = rows.map((row) => ({
     ...row,
     ...(main && (row.salesChannel === "ONLINE" || !row.salesChannel) && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
       ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code, assignedStore: main.name } : {}),
@@ -257,6 +258,10 @@ export async function getLiveOrders(storeLocationId?: string): Promise<Order[]> 
     refundedAmount: Number(row.refundedAmount || 0),
     lineItems: Array.isArray(row.lineItems) ? row.lineItems : [],
   }));
+  if (!dbk65OnlineReadsEnabled()) return legacyOrders;
+  // Fail closed rather than silently hide new Neon orders when the read path is enabled.
+  const neonOrders = await dbk65ListOnlineOrders(storeLocationId);
+  return [...legacyOrders, ...neonOrders].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getLiveShipments(storeLocationId?: string): Promise<Shipment[]> {
@@ -291,7 +296,7 @@ export async function getLiveShipments(storeLocationId?: string): Promise<Shipme
     { cache: "no-store" },
   );
 
-  return rows.map((row) => ({
+  const legacyShipments = rows.map((row) => ({
     ...row,
     ...(main && row.isLegacyOnline && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
       ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code } : {}),
@@ -305,6 +310,9 @@ export async function getLiveShipments(storeLocationId?: string): Promise<Shipme
     itemCount: Number(row.itemCount || 0),
     totalUnits: Number(row.totalUnits || 0),
   }));
+  if (!dbk65OnlineReadsEnabled()) return legacyShipments;
+  const neonShipments = await dbk65ListOnlineShipments(storeLocationId);
+  return [...legacyShipments,...neonShipments].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getLiveRestockRequests(): Promise<RestockRequest[]> {
