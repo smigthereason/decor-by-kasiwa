@@ -4,6 +4,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
 import { dbk61ReadHistory, dbk61SandboxAllowed } from "@/lib/db/dbk61-pos-compat";
 import { dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
+import { dbk68ReadEnabled, dbk68ListHistory } from "@/lib/db/dbk68-daraja-neon";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +42,16 @@ export async function GET(request: Request) {
     if (dbk62ReadEnabled()) {
       const neonOrders = await dbk62ReadHistory({ limit:500,channel:channel === "POS" || channel === "ONLINE" ? channel : undefined,
         cashier,query,from,to,storeId });
-      const combined = [...orders,...neonOrders].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
+      const darajaOrders = dbk68ReadEnabled() && channel !== "ONLINE" ? await dbk68ListHistory() : [];
+      const filteredDaraja = darajaOrders.filter(o =>
+        (!storeId || o.storeLocationId===storeId) &&
+        (!cashier || o.soldByName===cashier) &&
+        (!query || [o.orderNumber,o.customerName,o.customerPhone].some(v=>v.toLowerCase().includes(query.toLowerCase()))) &&
+        (!from || o.soldAt >= `${from}T00:00:00+03:00`) &&
+        (!to || o.soldAt <= `${to}T23:59:59+03:00`));
+      const combined = [...orders,...neonOrders,...filteredDaraja].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
         .slice(0,Math.max(1,Math.min(500,Math.floor(Number.isFinite(limit)?limit:150))));
-      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName)])].sort()},
+      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName),...filteredDaraja.map(o=>o.soldByName)])].sort()},
         {headers:{"Cache-Control":"private, no-store"}});
     }
     return NextResponse.json({ orders, cashiers });

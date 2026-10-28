@@ -5,6 +5,7 @@ import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk61SandboxAllowed, dbk61StageManualSale } from "@/lib/db/dbk61-pos-compat";
 import { dbk62CutoverRequested, dbk62CreateRealManualSale } from "@/lib/db/dbk62-pos-cutover";
+import { dbk68Requested, dbk68CreateSale } from "@/lib/db/dbk68-daraja-neon";
 import {
   createPosManualSale,
   createPosMpesaSale,
@@ -73,8 +74,10 @@ export async function POST(request: Request) {
     // Never fall back to Sanity if the Neon cutover is requested but fails.
     // Provider callbacks and online checkout must migrate before enabling DBK-62.
     if (dbk62CutoverRequested()) {
-      if (body.paymentMethod !== "manual") {
-        return NextResponse.json({ message: "Provider POS payments are unavailable during Neon cutover." }, { status: 503 });
+      if (body.paymentMethod === "mpesa") {
+        if (!dbk68Requested()) return NextResponse.json({ message: "Direct M-PESA Neon cutover is not ready." }, { status: 503 });
+        return NextResponse.json(await dbk68CreateSale(body, seller),
+          { headers: { "Cache-Control": "private, no-store" } });
       }
       return NextResponse.json(await dbk62CreateRealManualSale(body, seller),
         { headers: { "Cache-Control": "private, no-store" } });

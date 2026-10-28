@@ -2253,3 +2253,38 @@ export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSel
   };
   return {candidate,snapshot};
 }
+
+/** DBK-68: server-priced, in-store Neon candidate for direct Daraja STK. */
+export async function prepareDBK68MpesaSale(input: PosSaleInput, seller: PosSeller) {
+  if (input.paymentMethod !== 'mpesa') throw new Error('DBK-68 requires Direct M-PESA');
+  const reference = referenceFor(input.requestId);
+  const customer = customerDetails(input);
+  const storeId = seller.storeLocationId;
+  if (!storeId) throw new Error('Select a verified POS store');
+  const delivery = deliveryPayable(input);
+  if (delivery.fulfilmentType !== 'IN_STORE' || delivery.deliveryFee !== 0) {
+    throw new Error('Neon Direct M-PESA currently supports in-store POS only');
+  }
+  const { lines } = await buildLines(input.cart, seller, { stockAuthority: 'neon' });
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal, input.discount, seller);
+  const total = subtotal - discount.discountAmount;
+  if (!Number.isSafeInteger(total) || total <= 0) {
+    throw new Error('Direct M-PESA requires a positive whole-KES amount');
+  }
+  const key = hashId(reference);
+  const snapshot = {
+    reference, orderId: `dbk68.order.${key}`, orderNumber: `DBK68-POS-${key}`,
+    storeId, sellerId: seller.id, sellerName: seller.name.slice(0, 150),
+    customerName: customer.name.slice(0, 150),
+    customerPhone: customer.phone.replace(/\D/g, ''),
+    totalMinor: toCents(total, 'total'),
+    subtotalMinor: toCents(subtotal, 'subtotal'),
+    discountMinor: toCents(discount.discountAmount, 'discount'),
+    lines: lines.map(l => ({
+      productId: l.productId, variantId: l.variantId || '', quantity: l.quantity,
+      unitPriceMinor: toCents(l.unitPrice, 'unit price'), name: l.name.slice(0, 200),
+    })),
+  };
+  return snapshot;
+}
