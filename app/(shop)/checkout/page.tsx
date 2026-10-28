@@ -237,14 +237,14 @@ export default function CheckoutPage() {
       {/* TOP BAR */}
       <div className="border-b hairline bg-[var(--paper)]">
         <div className="flex w-full items-center justify-between px-4 py-4 sm:px-6 md:px-8">
-          <Link
+          <a
             href="/cart"
             className="focus-ring group inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted)] transition-colors hover:text-[var(--ink)]"
           >
             <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1" />
             <span className="hidden sm:inline">Back to bag</span>
             <span className="sm:hidden">Back</span>
-          </Link>
+          </a>
 
           <div className="hidden items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)] md:inline-flex">
             <ShieldCheck size={14} strokeWidth={1.5} />

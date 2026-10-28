@@ -291,13 +291,13 @@ export default function CartPage() {
             </div>
 
             {/* CHECKOUT BUTTON */}
-            <Link
+            <a
               href="/checkout"
               className="focus-ring group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream transition-all hover:shadow-lg hover:opacity-95"
             >
               <span>Continue to Checkout</span>
               <ArrowRight size={14} className="text-soft-cream transition-transform group-hover:translate-x-1" />
-            </Link>
+            </a>
 
             {!user && (
               <div className="mt-5 border-t hairline pt-5 text-xs leading-relaxed text-[var(--muted)]">
