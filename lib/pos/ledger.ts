@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { serverClient } from "@/sanity/lib/serverClient";
 import type { PosSeller } from "@/lib/pos/server";
+import { neonAuditWritesEnabled, recordIndependentAuditInNeon } from "@/lib/db/audit-write-neon";
 
 function safeId(value: string) {
   return value.replace(/[^A-Za-z0-9._-]/g, "-");
@@ -39,6 +40,12 @@ export async function recordAuditEvent({
   detail?: string;
   createdAt?: string;
 }) {
+  // Standalone audit writes may move to Neon. Audit records created *inside*
+  // Sanity order/stock/payment transactions are intentionally unchanged.
+  if (neonAuditWritesEnabled()) {
+    return recordIndependentAuditInNeon({ key, eventType, entityType, entityId, entityLabel, actor, detail, createdAt });
+  }
+
   const id = `auditEvent.${hashId(key)}`;
   await serverClient.createIfNotExists({
     _id: id,

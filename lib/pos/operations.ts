@@ -7,6 +7,8 @@ import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { expenseBackendIsNeon, expenseReadsIncludeNeon, insertNeonExpense, listNeonExpenses, listNeonExpensesInRange, listNeonExpenseAudit, countNeonExpenseAudits } from "@/lib/db/expenses-neon";
+import { auditArchiveReadsEnabled, listArchivedAudits, archivedAuditIds, mergeUniqueById } from "@/lib/db/audit-archive-neon";
 import { getMainStore, isLegacyStoreName, storeOrderPredicate, relatedOrderPredicate } from "@/lib/stores/main-store";
 
 const PAYSTACK_API = "https://api.paystack.co";
@@ -292,6 +294,11 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     ),
   ]);
 
+  if (expenseReadsIncludeNeon()) {
+    const neonExpenses = await listNeonExpensesInRange(start, end, storeId ?? undefined);
+    expenseRows.push(...neonExpenses.map(({ ledgerAccount, expenseCategory, expenseType, amount }) => ({ ledgerAccount, expenseCategory, expenseType, amount })));
+  }
+
   const costProductIds = new Set<string>();
   for (const order of orders) {
     for (const line of order.lineItems || []) {
@@ -436,6 +443,7 @@ export type ExpenseInput = {
   paymentMethod: "cash" | "mpesa" | "paystack" | "other";
   transactionReference?: string;
   expenseDate?: string;
+  idempotencyKey?: string;
 };
 
 export async function listExpenses(limit = 150, storeId?: string) {
@@ -445,7 +453,11 @@ export async function listExpenses(limit = 150, storeId?: string) {
     `*[_type == "expenseTransaction" && (!defined($storeId) || storeLocation._ref == $storeId)] | order(expenseDate desc)[0...$limit]{"id":_id,expenseNumber,expenseType,ledgerAccount,expenseCategory,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName,"storeLocationId":storeLocation._ref,"storeLocationName":storeLocation->name,"storeLocationCode":storeLocation->code}`,
     { limit: Math.max(1, Math.min(500, limit)), storeId: cleanText(storeId) || null }, { cache: "no-store" },
   );
-  return rows.map((row) => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }));
+  const combined = expenseReadsIncludeNeon() ? [...rows, ...await listNeonExpenses(limit, storeId)] : rows;
+  return combined
+    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
+    .slice(0, limit)
+    .map((row) => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }));
 }
 
 export async function createExpense(input: ExpenseInput, seller: PosSeller) {
@@ -467,6 +479,20 @@ export async function createExpense(input: ExpenseInput, seller: PosSeller) {
     : null;
   if (seller.role === "MANAGER" && !storeLocation) throw new Error("Manager expenditure must be tied to the Manager's assigned store.");
   if (requestedStoreId && !storeLocation) throw new Error("Select an active store/location for this expenditure.");
+  if (expenseBackendIsNeon()) {
+    return insertNeonExpense({
+      idempotencyKey: cleanText(input.idempotencyKey),
+      expenseType: input.expenseType,
+      ledgerAccount,
+      ...(input.expenseCategory ? { expenseCategory: input.expenseCategory } : {}),
+      ...(cleanText(input.staffName) ? { staffName: cleanText(input.staffName) } : {}),
+      description, amount, paymentMethod: input.paymentMethod || "other",
+      ...(cleanText(input.transactionReference) ? { transactionReference: cleanText(input.transactionReference) } : {}),
+      ...(storeLocation ? { storeLocationId: storeLocation._id, storeLocationName: storeLocation.name, storeLocationCode: storeLocation.code } : {}),
+      suppliedExpenseDate: cleanText(input.expenseDate),
+      createdById: seller.id, createdByName: seller.name, createdByRole: seller.role,
+    });
+  }
   const now = new Date().toISOString();
   const expenseDate = input.expenseDate && !Number.isNaN(Date.parse(input.expenseDate)) ? new Date(input.expenseDate).toISOString() : now;
   const key = `${seller.id}|${expenseDate}|${description}|${amount}|${storeLocation?._id || "company"}`;
@@ -748,10 +774,15 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
 }
 
 export async function getAuditTrail(limit = 100) {
-  return serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string; resolutionStatus?: "PENDING" | "RESOLVED"; resolvedAt?: string; resolvedBy?: string }>>(
+  const sanity = await serverClient.fetch<Array<{ id: string; eventNumber: string; eventType: string; entityLabel?: string; actorName?: string; actorRole?: string; detail?: string; createdAt: string; resolutionStatus?: "PENDING" | "RESOLVED"; resolvedAt?: string; resolvedBy?: string }>>(
     `*[_type == "auditEvent"] | order(createdAt desc)[0...$limit]{"id":_id,eventNumber,eventType,entityLabel,actorName,actorRole,detail,createdAt,resolutionStatus,resolvedAt,resolvedBy}`,
     { limit: Math.max(1, Math.min(500, limit)) }, { cache: "no-store" },
   );
+  const [archived, neonExpenses] = await Promise.all([
+    auditArchiveReadsEnabled() ? listArchivedAudits(limit) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? listNeonExpenseAudit(limit) : Promise.resolve([]),
+  ]);
+  return mergeUniqueById(archived, sanity, neonExpenses).slice(0, Math.max(1,Math.min(500,limit)));
 }
 
 export async function getDeveloperAuditTrail(days = 31) {
@@ -764,7 +795,24 @@ export async function getDeveloperAuditTrail(days = 31) {
     ),
     serverClient.fetch<number>(`count(*[_type == "auditEvent"])`, {}, { cache: "no-store" }),
   ]);
-  return { events, total };
+  const [archive, neonEvents, neonTotal] = await Promise.all([
+    auditArchiveReadsEnabled() ? listArchivedAudits(25000,since) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? listNeonExpenseAudit(10000,since) : Promise.resolve([]),
+    expenseReadsIncludeNeon() ? countNeonExpenseAudits() : Promise.resolve(0),
+  ]);
+  let auditTotal=total;
+  if (auditArchiveReadsEnabled()) {
+    // Prevent counting the 9k DBK-46 copies twice while they still exist in Sanity.
+    const [archivedIds, sanityIds] = await Promise.all([
+      archivedAuditIds(),
+      serverClient.fetch<string[]>(`*[_type == "auditEvent"]._id`, {}, {cache:"no-store"}),
+    ]);
+    auditTotal = new Set([...archivedIds, ...sanityIds]).size;
+  }
+  return {
+    events: mergeUniqueById(archive, events, neonEvents),
+    total: auditTotal + neonTotal,
+  };
 }
 
 export async function getPaymentReconciliation(limit = 200, storeId?: string) {

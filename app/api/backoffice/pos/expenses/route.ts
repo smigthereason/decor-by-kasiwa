@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { createExpense, listExpenses, type ExpenseInput } from "@/lib/pos/operations";
+import { expenseBackendIsNeon } from "@/lib/db/expenses-neon";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,12 @@ export async function POST(request: Request) {
     const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role, storeLocationId: staff.storeLocationId, storeLocationName: staff.storeLocationName, storeLocationCode: staff.storeLocationCode };
     return NextResponse.json(await createExpense(body, seller));
   } catch (cause) {
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to record expenditure." }, { status: 400 });
+    const message = cause instanceof Error ? cause.message : "Unable to record expenditure.";
+    if (expenseBackendIsNeon() && !/^(Only Admin|Expense description|Enter a valid|Select a valid|Ledger account|Manager expenditure|Refresh the Expenditure|This submission key)/.test(message)) {
+      // Do not expose database connection details through API responses.
+      console.error("[DBK-45] Expenditure backend error", cause);
+      return NextResponse.json({ message: "Unable to verify expenditure. Check history before retrying." }, { status: 503 });
+    }
+    return NextResponse.json({ message }, { status: 400 });
   }
 }

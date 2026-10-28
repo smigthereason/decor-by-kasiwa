@@ -5,6 +5,13 @@ import { createHash } from "node:crypto";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { recordAuditEvent } from "@/lib/pos/ledger";
 import { serverClient } from "@/sanity/lib/serverClient";
+import {
+  touchStaffSessionNeon, recordStaffActivityNeon, endStaffSessionNeon,
+  getStaffActivityFromNeon,
+} from "@/lib/db/staff-activity-neon";
+import { auditArchiveReadsEnabled, getArchivedStaffHistory } from "@/lib/db/audit-archive-neon";
+
+const useNeonStaffActivity = () => process.env.DBK_STAFF_ACTIVITY_BACKEND === "neon";
 
 const ONLINE_WINDOW_MS = 3 * 60 * 1000;
 const MAX_ACTIVE_GAP_MS = 2.5 * 60 * 1000;
@@ -93,6 +100,8 @@ export async function touchStaffSession({
   actor: StaffActor;
   route?: string;
 }) {
+  if (useNeonStaffActivity()) return touchStaffSessionNeon({ sessionId, actor, route });
+
   const id = sessionDocumentId(sessionId);
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
@@ -168,6 +177,11 @@ export async function recordStaffActivity({
   label?: string;
   detail?: string;
 }) {
+  if (useNeonStaffActivity()) {
+    await recordStaffActivityNeon({ sessionId, actor, eventType, route, label, detail });
+    return;
+  }
+
   const sessionIdValue = await touchStaffSession({ sessionId, actor, route });
   // Page views and clicks are stored on the session document (lastRoute).
   // A fresh auditEvent per click is what filled the 25k document cap.
@@ -197,6 +211,8 @@ export async function endStaffSession({
   sessionId: string;
   actor: StaffActor;
 }) {
+  if (useNeonStaffActivity()) return endStaffSessionNeon({ sessionId, actor });
+
   const id = sessionDocumentId(sessionId);
   const existing = await serverClient.fetch<StaffSessionRecord | null>(
     `*[_type == "staffSession" && _id == $id][0]{_id,loginAt,lastSeenAt,logoutAt,durationMinutes,status,lastRoute}`,
@@ -245,6 +261,33 @@ export async function getStaffActivitySummary(staffId: string) {
       { cache: "no-store" },
     ),
   ]);
+
+  if (auditArchiveReadsEnabled()) {
+    // Bring archived historical staff sessions and audits back into the staff UI.
+    const archived = await getArchivedStaffHistory(id);
+    const sessionsById = new Map(archived.sessions.map(row => [row._id, row]));
+    for (const row of sessions) sessionsById.set(row._id, row);
+    sessions.splice(0,sessions.length,...[...sessionsById.values()]
+      .sort((a,b) => b.loginAt.localeCompare(a.loginAt)).slice(0,120));
+    const eventsById = new Map(archived.audits.map(row => [row.id,row]));
+    for (const row of activity) eventsById.set(row.id,row);
+    activity.splice(0,activity.length,...[...eventsById.values()]
+      .sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0,150));
+  }
+
+  if (useNeonStaffActivity()) {
+    // Merge new PostgreSQL technical records with historic Sanity records so
+    // existing staff activity remains visible during migration.
+    const neo = await getStaffActivityFromNeon(id);
+    const sessionMap = new Map(sessions.map((entry) => [entry._id, entry]));
+    for (const entry of neo.sessions) sessionMap.set(entry._id, entry);
+    sessions.splice(0, sessions.length, ...Array.from(sessionMap.values())
+      .sort((a, b) => b.loginAt.localeCompare(a.loginAt)).slice(0, 120));
+    const eventMap = new Map(activity.map((entry) => [entry.id, entry]));
+    for (const entry of neo.activity) eventMap.set(entry.id, entry);
+    activity.splice(0, activity.length, ...Array.from(eventMap.values())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 150));
+  }
 
   const now = Date.now();
   const shiftedNow = new Date(now + EAT_OFFSET_MS);
