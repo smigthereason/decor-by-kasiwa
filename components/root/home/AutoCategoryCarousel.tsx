@@ -1,4 +1,5 @@
 "use client";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -101,7 +102,7 @@ export default function AutoCategoryCarousel({ items }: { items: CategoryCarouse
             <div className="relative mx-auto aspect-square w-full overflow-hidden rounded-full border hairline bg-[var(--paper-2)]">
               {item.imageUrl ? (
                 <Image
-                  src={item.imageUrl}
+                  src={optimizeSanityImageUrl(item.imageUrl, { width: 320 })}
                   alt={item.title}
                   fill
                   unoptimized

@@ -1,5 +1,6 @@
 // components/root/shop/ProductCard.tsx
 "use client";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -81,13 +82,12 @@ export default function ProductCard({
       >
         {product.heroImage ? (
           <Image
-            src={product.heroImage}
+            src={optimizeSanityImageUrl(product.heroImage, { width: 640 })}
             alt={product.name}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
             className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             unoptimized
-            priority
           />
         ) : (
           <div className="absolute inset-0 grid place-items-center bg-white px-6 text-center">

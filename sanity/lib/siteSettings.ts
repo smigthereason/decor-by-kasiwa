@@ -1,4 +1,5 @@
 import { client } from "./client";
+import { optimizeSanityImageUrl } from "./optimizedImage";
 
 export type PublicSiteSettings = {
   brandName?: string;
@@ -31,10 +32,16 @@ export async function getPublicSiteSettings(): Promise<PublicSiteSettings> {
         seoDescription
       }`,
       {},
-      { cache: "no-store" },
+      { next: { revalidate: 300 } },
     );
 
-    return settings || {};
+    if (!settings) return {};
+    return {
+      ...settings,
+      homeHeroImageUrl: settings.homeHeroImageUrl
+        ? optimizeSanityImageUrl(settings.homeHeroImageUrl, { width: 1600, quality: 72 })
+        : undefined,
+    };
   } catch (error) {
     console.warn("Site settings could not be loaded from Sanity.", error);
     return {};

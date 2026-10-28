@@ -12,6 +12,7 @@ import type {
 } from "@/types/commerce";
 
 import { client } from "./client";
+import { optimizeSanityImageUrl } from "./optimizedImage";
 import { serverClient } from "./serverClient";
 import { locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 
@@ -225,7 +226,8 @@ function toImageUrl(
   return imageBuilder
     .image(source)
     .width(1400)
-    .quality(88)
+    .fit("max")
+    .quality(72)
     .auto("format")
     .url();
 }
@@ -1249,8 +1251,14 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
     return [];
   }
 
+  // Published ecommerce catalogue can use the Sanity API CDN and the existing
+  // 10s Next cache. POS inventory reads remain direct and uncached.
+  // Checkout/payment settlement must continue to validate authoritative stock.
+  const catalogueReader = channel === "pos" || process.env.DBK_PUBLIC_CATALOG_CDN === "0"
+    ? serverClient
+    : client;
   const records =
-    await serverClient.fetch<
+    await catalogueReader.fetch<
       SanityProductRecord[]
     >(
       `*[
@@ -1558,8 +1566,9 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
                       child.slug!,
 
                     imageUrl:
-                      child.imageUrl ||
-                      null,
+                      child.imageUrl
+                        ? optimizeSanityImageUrl(child.imageUrl, { width: 1200 })
+                        : null,
                   }),
                 );
 
@@ -1582,8 +1591,9 @@ export async function getShopNavigation(): Promise<ShopNavigation> {
                * from the Sanity asset.
                */
               imageUrl:
-                category.imageUrl ||
-                null,
+                category.imageUrl
+                  ? optimizeSanityImageUrl(category.imageUrl, { width: 1200 })
+                  : null,
 
               /*
                * Sanity children take

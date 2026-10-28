@@ -1,4 +1,5 @@
 "use client";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -117,7 +118,7 @@ export default function CartPage() {
                       className="relative aspect-[3/4] w-full sm:w-32 md:w-40 shrink-0 overflow-hidden rounded-lg bg-[var(--paper-2)]"
                     >
                       {product.heroImage ? (
-                        <Image src={product.heroImage} alt={product.name} fill unoptimized priority={true} className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
+                        <Image src={optimizeSanityImageUrl(product.heroImage, { width: 640 })} alt={product.name} fill unoptimized sizes="(max-width: 640px) 100vw, 240px" className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
                       ) : (
                         <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-3 text-center">
                           <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--brand-green)]">Image coming soon</span>

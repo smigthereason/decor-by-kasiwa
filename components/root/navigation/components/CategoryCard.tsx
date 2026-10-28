@@ -1,3 +1,4 @@
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 import Image from "next/image";
 import Link from "next/link";
 import { categoryHref } from "../constants/navigation";
@@ -59,7 +60,7 @@ export function CategoryCard({ title, slug, imageUrl, children, onNavigate }: Ca
             className="relative block h-full w-full min-h-[100px] max-h-[160px] overflow-hidden rounded-[5px] bg-[var(--paper-2)]"
           >
             <Image
-              src={imageUrl}
+              src={optimizeSanityImageUrl(imageUrl, { width: 480 })}
               alt={title}
               fill
               unoptimized

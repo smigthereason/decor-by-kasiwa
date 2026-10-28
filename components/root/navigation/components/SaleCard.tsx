@@ -1,3 +1,4 @@
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -68,7 +69,7 @@ export function SaleCard({ onNavigate, clearanceCategory }: SaleCardProps) {
             className="relative block aspect-[16/9] w-full overflow-hidden rounded-[5px]"
           >
             <Image
-              src={clearanceCategory.imageUrl}
+              src={optimizeSanityImageUrl(clearanceCategory.imageUrl, { width: 480 })}
               alt="Clearance sale"
               fill
               unoptimized

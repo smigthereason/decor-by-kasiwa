@@ -1,4 +1,5 @@
 "use client";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -131,7 +132,7 @@ export default function WishlistPage() {
                   {/* PRODUCT IMAGE */}
                   <div className="relative aspect-[3/4] overflow-hidden bg-[var(--paper-2)]">
                     {product.heroImage ? (
-                      <Image src={product.heroImage} alt={product.name} fill unoptimized priority sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.035]" />
+                      <Image src={optimizeSanityImageUrl(product.heroImage, { width: 640 })} alt={product.name} fill unoptimized sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.035]" />
                     ) : (
                       <div className="absolute inset-0 grid place-items-center bg-[var(--warm-beige)] px-4 text-center">
                         <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--brand-green)]">Image coming soon</span>

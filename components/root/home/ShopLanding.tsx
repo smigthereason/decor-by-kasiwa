@@ -542,6 +542,7 @@
 "use client";
 
 import Image from "next/image";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -940,7 +941,7 @@ export default function ShopLanding({
             >
               {featuredLook.heroImageUrl ? (
                 <Image
-                  src={featuredLook.heroImageUrl}
+                  src={optimizeSanityImageUrl(featuredLook.heroImageUrl, { width: 1400 })}
                   alt={featuredLook.title}
                   fill
                   unoptimized
@@ -993,7 +994,7 @@ export default function ShopLanding({
                   {featuredLook.products[0]?.product.heroImage ? (
                     <div className="relative size-14 overflow-hidden rounded-lg bg-[var(--paper-2)] shadow-sm sm:size-16 sm:rounded-xl md:size-20 lg:size-60">
                       <Image
-                        src={featuredLook.products[0].product.heroImage}
+                        src={optimizeSanityImageUrl(featuredLook.products[0].product.heroImage, { width: 480 })}
                         alt={featuredLook.products[0].product.name}
                         fill
                         unoptimized

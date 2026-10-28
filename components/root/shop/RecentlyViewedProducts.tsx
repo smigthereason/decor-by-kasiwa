@@ -1,4 +1,5 @@
 "use client";
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -49,7 +50,7 @@ export default function RecentlyViewedProducts() {
               <div className="relative aspect-square overflow-hidden bg-[var(--paper-2)]">
                 {item.imageUrl ? (
                   <Image
-                    src={item.imageUrl}
+                    src={optimizeSanityImageUrl(item.imageUrl, { width: 360 })}
                     alt={item.name}
                     fill
                     unoptimized

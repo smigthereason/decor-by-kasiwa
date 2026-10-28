@@ -1,3 +1,4 @@
+import { optimizeSanityImageUrl } from "@/sanity/lib/optimizedImage";
 import Link from "next/link";
 import { Layers3 } from "lucide-react";
 import { CategoryCard } from "./CategoryCard";
@@ -46,7 +47,7 @@ export function MegaMenu({ navigation, shopLookPreview, onNavigate }: MegaMenuPr
             className="group relative flex min-h-[190px] overflow-hidden rounded-xl border hairline bg-[var(--brand-green)] text-[var(--soft-cream)] transition-transform duration-300 hover:-translate-y-1"
           >
             {shopLookPreview?.imageUrl ? (
-              <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url("${shopLookPreview.imageUrl}")` }} />
+              <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url("${optimizeSanityImageUrl(shopLookPreview.imageUrl, { width: 640 })}")` }} />
             ) : null}
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/5" />
             <div className="relative z-10 flex w-full flex-col justify-between p-4">
