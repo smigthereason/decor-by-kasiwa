@@ -400,7 +400,7 @@ function normalizeCart(cart: PosCartLine[]) {
   return [...merged.values()];
 }
 
-async function buildLines(cart: PosCartLine[], seller: PosSeller) {
+async function buildLines(cart: PosCartLine[], seller: PosSeller, options: { stockAuthority?: "sanity" | "neon" } = {}) {
   const normalized = normalizeCart(cart);
   const ids = [...new Set(normalized.map((line) => line.productId))];
   const products = await fetchProducts(ids);
@@ -424,7 +424,11 @@ async function buildLines(cart: PosCartLine[], seller: PosSeller) {
     if (line.variantId && !variant) throw new Error(`${product.name || "Product"} variant is no longer available.`);
     if (variantProduct && !variant) throw new Error(`Select a valid ${product.name || "product"} variant before adding it to the sale.`);
 
-    if (seller.storeLocationId) {
+    // Once inventory ownership is cut over, Sanity on-hand numbers are stale.
+    // The DBK-57 atomic Neon transaction independently enforces available stock.
+    if (options.stockAuthority === "neon") {
+      // Product, variant, availability and prices were still checked above.
+    } else if (seller.storeLocationId) {
       const balance = findLocationBalance(product.inventory?.locationBalances, seller.storeLocationId);
       const available = locationOnHand(balance, variant?._key);
       if (available < line.quantity) {
@@ -2183,4 +2187,69 @@ export async function previewDBK58ManualPosSale(input: PosSaleInput, seller: Pos
       financialStatus: breakdown.paymentStatus,
     },
   };
+}
+
+/** DBK-62: real manual POS candidate, never called unless the cutover gates pass. */
+export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSeller) {
+  if (input.paymentMethod !== "manual") throw new Error("DBK-62 currently supports manual payment only.");
+  const reference = referenceFor(input.requestId);
+  const customer = customerDetails(input);
+  const payerName = cleanText(input.manualPaymentName);
+  const externalReference = cleanText(input.manualPaymentReference).toUpperCase();
+  const requestedPayment = Number(input.manualAmountReceived);
+  if (!payerName || !/^[A-Z0-9-]{5,100}$/.test(externalReference) || externalReference.startsWith("DBK58-TEST-")) {
+    throw new Error("Enter a real, independently checked manual-payment reference and payer name.");
+  }
+  if (!Number.isFinite(requestedPayment) || requestedPayment <= 0 || input.manualPaymentConfirmed !== true) {
+    throw new Error("Confirm the amount independently received before recording the manual payment.");
+  }
+  const duplicate = await serverClient.fetch<{_id: string} | null>(
+    `*[((_type == "paymentTransaction") && providerReceiptNumber == $reference) ||
+       ((_type == "commerceOrder") && (providerReceiptNumber == $reference || manualPaymentReference == $reference))][0]{_id}`,
+    {reference:externalReference},{cache:"no-store"},
+  );
+  if (duplicate) throw new Error("That payment reference already exists in legacy sales. Check before recording it again.");
+  if (!seller.storeLocationId) throw new Error("Select a verified store before recording the sale.");
+  const delivery = deliveryPayable(input);
+  if (delivery.fulfilmentType !== "IN_STORE" || delivery.deliveryFee !== 0) {
+    throw new Error("DBK-62 cutover only supports in-store manual POS sales; delivery is not yet migrated.");
+  }
+  const {lines} = await buildLines(input.cart,seller,{stockAuthority:"neon"});
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal,input.discount,seller);
+  const total = Math.max(0,subtotal-discount.discountAmount);
+  const breakdown = manualPaymentBreakdown(total,requestedPayment);
+  if (breakdown.total <= 0) throw new Error("Manual sale total must be positive.");
+  if (breakdown.balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
+    throw new Error("Confirm the outstanding balance on this partial payment.");
+  }
+  if (breakdown.overpaidAmount > 0) throw new Error("DBK-62 does not yet support overpayments or change reconciliation.");
+  const key = hashId(reference);
+  const requestKey = `dbk62-manual-${key}`;
+  const orderId = `dbk62.order.${key}`;
+  const orderNumber = `DBK62-POS-${key}`;
+  const candidate = {
+    requestKey,
+    cashierConfirmed:true as const,
+    overpaymentApproved:false,
+    order:{orderId,orderNumber,channel:"POS" as const,storeId:seller.storeLocationId,sellerId:seller.id,
+      currency:"KES" as const, discountMinor:toCents(discount.discountAmount,"discount"),deliveryMinor:0,
+      items:lines.map(l=>({productId:l.productId,...(l.variantId?{variantId:l.variantId}:{}),
+        storeId:seller.storeLocationId!,quantity:l.quantity,unitPriceMinor:toCents(l.unitPrice,"unit price")}))},
+    payment:{orderId,provider:"manual" as const,providerReference:externalReference,
+      purpose:"INITIAL" as const,amountMinor:toCents(breakdown.received,"received"),
+      evidenceReference:`cashier-confirmed-${key}`},
+  };
+  const snapshot = {
+    customerName:customer.name.slice(0,150),customerPhone:customer.phone,customerEmail:customer.email,
+    sellerName:seller.name.slice(0,150),sellerRole:seller.role,storeName:(seller.storeLocationName||"Store").slice(0,150),
+    paymentName:payerName.slice(0,150),paymentReference:externalReference,
+    internalReference:reference,
+    discountType:discount.discountType||"",discountValue:discount.discountValue||0,
+    discountReason:discount.discountReason||"",discountAuthorizedByName:discount.discountAmount>0?seller.name:"",
+    receiptNumber:`RCT-${orderNumber}`,deliveryLocation:delivery.deliveryLocation,
+    productNames:lines.map(l=>l.name),
+    lineDetails:lines.map(l=>({category:l.category,finish:l.finish||"",size:l.size||"",unitCost:l.unitCost})),
+  };
+  return {candidate,snapshot};
 }

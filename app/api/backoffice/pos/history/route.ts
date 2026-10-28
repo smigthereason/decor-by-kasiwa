@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
 import { dbk61ReadHistory, dbk61SandboxAllowed } from "@/lib/db/dbk61-pos-compat";
+import { dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +38,16 @@ export async function GET(request: Request) {
       listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to, storeId }),
       listSalesCashiers(storeId),
     ]);
+    if (dbk62ReadEnabled()) {
+      const neonOrders = await dbk62ReadHistory({ limit:500,channel:channel === "POS" || channel === "ONLINE" ? channel : undefined,
+        cashier,query,from,to,storeId });
+      const combined = [...orders,...neonOrders].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
+        .slice(0,Math.max(1,Math.min(500,Math.floor(Number.isFinite(limit)?limit:150))));
+      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName)])].sort()},
+        {headers:{"Cache-Control":"private, no-store"}});
+    }
     return NextResponse.json({ orders, cashiers });
   } catch (cause) {
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load sales history." }, { status: 400 });
+    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load sales history." }, { status: dbk62ReadEnabled() ? 503 : 400 });
   }
 }

@@ -4,6 +4,8 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import { listReceivables } from "@/lib/pos/operations";
 import { recordOutstandingCashPayment } from "@/lib/pos/server";
 import { dbk61ReadHistory, dbk61SandboxAllowed, isDbk61SyntheticOrderId } from "@/lib/db/dbk61-pos-compat";
+import { dbk62CutoverRequested, dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
+import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ receivables: orders.filter(o=>o.balanceDue>0), testOnly: true },
         { headers: { "Cache-Control": "private, no-store" } });
     }
-    return NextResponse.json({ receivables: await listReceivables(storeId) });
+    const legacy = await listReceivables(storeId);
+    if (dbk62ReadEnabled()) {
+      const neon = await dbk62ReadHistory({storeId,limit:500});
+      return NextResponse.json({receivables:[...legacy,...neon.filter(o=>o.balanceDue>0)]
+        .sort((a,b)=>b.soldAt.localeCompare(a.soldAt))},
+        {headers:{"Cache-Control":"private, no-store"}});
+    }
+    return NextResponse.json({ receivables: legacy });
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load receivables." }, { status: 400 });
   }
@@ -33,9 +42,14 @@ export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
+    // Receivable writes must be implemented atomically in Neon before a cutover.
+    if (dbk62CutoverRequested()) return NextResponse.json({message:"Receivable settlement migration is incomplete"},{status:503});
     const body = await request.json() as { orderId?: string; amount?: number };
     if (!body.orderId) return NextResponse.json({ message: "Order is required." }, { status: 400 });
     // DBK-61 does not support payment writes: never let a synthetic order fall through to Sanity.
+    if (isDbk62RealOrderId(body.orderId)) {
+      return NextResponse.json({message:"Neon order payments cannot be recorded in Sanity"},{status:403});
+    }
     if (isDbk61SyntheticOrderId(body.orderId)) {
       return NextResponse.json({ message: "Test orders cannot receive real payments" }, { status: 403 });
     }

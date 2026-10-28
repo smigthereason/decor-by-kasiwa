@@ -4,6 +4,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk61SandboxAllowed, dbk61StageManualSale } from "@/lib/db/dbk61-pos-compat";
+import { dbk62CutoverRequested, dbk62CreateRealManualSale } from "@/lib/db/dbk62-pos-cutover";
 import {
   createPosManualSale,
   createPosMpesaSale,
@@ -69,6 +70,15 @@ export async function POST(request: Request) {
       return NextResponse.json(testResult, { headers: { "Cache-Control": "private, no-store" } });
     }
 
+    // Never fall back to Sanity if the Neon cutover is requested but fails.
+    // Provider callbacks and online checkout must migrate before enabling DBK-62.
+    if (dbk62CutoverRequested()) {
+      if (body.paymentMethod !== "manual") {
+        return NextResponse.json({ message: "Provider POS payments are unavailable during Neon cutover." }, { status: 503 });
+      }
+      return NextResponse.json(await dbk62CreateRealManualSale(body, seller),
+        { headers: { "Cache-Control": "private, no-store" } });
+    }
     const result = body.paymentMethod === "mpesa"
       ? await createPosMpesaSale(body, seller)
       : await createPosManualSale(body, seller);
