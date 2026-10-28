@@ -16,7 +16,7 @@ export function dbk62CutoverRequested() {
 export function dbk62ReadEnabled() {
   return dbk62CutoverRequested() || process.env.DBK62_NEON_READS === 'YES';
 }
-function productionSql() {
+export function dbk62GetProductionSql() {
   // App and database both fail closed. Setting the feature flag alone does not enable transactions.
   if (!dbk62ReadEnabled() || process.env.DBK62_CUTOVER_APPROVED !== 'YES') {
     throw new Error('DBK-62 real POS cutover is disabled');
@@ -33,30 +33,36 @@ function productionSql() {
 
 export async function dbk62ReadRealOrder(id:string):Promise<RealNeonOrder|null> {
   if (!isDbk62RealOrderId(id)) return null;
-  const sql=productionSql();
+  const sql=dbk62GetProductionSql();
   const rows=await sql`SELECT o.order_id,o.order_number,o.store_id,o.seller_id,o.subtotal_minor,
     o.discount_minor,o.delivery_minor,o.total_minor,o.collected_minor,o.balance_due_minor,
     o.overpaid_minor,o.financial_status,o.created_at,s.display_snapshot,
+    COALESCE((SELECT sum(r.refund_minor) FROM public.dbk63_pos_refunds r
+      WHERE r.order_id=o.order_id),0) AS refunded_minor,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('product_id',l.product_id,'variant_id',l.variant_id,
       'quantity',l.quantity,'unit_price_minor',l.unit_price_minor) ORDER BY l.line_number)
       FROM public.dbk56_pos_order_lines l WHERE l.order_id=o.order_id),'[]'::jsonb) AS lines,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',p.provider,'provider_reference',p.provider_reference,
-      'payment_purpose',p.payment_purpose,'amount_minor',p.amount_minor) ORDER BY p.recorded_at)
+      'payment_purpose',p.payment_purpose,'amount_minor',p.amount_minor,
+      'event_key',p.event_key,'recorded_at',p.recorded_at) ORDER BY p.recorded_at)
       FROM public.dbk56_pos_payments p WHERE p.order_id=o.order_id),'[]'::jsonb) AS payments
     FROM public.dbk62_manual_sales s JOIN public.dbk56_pos_orders o ON o.order_id=s.order_id
     WHERE o.order_id=${id} LIMIT 1`;
   return (rows[0] as unknown as RealNeonOrder)||null;
 }
 export async function dbk62ListRealOrders():Promise<RealNeonOrder[]> {
-  const sql=productionSql();
+  const sql=dbk62GetProductionSql();
   const rows=await sql`SELECT o.order_id,o.order_number,o.store_id,o.seller_id,o.subtotal_minor,
     o.discount_minor,o.delivery_minor,o.total_minor,o.collected_minor,o.balance_due_minor,
     o.overpaid_minor,o.financial_status,o.created_at,s.display_snapshot,
+    COALESCE((SELECT sum(r.refund_minor) FROM public.dbk63_pos_refunds r
+      WHERE r.order_id=o.order_id),0) AS refunded_minor,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('product_id',l.product_id,'variant_id',l.variant_id,
       'quantity',l.quantity,'unit_price_minor',l.unit_price_minor) ORDER BY l.line_number)
       FROM public.dbk56_pos_order_lines l WHERE l.order_id=o.order_id),'[]'::jsonb) AS lines,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',p.provider,'provider_reference',p.provider_reference,
-      'payment_purpose',p.payment_purpose,'amount_minor',p.amount_minor) ORDER BY p.recorded_at)
+      'payment_purpose',p.payment_purpose,'amount_minor',p.amount_minor,
+      'event_key',p.event_key,'recorded_at',p.recorded_at) ORDER BY p.recorded_at)
       FROM public.dbk56_pos_payments p WHERE p.order_id=o.order_id),'[]'::jsonb) AS payments
     FROM public.dbk62_manual_sales s JOIN public.dbk56_pos_orders o ON o.order_id=s.order_id
     ORDER BY o.created_at DESC LIMIT 500`;
@@ -64,7 +70,7 @@ export async function dbk62ListRealOrders():Promise<RealNeonOrder[]> {
 }
 export async function dbk62CreateRealManualSale(input:PosSaleInput,seller:PosSeller) {
   if (!dbk62CutoverRequested()) throw new Error('DBK-62 real POS writes are disabled');
-  const sql=productionSql();
+  const sql=dbk62GetProductionSql();
   const prepared=await prepareDBK62ManualSale(input,seller);
   const {requestKey,...payload}=prepared.candidate;
   const rows=await sql`SELECT public.dbk62_record_real_manual_sale(${requestKey},

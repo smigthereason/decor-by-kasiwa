@@ -12,6 +12,7 @@ export type RealNeonOrder = {
   balance_due_minor: number | string;
   overpaid_minor: number | string;
   financial_status: string;
+  refunded_minor?:number|string;
   created_at: string | Date;
   display_snapshot: {
     customerName: string;
@@ -33,7 +34,7 @@ export type RealNeonOrder = {
     lineDetails: Array<{ category?: string; finish?: string; size?: string; unitCost?: number }>;
   };
   lines: Array<{product_id:string;variant_id:string;quantity:number;unit_price_minor:string|number}>;
-  payments: Array<{provider:string;provider_reference:string;payment_purpose:string;amount_minor:string|number}>;
+  payments: Array<{provider:string;provider_reference:string;payment_purpose:string;amount_minor:string|number;event_key?:string;recorded_at?:string}>;
 };
 export function isDbk62RealOrderId(id: string): boolean {
   return /^dbk62\.order\.[0-9a-f]{24}$/.test(id);
@@ -58,6 +59,10 @@ export function mapDBK62History(row: RealNeonOrder) {
   const status = row.financial_status === 'PAID' ? 'paid'
     : row.financial_status === 'PARTIALLY_PAID' ? 'partially_paid'
     : row.financial_status === 'UNPAID' ? 'pending' : (() => {throw new Error('Unknown Neon payment status')})();
+  const refunded=kes(row.refunded_minor ?? 0);
+  const paid=kes(row.collected_minor);
+  const total=kes(row.total_minor);
+  if (refunded>Math.min(paid,total)) throw new Error('Neon refunds exceed collected amount');
   const soldAt = new Date(row.created_at).toISOString();
   const initial = row.payments.find(p=>p.payment_purpose==='INITIAL');
   if (!initial || initial.provider !== 'manual' || initial.provider_reference !== display.paymentReference) {
@@ -68,12 +73,12 @@ export function mapDBK62History(row: RealNeonOrder) {
     receiptNumber:display.receiptNumber,
     customerName:display.customerName,customerPhone:display.customerPhone,customerEmail:display.customerEmail,
     salesChannel:'POS' as const,soldByName:display.sellerName,soldAt,
-    paymentStatus:status,paymentChannel:'external',
+    paymentStatus:refunded===paid && paid===total && refunded>0 ? 'refunded' : status,paymentChannel:'external',
     subtotal:kes(row.subtotal_minor),discountAmount:kes(row.discount_minor),total:kes(row.total_minor),
     amountPaid:kes(row.collected_minor),balanceDue:kes(row.balance_due_minor),
     cashTendered:kes(row.collected_minor),cashChangeDue:kes(row.overpaid_minor),
     deliveryFee:kes(row.delivery_minor),deliveryLocation:display.deliveryLocation,
-    refundedAmount:0,paymentReference:display.internalReference,paymentProvider:'manual',
+    refundedAmount:refunded,paymentReference:display.internalReference,paymentProvider:'manual',
     providerReceiptNumber:display.paymentReference,storeLocationId:row.store_id,storeLocationName:display.storeName,
     lineItems:row.lines.map((line,i)=>({
       productId:line.product_id,name:display.productNames[i],variantId:line.variant_id||undefined,

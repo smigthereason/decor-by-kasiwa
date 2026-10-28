@@ -5,6 +5,7 @@ import { listReceivables } from "@/lib/pos/operations";
 import { recordOutstandingCashPayment } from "@/lib/pos/server";
 import { dbk61ReadHistory, dbk61SandboxAllowed, isDbk61SyntheticOrderId } from "@/lib/db/dbk61-pos-compat";
 import { dbk62CutoverRequested, dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
+import { dbk63RecordReceivable } from '@/lib/db/dbk63-financial-neon';
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
 
 export const dynamic = "force-dynamic";
@@ -42,14 +43,25 @@ export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
-    // Receivable writes must be implemented atomically in Neon before a cutover.
-    if (dbk62CutoverRequested()) return NextResponse.json({message:"Receivable settlement migration is incomplete"},{status:503});
-    const body = await request.json() as { orderId?: string; amount?: number };
+    const body = await request.json() as {
+      orderId?: string; amount?: number; requestId?:string;
+      paymentReference?:string; manualPaymentConfirmed?:boolean;
+    };
     if (!body.orderId) return NextResponse.json({ message: "Order is required." }, { status: 400 });
-    // DBK-61 does not support payment writes: never let a synthetic order fall through to Sanity.
+    // Once a real order is in Neon, never route subsequent money to Sanity.
     if (isDbk62RealOrderId(body.orderId)) {
-      return NextResponse.json({message:"Neon order payments cannot be recorded in Sanity"},{status:403});
+      if (!dbk62CutoverRequested()) return NextResponse.json({message:"Neon settlement writes are disabled"},{status:503});
+      const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail,
+        role: staff.role, storeLocationId:staff.storeLocationId,
+        storeLocationName:staff.storeLocationName,storeLocationCode:staff.storeLocationCode };
+      if (request.headers.get('origin') !== new URL(request.url).origin ||
+          !request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+        return NextResponse.json({message:'Same-origin JSON request required for Neon financial operation'},{status:403});
+      }
+      return NextResponse.json(await dbk63RecordReceivable(body,seller),
+        {headers:{'Cache-Control':'private, no-store'}});
     }
+    if (dbk62CutoverRequested()) return NextResponse.json({message:"Sanity receivable writes are disabled during Neon cutover"},{status:503});
     if (isDbk61SyntheticOrderId(body.orderId)) {
       return NextResponse.json({ message: "Test orders cannot receive real payments" }, { status: 403 });
     }
