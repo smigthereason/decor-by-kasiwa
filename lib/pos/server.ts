@@ -7,7 +7,7 @@ import { createHash, createHmac } from "node:crypto";
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
-import { manualPaymentBreakdown } from "@/lib/pos/manual-payment";
+import { manualPaymentBreakdown, toCents } from "@/lib/pos/manual-payment";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -2089,4 +2089,97 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller }: 
 
 export async function logPosAudit(key: string, eventType: string, entityId: string, label: string, seller: PosSeller, detail: string) {
   return recordAuditEvent({ key, eventType, entityType: "commerceOrder", entityId, entityLabel: label, actor: seller, detail });
+}
+
+
+/**
+ * DBK-58: read-only development preview of the exact manual POS calculation.
+ * This is NOT a sale. No Sanity/Neon writes, receipt creation or payment proof.
+ * It deliberately shares the existing product, variant, store, pricing, discount
+ * and delivery validation used by createPosManualSale(). It is not called from
+ * production POS or checkout.
+ */
+export async function previewDBK58ManualPosSale(input: PosSaleInput, seller: PosSeller) {
+  if (process.env.NODE_ENV !== "development" || process.env.DBK58_LOCAL_PREVIEW !== "YES") {
+    throw new Error("DBK-58 preview is disabled.");
+  }
+  if (!input || input.paymentMethod !== "manual") {
+    throw new Error("DBK-58 preview accepts manual POS only.");
+  }
+  const reference = referenceFor(input.requestId); // validates request ID
+  customerDetails(input); // use the same customer validation, but persist no PII
+  const payerName = cleanText(input.manualPaymentName);
+  const externalReference = cleanText(input.manualPaymentReference).toUpperCase();
+  const requestedPayment = Number(input.manualAmountReceived);
+  if (!payerName || input.manualPaymentConfirmed !== true ||
+      !/^DBK58-TEST-[A-Z0-9-]{5,64}$/.test(externalReference) ||
+      !Number.isFinite(requestedPayment) || requestedPayment <= 0) {
+    throw new Error("Use a synthetic DBK58-TEST- payment reference, a payer name, a positive amount, and cashier confirmation.");
+  }
+
+  const { lines } = await buildLines(input.cart, seller); // reads LIVE Sanity; never trusts client prices/stock
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal, input.discount, seller);
+  const delivery = deliveryPayable(input);
+  const calculatedTotal = Math.max(0, subtotal - discount.discountAmount + delivery.deliveryFee);
+  const breakdown = manualPaymentBreakdown(calculatedTotal, requestedPayment);
+  if (breakdown.total <= 0) throw new Error("Neon test-order total must be positive.");
+  if (breakdown.balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
+    throw new Error(`Confirm the partial payment: KES ${breakdown.balanceDue.toFixed(2)} remains outstanding.`);
+  }
+  if (breakdown.overpaidAmount > 0 && input.manualOverpaymentConfirmed !== true) {
+    throw new Error(`Confirm the excess payment: KES ${breakdown.overpaidAmount.toFixed(2)} must be reconciled.`);
+  }
+  const storeId = seller.storeLocationId;
+  if (!storeId) throw new Error("A verified active store is required.");
+  const key = hashId(reference);
+  const requestKey = `dbk58-manual-${key}`;
+  const orderId = `dbk58.order.${key}`;
+  const candidate = {
+    requestKey,
+    cashierConfirmed: true as const,
+    overpaymentApproved: breakdown.overpaidAmount > 0 && input.manualOverpaymentConfirmed === true,
+    order: {
+      orderId,
+      orderNumber: `DBK58-TEST-${key}`,
+      channel: "POS" as const,
+      storeId,
+      sellerId: seller.id,
+      currency: "KES" as const,
+      discountMinor: toCents(discount.discountAmount, "discount"),
+      deliveryMinor: toCents(delivery.deliveryFee, "delivery"),
+      items: lines.map(line => ({
+        productId: line.productId,
+        ...(line.variantId ? { variantId: line.variantId } : {}),
+        storeId,
+        quantity: line.quantity,
+        unitPriceMinor: toCents(line.unitPrice, "unit price"),
+      })),
+    },
+    payment: {
+      orderId,
+      provider: "manual" as const,
+      providerReference: externalReference,
+      purpose: "INITIAL" as const,
+      amountMinor: toCents(breakdown.received, "amount received"),
+      evidenceReference: `synthetic-${key}`,
+    },
+  };
+  return {
+    mode: "READ_ONLY_LOCAL_PREVIEW" as const,
+    source: "LIVE_SANITY_READS_ONLY" as const,
+    simulatedPayment: true,
+    noWritesPerformed: true,
+    candidate,
+    calculation: {
+      subtotalMinor: toCents(subtotal, "subtotal"),
+      discountMinor: candidate.order.discountMinor,
+      deliveryMinor: candidate.order.deliveryMinor,
+      totalMinor: toCents(breakdown.total, "total"),
+      collectedMinor: candidate.payment.amountMinor,
+      balanceDueMinor: toCents(breakdown.balanceDue, "balance due"),
+      overpaidMinor: toCents(breakdown.overpaidAmount, "overpaid amount"),
+      financialStatus: breakdown.paymentStatus,
+    },
+  };
 }
