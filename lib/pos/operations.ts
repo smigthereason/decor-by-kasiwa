@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import type { PosSeller } from "@/lib/pos/server";
+import { allSoldProducts, kenyaCalendarDay, kenyaReportWindow } from "@/lib/pos/reporting-core";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -252,18 +253,7 @@ function reportWindow(period: "day" | "week" | "month", range: SalesReportRange 
     return { period: "custom" as const, start: start.toISOString(), end: end.toISOString() };
   }
 
-  const end = new Date(now);
-  const start = new Date(now);
-  if (period === "day") start.setHours(0, 0, 0, 0);
-  if (period === "week") {
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - 6);
-  }
-  if (period === "month") {
-    start.setHours(0, 0, 0, 0);
-    start.setDate(1);
-  }
-  return { period, start: start.toISOString(), end: end.toISOString() };
+  return { period, ...kenyaReportWindow(period, now) };
 }
 
 export async function getSalesReport(period: "day" | "week" | "month", range: SalesReportRange = {}): Promise<SalesReport> {
@@ -343,7 +333,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
   const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
   const cashierMap = new Map<string, { name: string; orders: number; revenue: number }>();
   for (const order of orders) {
-    const date = (order.soldAt || "").slice(0, 10) || "Unknown";
+    const date = kenyaCalendarDay(order.soldAt || "");
     const dateRow = dateMap.get(date) || { date, orders: 0, revenue: 0, deliveryPayables: 0, moneyIn: 0 };
     dateRow.orders += 1;
     dateRow.revenue += revenueValue(order);
@@ -415,7 +405,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     pendingPayments: failedPending.filter((row) => row.status === "pending").length,
     orders: orders.length,
     byDate: [...dateMap.values()].sort((a, b) => b.date.localeCompare(a.date)),
-    byProduct: [...productMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 20),
+    byProduct: allSoldProducts(productMap.values()),
     byCashier: [...cashierMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 20),
     grossSales,
     discounts,

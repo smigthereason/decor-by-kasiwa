@@ -22,6 +22,10 @@ export async function GET(request: Request) {
     );
   }
 
+  if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") && !staff.storeLocationId) {
+    return NextResponse.json({ message: "A store assignment is required." }, { status: 403 });
+  }
+
   try {
     const scopeStoreId = (staff.role === "MANAGER" || staff.role === "STORE_STAFF") ? staff.storeLocationId || undefined : undefined;
     const requested = new URL(request.url).searchParams.get("view") || "all";
