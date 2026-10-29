@@ -15,6 +15,7 @@ import {
 } from "@/lib/inventory/location-stock";
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements } from "@/lib/db/dbk69-inventory-neon";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +113,10 @@ export async function GET(request: Request) {
   const terms = query.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, " ").trim().split(/\s+/).filter(Boolean);
   const needle = terms.length ? `*${terms.join("*")}*` : "";
   const scope = staff.role === "MANAGER" ? staff.storeLocationId || "__NONE__" : "";
+  const neon = dbk69InventoryEnabled();
+  // Fetch enough from each source to page the merged chronological history.
+  const movementStart = neon ? 0 : offset;
+  const movementEnd = offset + MOVEMENT_PAGE_SIZE + 1;
   const movements = await serverClient.fetch<Array<Record<string, unknown>>>(
     `*[
       _type == "inventoryMovement" &&
@@ -123,7 +128,7 @@ export async function GET(request: Request) {
       ($needle == "" || lower(coalesce(productName, "")) match $needle || lower(coalesce(variantLabel, "")) match $needle ||
         lower(coalesce(movementNumber, "")) match $needle || lower(coalesce(note, "")) match $needle ||
         lower(coalesce(actorName, "")) match $needle || lower(coalesce(product->sku, "")) match $needle)
-    ] | order(createdAt desc, _id desc)[${offset}...${offset + MOVEMENT_PAGE_SIZE + 1}]{
+    ] | order(createdAt desc, _id desc)[${movementStart}...${movementEnd}]{
       _id,_rev,movementNumber,movementType,productName,variantId,variantLabel,quantityChange,correctedQuantity,correctedAt,correctedBy,correctionReason,voidedAt,voidedBy,stockBefore,stockAfter,
       incomingBefore,incomingAfter,sourceLocation,destination,"sourceStoreId":sourceStore._ref,"destinationStoreId":destinationStore._ref,
       unitCost,"movementValue":coalesce(correctedMovementValue,movementValue),actorName,note,createdAt
@@ -132,11 +137,15 @@ export async function GET(request: Request) {
     { cache: "no-store" },
   );
 
+  const neonRows = neon ? await dbk69ListMovements({q:query,from:from || '',to:to || '',type:movementType,scope,limit:movementEnd}) : [];
+  const combined = neon
+    ? [...movements,...neonRows].sort((a,b)=>String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(offset)
+    : movements;
   const hideCost = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
-  const page = movements.slice(0, MOVEMENT_PAGE_SIZE);
+  const page = combined.slice(0, MOVEMENT_PAGE_SIZE);
   return NextResponse.json({
     movements: hideCost ? page.map(({ unitCost: _unitCost, movementValue: _movementValue, ...movement }) => movement) : page,
-    hasMore: movements.length > MOVEMENT_PAGE_SIZE,
+    hasMore: combined.length > MOVEMENT_PAGE_SIZE,
   });
 }
 
@@ -156,6 +165,7 @@ export async function POST(request: Request) {
       sourceStoreId?: string;
       destinationStoreId?: string;
       note?: string;
+      operationId?: string;
     };
     const action = body.action;
     const productId = typeof body.productId === "string" ? body.productId.trim() : "";
@@ -199,6 +209,25 @@ export async function POST(request: Request) {
     const variantProduct = hasVariants(product.variants);
     const selectedVariant = variantProduct ? product.variants?.find((variant) => variant._key === variantId) : undefined;
     if (variantProduct && !selectedVariant) return NextResponse.json({ message: "Select a product variant so branch stock stays accurate." }, { status: 400 });
+
+    if (dbk69InventoryEnabled()) {
+      const operationId = typeof body.operationId === 'string' ? body.operationId : '';
+      if (!/^dbk69-[0-9a-f-]{36}$/i.test(operationId)) {
+        return NextResponse.json({message:'Reload the inventory form and try again with a unique operation ID.'},{status:400});
+      }
+      // Stock availability, incoming quantities and idempotency are checked by
+      // PostgreSQL, NOT by the stale Sanity inventory snapshot.
+      const unitCost = Math.max(0, Number(product.inventory?.unitCost ?? product.procurementCost ?? 0));
+      const result = await dbk69ApplyAdminOperation({
+        operationId,type:action,productId,variantId:selectedVariant?._key,
+        quantity,sourceStoreId:action==='TRANSFER' ? sourceStoreId : undefined,
+        destinationStoreId,actorId:staff.customerId,actorName:staff.customerName,
+        productName:product.name || 'Product',variantLabel:selectedVariant ? variantLabel(selectedVariant) : undefined,
+        destinationName:destinationStore.name,sourceName:sourceStore?.name || (sourceStoreId===UNALLOCATED ? 'Unallocated stock' : ''),
+        note,unitCost,
+      });
+      return NextResponse.json({ok:true,...result});
+    }
 
     const balances = product.inventory?.locationBalances || [];
     const companyBefore = effectiveOnHand(product.initialStock, product.variants);
@@ -319,6 +348,9 @@ export async function POST(request: Request) {
 // The original quantity remains on the movement; every correction has an immutable
 // companion audit document and a revision-protected atomic ledger adjustment.
 export async function PATCH(request: Request) {
+  if (dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'Historical movement corrections are blocked during Neon cutover. Use a reviewed ledger adjustment.'},{status:409});
+  }
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Only Admin and Store Manager can correct stock movements." }, { status: staff.status });
 

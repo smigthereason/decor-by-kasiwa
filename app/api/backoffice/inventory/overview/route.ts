@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { dbk69AllBalances, dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
+import { DBK69_QUARANTINED } from "@/lib/db/dbk69-inventory-core";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 export const dynamic = "force-dynamic";
 
-type ProductValue = { stock?: number; retail?: number; cost?: number };
+type ProductValue = { _id: string; stock?: number; retail?: number; cost?: number };
 type OrderRow = { createdAt?: string; subtotal?: number; discountAmount?: number; paymentStatus?: string; status?: string };
 type ReceiptRow = { createdAt?: string; quantityChange?: number; unitCost?: number; movementValue?: number };
 
@@ -29,6 +31,7 @@ export async function GET() {
   const [products, orders, receipts] = await Promise.all([
     serverClient.fetch<ProductValue[]>(
       `*[_type == "product"]{
+        _id,
         "stock": select(count(variants) > 0 => math::sum(variants[].stockQuantity), coalesce(initialStock, 0)),
         "retail": coalesce(price, 0),
         "cost": coalesce(*[_type == "inventoryRecord" && product._ref == ^._id][0].unitCost, procurementCost, 0)
@@ -69,6 +72,20 @@ export async function GET() {
     row.purchases += Math.max(0, Number(receipt.movementValue ?? Math.abs(Number(receipt.quantityChange || 0)) * Number(receipt.unitCost || 0)));
   }
 
+  if (dbk69InventoryEnabled()) {
+    const balances = await dbk69AllBalances();
+    const byProduct = new Map<string,number>();
+    for (const row of balances) {
+      if (row.variant_id === DBK69_QUARANTINED) continue;
+      const stock = Number(row.on_hand);
+      if (!Number.isSafeInteger(stock) || stock < 0) throw new Error('Invalid Neon stock for inventory overview');
+      byProduct.set(row.product_id,(byProduct.get(row.product_id) || 0)+stock);
+    }
+    for (const product of products) {
+      if (!byProduct.has(product._id)) throw new Error(`Unseeded inventory overview product ${product._id}`);
+      product.stock=byProduct.get(product._id);
+    }
+  }
   const costValue = products.reduce((sum, product) => sum + Math.max(0, Number(product.stock || 0)) * Math.max(0, Number(product.cost || 0)), 0);
   const retailValue = products.reduce((sum, product) => sum + Math.max(0, Number(product.stock || 0)) * Math.max(0, Number(product.retail || 0)), 0);
 

@@ -164,9 +164,11 @@ export default function InventoryManagementPage() {
   const movementRequestNumber = useRef(0);
   const initiallyLoadedForRole = useRef("");
   const actionSectionRef = useRef<HTMLElement | null>(null);
+  const pendingMovement = useRef<{signature:string;operationId:string}|null>(null);
 
   function openAction(nextAction: InventoryAction, productId?: string) {
     if (!canChangeStock) return;
+    pendingMovement.current = null;
     setAction(nextAction);
     if (productId) {
       setSelectedProductId(productId);
@@ -318,7 +320,7 @@ export default function InventoryManagementPage() {
     setSaving(true);
     setMessage(null);
     try {
-      const payload = (await mutateBackoffice("/api/backoffice/inventory/movements", {
+      const operation = {
         action,
         productId: selectedProductId,
         variantId: selectedVariantId || undefined,
@@ -326,12 +328,21 @@ export default function InventoryManagementPage() {
         sourceStoreId: action === "TRANSFER" ? sourceStoreId : undefined,
         destinationStoreId,
         note,
+      };
+      const signature = JSON.stringify(operation);
+      if (pendingMovement.current?.signature !== signature) {
+        pendingMovement.current = {signature,operationId:`dbk69-${crypto.randomUUID()}`};
+      }
+      const payload = (await mutateBackoffice("/api/backoffice/inventory/movements", {
+        ...operation,
+        operationId:pendingMovement.current.operationId,
       }, "POST")) as { stockAfter?: number; incomingAfter?: number; locationOnHand?: number; locationIncoming?: number };
 
       if (action === "PURCHASE") setMessage(`Purchase recorded. Store incoming stock: ${payload.locationIncoming ?? "updated"}.`);
       else if (action === "RECEIVE") setMessage(`Stock received. Store on hand: ${payload.locationOnHand ?? "updated"}; incoming: ${payload.locationIncoming ?? "updated"}.`);
       else setMessage(`Stock transferred. Destination on hand: ${payload.locationOnHand ?? "updated"}.`);
 
+      pendingMovement.current = null;
       setQuantity("1");
       setNote("");
       setSelectedProductId("");

@@ -1,5 +1,7 @@
 import { dbk65OnlineReadsEnabled, dbk65ListOnlineOrders, dbk65ListOnlineShipments } from "@/lib/db/dbk65-online-fulfilment";
 import "server-only";
+import { dbk69AllBalances, dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
+import { dbk69OverlayStock, type Dbk69Balance } from "@/lib/db/dbk69-inventory-core";
 
 import { effectiveOnHand, type StockVariant } from "@/lib/inventory/stock";
 import { allocatedOnHand, findLocationBalance, locationIncoming, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -113,6 +115,13 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
     { cache: "no-store" },
   );
 
+  const neonRows = dbk69InventoryEnabled() ? await dbk69AllBalances() : null;
+  const byProduct = new Map<string, Dbk69Balance[]>();
+  if (neonRows) for (const row of neonRows) {
+    const existing = byProduct.get(row.product_id) || [];
+    existing.push(row);
+    byProduct.set(row.product_id, existing);
+  }
   return rows.map((row) => {
     const companyOnHand = effectiveOnHand(row.initialStock, row.variants);
     const balances = row.inventory?.locationBalances || [];
@@ -128,7 +137,7 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
         : Math.max(0, Number(variant.stockQuantity || 0)),
     }));
 
-    return {
+    const mapped: InventoryItem = {
       id: row._id,
       productId: row._id,
       slug: row.slug,
@@ -167,6 +176,7 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
       posEnabled: row.posEnabled !== false,
       variants: scopedVariants,
     };
+    return neonRows ? dbk69OverlayStock(mapped, byProduct.get(row._id) || [], storeLocationId) : mapped;
   });
 }
 
@@ -516,6 +526,7 @@ export async function getLiveOperationsSnapshot(
 export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
   type RevenueRow = { subtotal?: number; discountAmount?: number };
   type StockRow = {
+    _id: string;
     available?: boolean;
     initialStock?: number;
     variants?: Array<{ stockQuantity?: number }>;
@@ -539,7 +550,7 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
     "openOrders": count(*[_type == "commerceOrder" && !(status in ["delivered", "cancelled"])]),
     "fulfilmentQueue": count(*[_type == "shipment" && status != "delivered"]),
     "stock": *[_type == "product" && defined(slug.current)]{
-      available, initialStock, "variants": variants[]{ stockQuantity },
+      _id,available, initialStock, "variants": variants[]{ _key,stockQuantity },
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{ reserved, reorderPoint }
     },
     "recentOrders": *[_type == "commerceOrder"] | order(createdAt desc)[0...6]{
@@ -559,8 +570,19 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
 
   const revenue = (result.paidAmounts || []).reduce((sum, item) =>
     sum + Math.max(0, Number(item.subtotal || 0) - Number(item.discountAmount || 0)), 0);
+  const dashboardNeonBalances = dbk69InventoryEnabled() ? await dbk69AllBalances() : null;
+  const dashboardByProduct = new Map<string,number>();
+  if (dashboardNeonBalances) for (const row of dashboardNeonBalances) {
+    if (row.variant_id === '__UNALLOCATED_VARIANT__') continue;
+    const qty=Number(row.on_hand);
+    if (!Number.isSafeInteger(qty) || qty < 0) throw new Error('Invalid Neon dashboard inventory balance');
+    dashboardByProduct.set(row.product_id,(dashboardByProduct.get(row.product_id) || 0)+qty);
+  }
   const lowStock = (result.stock || []).filter((item) => {
-    const onHand = effectiveOnHand(item.initialStock, item.variants);
+    if (dashboardNeonBalances && !dashboardNeonBalances.some(row => row.product_id === item._id)) {
+      throw new Error('Dashboard product missing from Neon inventory seed');
+    }
+    const onHand = dashboardNeonBalances ? dashboardByProduct.get(item._id) || 0 : effectiveOnHand(item.initialStock, item.variants);
     const available = Math.max(0, onHand - Number(item.inventory?.reserved || 0));
     const reorderPoint = item.inventory?.reorderPoint ?? 5;
     return item.available === false || available <= reorderPoint;

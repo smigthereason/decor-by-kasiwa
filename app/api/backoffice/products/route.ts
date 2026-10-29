@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { generateProductSku } from "@/sanity/lib/sku";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -110,6 +111,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
+  if (dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'New products require an atomic Neon inventory seed. Product creation is paused during stock cutover.'},{status:409});
+  }
 
   try {
     const form = await request.formData();

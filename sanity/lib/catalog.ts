@@ -15,6 +15,8 @@ import { client } from "./client";
 import { optimizeSanityImageUrl } from "./optimizedImage";
 import { serverClient } from "./serverClient";
 import { locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
+import { dbk69AllBalances, dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
+import { dbk69OverlayStock, type Dbk69Balance } from "@/lib/db/dbk69-inventory-core";
 
 const imageBuilder = imageUrlBuilder(client);
 
@@ -605,7 +607,12 @@ export async function getShopLooks(): Promise<ShopLook[]> {
     { next: { revalidate: 10 } },
   );
 
-  return records.map(mapShopLook).filter((look) => look.products.length > 0);
+  const looks = records.map(mapShopLook).filter((look) => look.products.length > 0);
+  if (!dbk69InventoryEnabled()) return looks;
+  const balances = await dbk69AllBalances();
+  return looks.map(look => ({...look,products:look.products.map(line => ({
+    ...line,product:withNeonCatalogBalance(line.product,balances.filter(r => r.product_id === line.product.id)),
+  }))}));
 }
 
 export async function getFeaturedShopLook(): Promise<ShopLook | null> {
@@ -628,7 +635,12 @@ export async function getShopLookBySlug(slug: string): Promise<ShopLook | null> 
 
   if (!record) return null;
   const look = mapShopLook(record);
-  return look.products.length > 0 ? look : null;
+  if (!look.products.length) return null;
+  if (!dbk69InventoryEnabled()) return look;
+  const balances = await dbk69AllBalances();
+  return {...look,products:look.products.map(line => ({
+    ...line,product:withNeonCatalogBalance(line.product,balances.filter(r => r.product_id === line.product.id)),
+  }))};
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1241,6 +1253,23 @@ export const fallbackShopNavigation: ShopNavigation =
 /* PRODUCTS                                                                   */
 /* -------------------------------------------------------------------------- */
 
+// DBK-69: catalogue continues to use Sanity for content, never for stock once Neon is authoritative.
+function withNeonCatalogBalance(product: StoreProduct, rows: Dbk69Balance[], storeId?: string): StoreProduct {
+  const mapped = dbk69OverlayStock({
+    id:product.id,onHand:0,incoming:0,available:product.available,
+    variants:(product.variants || []).map(v => ({id:v.id,stockQuantity:Number(v.stockQuantity || 0)})),
+  }, rows, storeId);
+  const onHand = mapped.onHand;
+  return {
+    ...product,
+    stockQuantity:onHand,
+    stock:product.available === false ? 'Unavailable' : onHand > 0 ? `${onHand} in stock` : 'Out of stock',
+    variants:(product.variants || []).map(v => ({
+      ...v,stockQuantity:mapped.variants?.find(m => m.id === v.id)?.stockQuantity || 0,
+    })),
+  };
+}
+
 export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce", storeId?: string): Promise<
   StoreProduct[]
 > {
@@ -1275,6 +1304,16 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
     );
 
   const products = records.map(mapProduct);
+  if (dbk69InventoryEnabled()) {
+    const rows = await dbk69AllBalances();
+    const byProduct = new Map<string,Dbk69Balance[]>();
+    for (const row of rows) {
+      const prior = byProduct.get(row.product_id) || [];
+      prior.push(row);
+      byProduct.set(row.product_id,prior);
+    }
+    return products.map(product => withNeonCatalogBalance(product,byProduct.get(product.id) || [],channel==='pos' ? storeId : undefined));
+  }
   if (channel !== "pos" || !storeId) return products;
 
   // POS must show the same location-specific inventory that checkout validates.
@@ -1337,7 +1376,10 @@ export async function getStoreProductBySlug(
 
   if (!record) return null;
 
-  const product = mapProduct(record);
+  const product = dbk69InventoryEnabled()
+    ? withNeonCatalogBalance(mapProduct(record),
+        (await dbk69AllBalances()).filter(row => row.product_id === record._id))
+    : mapProduct(record);
   const pairingIds = (record.pairingIds || []).filter((id) => id && id !== record._id);
   const merchandisedSampleIds = (record.merchandisedSampleIds || []).filter((id) => id && id !== record._id);
   const requestedIds = Array.from(new Set([...pairingIds, ...merchandisedSampleIds]));
@@ -1354,7 +1396,9 @@ export async function getStoreProductBySlug(
       { ids: requestedIds },
       { next: { revalidate: 10 } },
     );
-    const mapped = new Map(curated.map((item) => [item._id, mapProduct(item)]));
+    const relatedRows = dbk69InventoryEnabled() ? await dbk69AllBalances() : [];
+    const mapped = new Map(curated.map(item => [item._id,
+      dbk69InventoryEnabled() ? withNeonCatalogBalance(mapProduct(item),relatedRows.filter(r=>r.product_id===item._id)) : mapProduct(item)]));
     product.pairings = pairingIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
     product.merchandisedSamples = merchandisedSampleIds.map((id) => mapped.get(id)).filter((item): item is StoreProduct => Boolean(item));
   }
@@ -1404,9 +1448,10 @@ export async function getRelatedStoreProducts(
     records.length >=
     limit
   ) {
-    return records
-      .slice(0, limit)
-      .map(mapProduct);
+    const mapped = records.slice(0,limit).map(mapProduct);
+    if (!dbk69InventoryEnabled()) return mapped;
+    const balances = await dbk69AllBalances();
+    return mapped.map(item => withNeonCatalogBalance(item,balances.filter(r=>r.product_id===item.id)));
   }
 
   const fallback =
@@ -1446,9 +1491,10 @@ export async function getRelatedStoreProducts(
       ) === index,
   );
 
-  return merged
-    .slice(0, limit)
-    .map(mapProduct);
+  const mapped = merged.slice(0,limit).map(mapProduct);
+  if (!dbk69InventoryEnabled()) return mapped;
+  const balances = await dbk69AllBalances();
+  return mapped.map(item => withNeonCatalogBalance(item,balances.filter(r=>r.product_id===item.id)));
 }
 
 /* -------------------------------------------------------------------------- */
