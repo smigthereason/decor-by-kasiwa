@@ -1,0 +1,13 @@
+import { test } from 'node:test';
+import { strict as assert } from 'node:assert';
+import {compareRevisions, validateProductionHost, classifyPreflight,revisionMap} from './dbk70_cutover_core.mjs';
+const docs=[{_type:'product',_id:'p1',_rev:'r1'},{_type:'inventoryRecord',_id:'i1',_rev:'r2'}];
+const seed={safeToSeed:true};
+const clean={missingTables:[],seedFingerprint:null,balanceRows:0,stockOperations:0,activeGates:[]};
+test('exact revisions match irrespective of order',()=>assert.equal(compareRevisions(docs,docs.slice().reverse()).exactMatch,true));
+test('changed revisions block seed review',()=>assert.equal(compareRevisions(docs,[{...docs[0],_rev:'r3'},docs[1]]).changedCount,1));
+test('additions and deletions block seed review',()=>{ const x=compareRevisions(docs,[docs[0],{_type:'product',_id:'p2',_rev:'r9'}]);assert.equal(x.missingCount,1);assert.equal(x.addedCount,1); });
+test('drafts excluded and duplicate product IDs rejected',()=>{assert.equal(revisionMap([...docs,{_type:'product',_id:'drafts.p3',_rev:'x'}]).size,2);assert.throws(()=>revisionMap([...docs,docs[0]]),/Duplicate/);});
+test('database host must match pinned hostname exactly',()=>{assert.equal(validateProductionHost('postgresql://user:secret@prod.example/neondb','prod.example'),'prod.example'); assert.throws(()=>validateProductionHost('postgresql://x@y/test','z'),/mismatch/);});
+test('empty, synced, disabled production ledger is eligible only for review',()=>{const res=classifyPreflight({revisions:{exactMatch:true},plan:seed,neon:clean});assert.equal(res.eligibleForFrozenStockSeedReview,true);assert.match(res.note,/NOT permission/);});
+test('seeded or active database never passes',()=>{ const r=classifyPreflight({revisions:{exactMatch:true},plan:seed,neon:{...clean,seedFingerprint:'seed',activeGates:['dbk51']}});assert.equal(r.eligibleForFrozenStockSeedReview,false);assert.ok(r.blockers.length>=2);});
