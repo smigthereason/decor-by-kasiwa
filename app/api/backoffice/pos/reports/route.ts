@@ -20,6 +20,9 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json({ report: await getSalesReport(period, { from, to, storeId }) });
   } catch (cause) {
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to build sales report." }, { status: 400 });
+    console.error("[DBK-72] Sales report failed", cause);
+    const invalidRange = cause instanceof Error && /^(Select both From and To|The report From date|Report dates must|Select a valid report date)/.test(cause.message);
+    return NextResponse.json({ message: invalidRange ? (cause as Error).message : "Sales reporting is temporarily unavailable; check server logs." },
+      { status: invalidRange ? 400 : 503 });
   }
 }

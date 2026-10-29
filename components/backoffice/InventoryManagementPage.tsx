@@ -12,6 +12,7 @@ import StatusPill from "@/components/backoffice/StatusPill";
 import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 import { availableStock, formatKes, stockStatus } from "@/lib/operations/selectors";
 import type { InventoryItem } from "@/lib/operations/types";
+import { fullInventoryReportRows } from "@/lib/operations/full-inventory-report";
 
 type InventoryAction = "PURCHASE" | "RECEIVE" | "TRANSFER";
 type MovementFilters = { q: string; from: string; to: string; type: string };
@@ -355,6 +356,21 @@ export default function InventoryManagementPage() {
     {key:"price",label:"Retail Price"},
   ];
 
+  // Full report is independent of the on-screen search filter. The authorized
+  // overview response has already been store-scoped for Manager / Store Staff.
+  const fullInventoryRows = fullInventoryReportRows(inventory, {
+    includeCompany: !hideProcurement, hideProcurement,
+  });
+  const fullInventoryColumns = [
+    {key:"level",label:"Row Level (do not sum across levels)"},
+    {key:"name",label:"Product"},{key:"sku",label:"SKU"},{key:"category",label:"Category"},
+    {key:"variant",label:"Variant"},{key:"location",label:"Location"},
+    {key:"onHand",label:"On Hand"},{key:"incoming",label:"Incoming"},
+    {key:"reserved",label:"Reserved (company only)"},{key:"unallocated",label:"Unallocated / Review"},
+    ...(!hideProcurement ? [{key:"unitCost",label:"Procurement Cost"}] : []),
+    {key:"retailPrice",label:"Retail Price"},
+  ];
+
   const movementHeadings = ["Date","Movement","Product / variant","Qty","From / To",...(!hideProcurement ? ["Procurement value"] : []),"Recorded by","Reference / note",...(canCorrectStock ? ["Correct / Void"] : [])];
   const inventoryHeadings = ["Product","SKU","Location","On hand","Reserved","Available","Incoming","Status",...(!hideProcurement ? ["Cost"] : []),"Retail",""];
 
@@ -424,7 +440,10 @@ export default function InventoryManagementPage() {
         <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search STOCK INVENTORY by product, SKU, category or variant..." aria-label="Search stock inventory products" className="min-h-12 w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none focus:border-[var(--brand-green)]"/></div>
         <span className="self-center text-xs text-[var(--muted)]">{filtered.length} / {inventory.length} inventory products</span>
         <div className="relative min-w-52"><select value={location} disabled={Boolean(assignedStoreId && (role === "MANAGER" || role === "STORE_STAFF"))} onChange={(e)=>setLocation(e.target.value)} className="min-h-12 w-full appearance-none rounded-full border hairline bg-[var(--paper)] py-3 pl-4 pr-11 text-sm disabled:opacity-70"><option value="All">Company total</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.code?` · ${store.code}`:""}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div>
-        <div className="sm:ml-auto"><ExportButtons title="Store Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/></div>
+        <div className="sm:ml-auto flex flex-wrap gap-2">
+          <ExportButtons title="Filtered Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/>
+          <ExportButtons title="Full Inventory Breakdown" columns={fullInventoryColumns} rows={fullInventoryRows}/>
+        </div>
       </div></div>
 
       {canManage && <section className="px-4 pt-4 sm:px-6 lg:px-8">

@@ -9,12 +9,19 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
+  if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") && !staff.storeLocationId) {
+    return NextResponse.json({ message: "A store assignment is required." }, { status: 403 });
+  }
   try {
     const requestedStoreId = new URL(request.url).searchParams.get("store")?.trim() || undefined;
     const storeId = staff.role === "MANAGER" || staff.role === "STORE_STAFF" ? staff.storeLocationId : requestedStoreId;
     return NextResponse.json({ expenses: await listExpenses(150, storeId) });
   } catch (cause) {
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load expenditure." }, { status: 400 });
+    console.error("[DBK-72] Expenditure GET failed", cause);
+    return NextResponse.json(
+      { message: "Expenditure could not be loaded. Please contact an administrator with the request time." },
+      { status: 503 },
+    );
   }
 }
 
