@@ -1,3 +1,5 @@
+import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
+import { dbk65ChangeOnlineOrder } from "@/lib/db/dbk65-online-fulfilment";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -80,6 +82,21 @@ export async function PATCH(
       },
       { status: 409 },
     );
+  }
+
+  // Neon online orders must never fall through to Sanity patches or shipment creation.
+  if (isNeonOnlineOrderId(orderId)) {
+    if (body.paymentStatus !== undefined || body.storeLocationId !== undefined || body.assignedStore !== undefined || !body.status) {
+      return NextResponse.json({ message: "Neon online order accepts a fulfilment status only; payment is provider-controlled." }, { status: 409 });
+    }
+    try {
+      const result=await dbk65ChangeOnlineOrder({ id:orderId,status:body.status,
+        role:staff.role,actorId:staff.customerId,actorName:staff.customerName,
+        assignedStoreId:staff.storeLocationId });
+      return NextResponse.json(result,{headers:{"Cache-Control":"private, no-store"}});
+    } catch (error) {
+      return NextResponse.json({message:error instanceof Error ? error.message : 'Neon fulfilment unavailable'}, {status:409});
+    }
   }
 
   try {

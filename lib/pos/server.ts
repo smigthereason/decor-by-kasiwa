@@ -7,7 +7,7 @@ import { createHash, createHmac } from "node:crypto";
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
-import { manualPaymentBreakdown } from "@/lib/pos/manual-payment";
+import { manualPaymentBreakdown, toCents } from "@/lib/pos/manual-payment";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -400,7 +400,7 @@ function normalizeCart(cart: PosCartLine[]) {
   return [...merged.values()];
 }
 
-async function buildLines(cart: PosCartLine[], seller: PosSeller) {
+async function buildLines(cart: PosCartLine[], seller: PosSeller, options: { stockAuthority?: "sanity" | "neon" } = {}) {
   const normalized = normalizeCart(cart);
   const ids = [...new Set(normalized.map((line) => line.productId))];
   const products = await fetchProducts(ids);
@@ -424,7 +424,11 @@ async function buildLines(cart: PosCartLine[], seller: PosSeller) {
     if (line.variantId && !variant) throw new Error(`${product.name || "Product"} variant is no longer available.`);
     if (variantProduct && !variant) throw new Error(`Select a valid ${product.name || "product"} variant before adding it to the sale.`);
 
-    if (seller.storeLocationId) {
+    // Once inventory ownership is cut over, Sanity on-hand numbers are stale.
+    // The DBK-57 atomic Neon transaction independently enforces available stock.
+    if (options.stockAuthority === "neon") {
+      // Product, variant, availability and prices were still checked above.
+    } else if (seller.storeLocationId) {
       const balance = findLocationBalance(product.inventory?.locationBalances, seller.storeLocationId);
       const available = locationOnHand(balance, variant?._key);
       if (available < line.quantity) {
@@ -2089,4 +2093,198 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller }: 
 
 export async function logPosAudit(key: string, eventType: string, entityId: string, label: string, seller: PosSeller, detail: string) {
   return recordAuditEvent({ key, eventType, entityType: "commerceOrder", entityId, entityLabel: label, actor: seller, detail });
+}
+
+
+/**
+ * DBK-58: read-only development preview of the exact manual POS calculation.
+ * This is NOT a sale. No Sanity/Neon writes, receipt creation or payment proof.
+ * It deliberately shares the existing product, variant, store, pricing, discount
+ * and delivery validation used by createPosManualSale(). It is not called from
+ * production POS or checkout.
+ */
+export async function previewDBK58ManualPosSale(input: PosSaleInput, seller: PosSeller) {
+  if (process.env.NODE_ENV !== "development" || process.env.DBK58_LOCAL_PREVIEW !== "YES") {
+    throw new Error("DBK-58 preview is disabled.");
+  }
+  if (!input || input.paymentMethod !== "manual") {
+    throw new Error("DBK-58 preview accepts manual POS only.");
+  }
+  const reference = referenceFor(input.requestId); // validates request ID
+  customerDetails(input); // use the same customer validation, but persist no PII
+  const payerName = cleanText(input.manualPaymentName);
+  const externalReference = cleanText(input.manualPaymentReference).toUpperCase();
+  const requestedPayment = Number(input.manualAmountReceived);
+  if (!payerName || input.manualPaymentConfirmed !== true ||
+      !/^DBK58-TEST-[A-Z0-9-]{5,64}$/.test(externalReference) ||
+      !Number.isFinite(requestedPayment) || requestedPayment <= 0) {
+    throw new Error("Use a synthetic DBK58-TEST- payment reference, a payer name, a positive amount, and cashier confirmation.");
+  }
+
+  const { lines } = await buildLines(input.cart, seller); // reads LIVE Sanity; never trusts client prices/stock
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal, input.discount, seller);
+  const delivery = deliveryPayable(input);
+  const calculatedTotal = Math.max(0, subtotal - discount.discountAmount + delivery.deliveryFee);
+  const breakdown = manualPaymentBreakdown(calculatedTotal, requestedPayment);
+  if (breakdown.total <= 0) throw new Error("Neon test-order total must be positive.");
+  if (breakdown.balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
+    throw new Error(`Confirm the partial payment: KES ${breakdown.balanceDue.toFixed(2)} remains outstanding.`);
+  }
+  if (breakdown.overpaidAmount > 0 && input.manualOverpaymentConfirmed !== true) {
+    throw new Error(`Confirm the excess payment: KES ${breakdown.overpaidAmount.toFixed(2)} must be reconciled.`);
+  }
+  const storeId = seller.storeLocationId;
+  if (!storeId) throw new Error("A verified active store is required.");
+  const key = hashId(reference);
+  const requestKey = `dbk58-manual-${key}`;
+  const orderId = `dbk58.order.${key}`;
+  const candidate = {
+    requestKey,
+    cashierConfirmed: true as const,
+    overpaymentApproved: breakdown.overpaidAmount > 0 && input.manualOverpaymentConfirmed === true,
+    order: {
+      orderId,
+      orderNumber: `DBK58-TEST-${key}`,
+      channel: "POS" as const,
+      storeId,
+      sellerId: seller.id,
+      currency: "KES" as const,
+      discountMinor: toCents(discount.discountAmount, "discount"),
+      deliveryMinor: toCents(delivery.deliveryFee, "delivery"),
+      items: lines.map(line => ({
+        productId: line.productId,
+        ...(line.variantId ? { variantId: line.variantId } : {}),
+        storeId,
+        quantity: line.quantity,
+        unitPriceMinor: toCents(line.unitPrice, "unit price"),
+      })),
+    },
+    payment: {
+      orderId,
+      provider: "manual" as const,
+      providerReference: externalReference,
+      purpose: "INITIAL" as const,
+      amountMinor: toCents(breakdown.received, "amount received"),
+      evidenceReference: `synthetic-${key}`,
+    },
+  };
+  return {
+    mode: "READ_ONLY_LOCAL_PREVIEW" as const,
+    source: "LIVE_SANITY_READS_ONLY" as const,
+    simulatedPayment: true,
+    noWritesPerformed: true,
+    candidate,
+    productNames: lines.map(line => line.name),
+    calculation: {
+      subtotalMinor: toCents(subtotal, "subtotal"),
+      discountMinor: candidate.order.discountMinor,
+      deliveryMinor: candidate.order.deliveryMinor,
+      totalMinor: toCents(breakdown.total, "total"),
+      collectedMinor: candidate.payment.amountMinor,
+      balanceDueMinor: toCents(breakdown.balanceDue, "balance due"),
+      overpaidMinor: toCents(breakdown.overpaidAmount, "overpaid amount"),
+      financialStatus: breakdown.paymentStatus,
+    },
+  };
+}
+
+/** DBK-62: real manual POS candidate, never called unless the cutover gates pass. */
+export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSeller) {
+  if (input.paymentMethod !== "manual") throw new Error("DBK-62 currently supports manual payment only.");
+  const reference = referenceFor(input.requestId);
+  const customer = customerDetails(input);
+  const payerName = cleanText(input.manualPaymentName);
+  const externalReference = cleanText(input.manualPaymentReference).toUpperCase();
+  const requestedPayment = Number(input.manualAmountReceived);
+  if (!payerName || !/^[A-Z0-9-]{5,100}$/.test(externalReference) || externalReference.startsWith("DBK58-TEST-")) {
+    throw new Error("Enter a real, independently checked manual-payment reference and payer name.");
+  }
+  if (!Number.isFinite(requestedPayment) || requestedPayment <= 0 || input.manualPaymentConfirmed !== true) {
+    throw new Error("Confirm the amount independently received before recording the manual payment.");
+  }
+  const duplicate = await serverClient.fetch<{_id: string} | null>(
+    `*[((_type == "paymentTransaction") && providerReceiptNumber == $reference) ||
+       ((_type == "commerceOrder") && (providerReceiptNumber == $reference || manualPaymentReference == $reference))][0]{_id}`,
+    {reference:externalReference},{cache:"no-store"},
+  );
+  if (duplicate) throw new Error("That payment reference already exists in legacy sales. Check before recording it again.");
+  if (!seller.storeLocationId) throw new Error("Select a verified store before recording the sale.");
+  const delivery = deliveryPayable(input);
+  if (delivery.fulfilmentType !== "IN_STORE" || delivery.deliveryFee !== 0) {
+    throw new Error("DBK-62 cutover only supports in-store manual POS sales; delivery is not yet migrated.");
+  }
+  const {lines} = await buildLines(input.cart,seller,{stockAuthority:"neon"});
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal,input.discount,seller);
+  const total = Math.max(0,subtotal-discount.discountAmount);
+  const breakdown = manualPaymentBreakdown(total,requestedPayment);
+  if (breakdown.total <= 0) throw new Error("Manual sale total must be positive.");
+  if (breakdown.balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
+    throw new Error("Confirm the outstanding balance on this partial payment.");
+  }
+  if (breakdown.overpaidAmount > 0) throw new Error("DBK-62 does not yet support overpayments or change reconciliation.");
+  const key = hashId(reference);
+  const requestKey = `dbk62-manual-${key}`;
+  const orderId = `dbk62.order.${key}`;
+  const orderNumber = `DBK62-POS-${key}`;
+  const candidate = {
+    requestKey,
+    cashierConfirmed:true as const,
+    overpaymentApproved:false,
+    order:{orderId,orderNumber,channel:"POS" as const,storeId:seller.storeLocationId,sellerId:seller.id,
+      currency:"KES" as const, discountMinor:toCents(discount.discountAmount,"discount"),deliveryMinor:0,
+      items:lines.map(l=>({productId:l.productId,...(l.variantId?{variantId:l.variantId}:{}),
+        storeId:seller.storeLocationId!,quantity:l.quantity,unitPriceMinor:toCents(l.unitPrice,"unit price")}))},
+    payment:{orderId,provider:"manual" as const,providerReference:externalReference,
+      purpose:"INITIAL" as const,amountMinor:toCents(breakdown.received,"received"),
+      evidenceReference:`cashier-confirmed-${key}`},
+  };
+  const snapshot = {
+    customerName:customer.name.slice(0,150),customerPhone:customer.phone,customerEmail:customer.email,
+    sellerName:seller.name.slice(0,150),sellerRole:seller.role,storeName:(seller.storeLocationName||"Store").slice(0,150),
+    paymentName:payerName.slice(0,150),paymentReference:externalReference,
+    internalReference:reference,
+    discountType:discount.discountType||"",discountValue:discount.discountValue||0,
+    discountReason:discount.discountReason||"",discountAuthorizedByName:discount.discountAmount>0?seller.name:"",
+    receiptNumber:`RCT-${orderNumber}`,deliveryLocation:delivery.deliveryLocation,
+    productNames:lines.map(l=>l.name),
+    lineDetails:lines.map(l=>({category:l.category,finish:l.finish||"",size:l.size||"",unitCost:l.unitCost})),
+  };
+  return {candidate,snapshot};
+}
+
+/** DBK-68: server-priced, in-store Neon candidate for direct Daraja STK. */
+export async function prepareDBK68MpesaSale(input: PosSaleInput, seller: PosSeller) {
+  if (input.paymentMethod !== 'mpesa') throw new Error('DBK-68 requires Direct M-PESA');
+  const reference = referenceFor(input.requestId);
+  const customer = customerDetails(input);
+  const storeId = seller.storeLocationId;
+  if (!storeId) throw new Error('Select a verified POS store');
+  const delivery = deliveryPayable(input);
+  if (delivery.fulfilmentType !== 'IN_STORE' || delivery.deliveryFee !== 0) {
+    throw new Error('Neon Direct M-PESA currently supports in-store POS only');
+  }
+  const { lines } = await buildLines(input.cart, seller, { stockAuthority: 'neon' });
+  const subtotal = subtotalFor(lines);
+  const discount = calculateDiscount(subtotal, input.discount, seller);
+  const total = subtotal - discount.discountAmount;
+  if (!Number.isSafeInteger(total) || total <= 0) {
+    throw new Error('Direct M-PESA requires a positive whole-KES amount');
+  }
+  const key = hashId(reference);
+  const snapshot = {
+    reference, orderId: `dbk68.order.${key}`, orderNumber: `DBK68-POS-${key}`,
+    storeId, sellerId: seller.id, sellerName: seller.name.slice(0, 150),
+    customerName: customer.name.slice(0, 150),
+    customerPhone: customer.phone.replace(/\D/g, ''),
+    totalMinor: toCents(total, 'total'),
+    subtotalMinor: toCents(subtotal, 'subtotal'),
+    discountMinor: toCents(discount.discountAmount, 'discount'),
+    lines: lines.map(l => ({
+      productId: l.productId, variantId: l.variantId || '', quantity: l.quantity,
+      unitPriceMinor: toCents(l.unitPrice, 'unit price'), name: l.name.slice(0, 200),
+    })),
+  };
+  return snapshot;
 }

@@ -1,3 +1,5 @@
+import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
+import { dbk65ChangeOnlineOrder } from "@/lib/db/dbk65-online-fulfilment";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -19,6 +21,18 @@ export async function POST(
 
   const { id } = await context.params;
   const orderId = decodeURIComponent(id);
+
+  // Do not create a Sanity shipment for a Neon order; dispatch transitions atomically in Neon.
+  if (isNeonOnlineOrderId(orderId)) {
+    try {
+      const result=await dbk65ChangeOnlineOrder({id:orderId,status:'dispatched',role:staff.role,
+        actorId:staff.customerId,actorName:staff.customerName,assignedStoreId:staff.storeLocationId});
+      if (result.replayed) return NextResponse.json({message:'This order has already been dispatched.'},{status:409});
+      return NextResponse.json({...result,message:'Neon online order dispatched.'});
+    } catch (error) {
+      return NextResponse.json({message:error instanceof Error ? error.message : 'Neon dispatch unavailable'},{status:409});
+    }
+  }
 
   try {
     const order = await serverClient.fetch<{

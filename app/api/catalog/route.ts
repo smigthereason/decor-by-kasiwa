@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { getStoreProducts } from "@/sanity/lib/catalog";
+import { dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { products },
       {
-        headers: channel === "pos"
+        headers: channel === "pos" || dbk69InventoryEnabled()
           ? { "Cache-Control": "no-store, no-cache, must-revalidate" }
           : { "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30" },
       },

@@ -13,6 +13,13 @@ import { getDeliveryZoneById } from "@/lib/shipping-server";
 import { sendOrderConfirmationEmail } from "@/lib/order-email";
 import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
+import {
+  dbk64OnlineRequested, dbk64CreatePending, dbk64MarkInitFailed,
+  dbk64GetPending, dbk64RecordVerifiedPayment,
+  type DBK64CheckoutSnapshot,
+} from "@/lib/db/dbk64-online-neon";
+import { dbk64ValidReference, dbk64MoneyMinor, dbk64VerifiedOrder } from "@/lib/db/dbk64-online-core";
+
 
 const PAYSTACK_API = "https://api.paystack.co";
 const CURRENCY = "KES";
@@ -498,10 +505,21 @@ export async function initializePaystackCheckout({
     throw new Error("Unable to calculate a valid order total.");
   }
 
-  const reference = createReference();
+  const neonCheckout = dbk64OnlineRequested();
+  if (!neonCheckout && process.env.DBK62_POS_BACKEND === 'neon') {
+    throw new Error('Online checkout is temporarily unavailable during Neon cutover; no Sanity stock writes are permitted.');
+  }
+  const reference = neonCheckout
+    ? `DBK64-${Date.now()}-${randomBytes(5).toString("hex")}`
+    : createReference();
   const documentReference = safeReferenceForDocumentId(reference);
-  const orderId = `commerceOrder.paystack.${documentReference}`;
-  const orderNumber = await createShortOrderNumber("COM", reference);
+  const orderId = neonCheckout
+    ? `dbk64.order.${reference}`
+    : `commerceOrder.paystack.${documentReference}`;
+  // Neon checkout must not mutate the Sanity order-number counter.
+  const orderNumber = neonCheckout
+    ? `DBK-COM-${Date.now()}-${randomBytes(4).toString("hex")}`
+    : await createShortOrderNumber("COM", reference);
   const now = new Date().toISOString();
   const paymentChannel = paymentChannelFor(paymentMethod);
   const normalizedCustomerNote = normalizeText(customerNote || "");
@@ -518,6 +536,53 @@ export async function initializePaystackCheckout({
     region: normalizeText(address.region),
     country: normalizeText(address.country) || "Kenya",
   };
+
+  if (neonCheckout) {
+    // All pending order/payment state is written to Neon BEFORE contacting Paystack.
+    // If anything fails, we never create an orphan Sanity order as a fallback.
+    const snapshot: DBK64CheckoutSnapshot = {
+      reference, orderId, orderNumber, storeId: mainStore.id, storeName: mainStore.name,
+      customerName: deliveryAddress.fullName, customerEmail: normalizedEmail,
+      customerPhone: deliveryAddress.phone, paymentChannel: paymentLabel(paymentChannel),
+      subtotalMinor: dbk64MoneyMinor(subtotal),
+      deliveryMinor: dbk64MoneyMinor(deliveryFee),
+      totalMinor: dbk64MoneyMinor(total),
+      deliveryAddress, deliveryLocation: `${deliveryOption.label} · ${buildDeliveryLocation(deliveryAddress)}`,
+      lines: lineItems.map(line => ({
+        productId: line.productId, variantId: line.variantId || "", quantity: line.quantity,
+        unitPriceMinor: dbk64MoneyMinor(line.unitPrice), name: line.name,
+        finish: line.finish, size: line.size,
+      })),
+    };
+    await dbk64CreatePending(snapshot);
+    const cleanBase = callbackBaseUrl.replace(/\/+$/, "");
+    try {
+      const provider = await paystackRequest<PaystackInitializeResponse>(
+        "/transaction/initialize", {
+          method: "POST",
+          body: JSON.stringify({
+            email: normalizedEmail, amount: String(snapshot.totalMinor),
+            currency: CURRENCY, reference,
+            callback_url: `${cleanBase}/checkout/success`,
+            channels: [paymentChannel],
+            metadata: JSON.stringify({ order_number: orderNumber,
+              customer_name: deliveryAddress.fullName,
+              customer_phone: deliveryAddress.phone,
+              cancel_action: `${cleanBase}/checkout?payment=cancelled` }),
+          }),
+        },
+      );
+      if (!provider.status || !provider.data?.authorization_url ||
+          provider.data.reference !== reference) {
+        throw new Error("Paystack returned an invalid checkout authorization");
+      }
+      return { authorizationUrl: provider.data.authorization_url, reference, orderNumber, total };
+    } catch (cause) {
+      try { await dbk64MarkInitFailed(reference); }
+      catch (markError) { console.error("DBK-64 pending checkout requires reconciliation", markError); }
+      throw cause;
+    }
+  }
 
   await serverClient.create({
     _id: orderId,
@@ -765,6 +830,35 @@ async function sendConfirmationIfNeeded(order: PendingOrder, paymentChannel?: st
 
 export async function finalizePaystackPayment(reference: string) {
   assertReference(reference);
+  if (reference.startsWith("DBK64-")) {
+    // Verified checkout intentionally never falls back to Sanity, including
+    // after operators disable the Neon feature during a recovery incident.
+    if (!dbk64ValidReference(reference)) throw new Error("Invalid DBK-64 reference");
+    const order = await dbk64GetPending(reference);
+    if (!order) throw new Error("DBK-64 pending order is missing; reconcile before retrying");
+    if (order.payment_status === "PAID") {
+      return dbk64VerifiedOrder(order.snapshot);
+    }
+    const payment = await verifyWithPaystack(reference);
+    if (payment.status !== "success") {
+      throw new Error(`Paystack payment is currently ${payment.status}`);
+    }
+    if (payment.reference !== reference || payment.currency !== CURRENCY ||
+        !Number.isSafeInteger(payment.amount) ||
+        payment.amount !== Number(order.amount_minor) ||
+        !Number.isSafeInteger(payment.id) || payment.id <= 0) {
+      throw new Error("Paystack verified transaction does not match this Neon order");
+    }
+    const settled = await dbk64RecordVerifiedPayment({
+      reference, id: String(payment.id), amountMinor: payment.amount,
+      currency: payment.currency, paidAt: payment.paid_at || new Date().toISOString(),
+      channel: payment.channel || "paystack",
+    });
+    if (settled.stockStatus === "REVIEW_REQUIRED") {
+      console.error("[DBK-64] PAID online order requires inventory review", reference);
+    }
+    return dbk64VerifiedOrder(order.snapshot);
+  }
 
   const order = await fetchPendingOrder(reference);
 

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
+import { dbk69InventoryEnabled, dbk69ProductBalances } from "@/lib/db/dbk69-inventory-neon";
+import { dbk69OverlayStock } from "@/lib/db/dbk69-inventory-core";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, locationStoreId, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -163,6 +165,26 @@ export async function GET(
       return NextResponse.json({ message: "This product is not assigned to your store." }, { status: 403 });
     }
   }
+  // Display up-to-date Neon stock even though catalogue metadata remains in Sanity.
+  if (dbk69InventoryEnabled()) {
+    const mapped = dbk69OverlayStock({
+      id:productId,onHand:Number(product.initialStock || 0),incoming:Number(product.inventory?.incoming || 0),
+      available:product.available,
+      variants:(product.variants || []).map((variant: { _key?: string; stockQuantity?: number }) => ({
+        id:variant._key || '',stockQuantity:Number(variant.stockQuantity || 0),
+      })),
+      locationBalances:product.inventory?.locationBalances || [],
+    },await dbk69ProductBalances(productId));
+    product.initialStock = mapped.onHand;
+    product.available = mapped.available;
+    product.variants = (product.variants || []).map((variant: { _key?: string; stockQuantity?: number }) => ({
+      ...variant,stockQuantity:mapped.variants?.find((v: { id: string; stockQuantity: number }) => v.id === variant._key)?.stockQuantity || 0,
+    }));
+    if (product.inventory) {
+      product.inventory.incoming=mapped.incoming;
+      product.inventory.locationBalances=mapped.locationBalances;
+    }
+  }
   // Managers may see stock levels but never procurement/production cost.
   // Redact at the API boundary, not only in the product editor.
   if (staff.role === "MANAGER") {
@@ -211,6 +233,13 @@ export async function PATCH(
       }
     } else {
       body = (await request.json()) as Record<string, unknown>;
+    }
+
+    if (dbk69InventoryEnabled() && [
+      'onHand','initialStock','incoming','reserved','variants','storeLocationId',
+      'location','inventoryRevision'
+    ].some(key => body[key] !== undefined)) {
+      return NextResponse.json({message:'Stock, variants and inventory location changes must use the Neon ledger; catalogue-only updates remain allowed.'},{status:409});
     }
 
     if (staff.role === "STORE_STAFF") {
@@ -688,6 +717,9 @@ export async function DELETE(
 ) {
   const staff = await getApiStaff(["ADMIN"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
+  if (dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'Product deletion is blocked while Neon stock records may reference this product. Disable sales channels instead.'},{status:409});
+  }
 
   const { id } = await context.params;
   const productId = decodeURIComponent(id);

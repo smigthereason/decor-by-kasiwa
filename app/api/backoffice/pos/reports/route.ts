@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { getSalesReport } from "@/lib/pos/operations";
+import { dbk62CutoverRequested } from "@/lib/db/dbk62-pos-cutover";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
+  // Do not produce a misleading Sanity-only report after inventory moves to Neon.
+  if (dbk62CutoverRequested()) return NextResponse.json(
+    {message:"Sales reporting cutover is incomplete; cannot show Sanity-only totals"},{status:503});
   const params = new URL(request.url).searchParams;
   const raw = params.get("period");
   const period = raw === "week" || raw === "month" ? raw : "day";
