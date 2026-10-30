@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   // Do not produce a misleading Sanity-only report after inventory moves to Neon.
-  if (dbk62CutoverRequested()) return NextResponse.json(
+  if (dbk62CutoverRequested() && process.env.DBK75_NEON_REPORT_READS !== 'YES') return NextResponse.json(
     {message:"Sales reporting cutover is incomplete; cannot show Sanity-only totals"},{status:503});
   const params = new URL(request.url).searchParams;
   const raw = params.get("period");

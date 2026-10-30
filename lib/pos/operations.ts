@@ -1,4 +1,6 @@
 import "server-only";
+import { dbk75NeonReportsRequested, dbk75ReadNeonReport } from "@/lib/pos/dbk75-neon-report";
+import { distinctReportOrders } from "@/lib/pos/dbk75-report-core";
 
 import { createHash } from "node:crypto";
 
@@ -261,7 +263,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
   const storeId = cleanText(range.storeId) || null;
   const main = await getMainStore();
   const mainStoreId = main?.id || null;
-  const [orders, returnRows, failedPending, globalReceivables, expenseRows] = await Promise.all([
+  const [legacyOrders, returnRows, failedPending, globalReceivables, expenseRows] = await Promise.all([
     serverClient.fetch<PosHistoryOrder[]>(
       `*[_type == "commerceOrder" && coalesce(soldAt,paidAt,createdAt) >= $start && coalesce(soldAt,paidAt,createdAt) <= $end && paymentStatus in ["paid","partially_paid","refunded"] && ${storeOrderPredicate}]${historyProjection}`,
       { start, end, storeId, mainStoreId }, { cache: "no-store" },
@@ -283,6 +285,14 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
       { start, end, storeId }, { cache: "no-store" },
     ),
   ]);
+
+  // DBK-75 merges only source-disjoint, audited Neon records. Report reads are
+  // independent of transaction gates and cannot write to either backend.
+  const neonReport = dbk75NeonReportsRequested()
+    ? await dbk75ReadNeonReport(start, end, storeId)
+    : null;
+  const orders = neonReport ? distinctReportOrders(legacyOrders, neonReport.orders) : legacyOrders;
+  if (neonReport) returnRows.push(...neonReport.refundRows);
 
   if (expenseReadsIncludeNeon()) {
     const neonExpenses = await listNeonExpensesInRange(start, end, storeId ?? undefined);
@@ -399,10 +409,10 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     manualPayments: channelMoneyIn((order) => order.paymentProvider === "manual" || order.paymentChannel === "external"),
     mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
     paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
-    outstandingReceivables: Number(globalReceivables || 0),
+    outstandingReceivables: Number(globalReceivables || 0) + (neonReport?.outstandingReceivables || 0),
     refunds: returns,
-    failedPayments: failedPending.filter((row) => row.status === "failed" || row.status === "timed_out").length,
-    pendingPayments: failedPending.filter((row) => row.status === "pending").length,
+    failedPayments: failedPending.filter((row) => row.status === "failed" || row.status === "timed_out").length + (neonReport?.failedPayments || 0),
+    pendingPayments: failedPending.filter((row) => row.status === "pending").length + (neonReport?.pendingPayments || 0),
     orders: orders.length,
     byDate: [...dateMap.values()].sort((a, b) => b.date.localeCompare(a.date)),
     byProduct: allSoldProducts(productMap.values()),
