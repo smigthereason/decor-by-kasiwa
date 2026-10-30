@@ -67,7 +67,7 @@ export async function GET() {
     if (!row) continue;
     row.sales += Math.max(0, Number(order.subtotal || 0) - Number(order.discountAmount || 0));
   }
-  const uniqueReceipts = new Map(archivedReceipts.map(row => [row._id, row]));
+  const uniqueReceipts = new Map<string, ReceiptRow>(archivedReceipts.map(row => [row._id, row]));
   for (const row of receipts) uniqueReceipts.set(row._id, row); // current Sanity wins
   for (const receipt of uniqueReceipts.values()) {
     if (!receipt.createdAt) continue;

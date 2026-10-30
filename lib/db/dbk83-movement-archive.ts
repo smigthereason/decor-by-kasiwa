@@ -28,7 +28,8 @@ function formatRow(row: ArchivedRow): MovementRow {
     sourceStoreId: (doc.sourceStore as { _ref?: string } | undefined)?._ref || "",
     destinationStoreId: (doc.destinationStore as { _ref?: string } | undefined)?._ref || "",
     unitCost: doc.unitCost, movementValue: doc.correctedMovementValue ?? doc.movementValue,
-    actorName: doc.actorName, note: doc.note, createdAt: doc.createdAt,
+    actorName: doc.actorName, note: doc.note,
+    createdAt: typeof doc.createdAt === "string" ? doc.createdAt : undefined,
     archived: true,
   };
 }
