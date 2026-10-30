@@ -171,7 +171,11 @@ export async function dbk68ReadReceipt(id:string) {
 }
 export async function dbk68ListHistory() {
   const sql=sqlFor('read');
-  const rows=await sql`SELECT * FROM public.dbk68_daraja_orders ORDER BY created_at DESC LIMIT 500`;
+  const rows=await sql`SELECT * FROM public.dbk68_daraja_orders ORDER BY created_at DESC LIMIT 501`;
+  // Return an error, not a misleading, silently truncated payment history.
+  if (rows.length > 500) {
+    throw new Error('DBK-76 M-Pesa history exceeds 500 records; pagination required before financial cutover');
+  }
   return (rows as unknown as DBK68Order[]).map(o=>{
     const s=dbk68Summary(o);
     return {id:s.orderId,orderNumber:s.orderNumber,receiptNumber:s.receiptNumber,

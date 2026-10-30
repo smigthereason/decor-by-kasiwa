@@ -7,6 +7,7 @@ import { dbk61ReadHistory, dbk61SandboxAllowed, isDbk61SyntheticOrderId } from "
 import { dbk62CutoverRequested, dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
 import { dbk63RecordReceivable } from '@/lib/db/dbk63-financial-neon';
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
+import { dbk77LegacyFinanceEnabled, dbk77RequireSameOriginJson, dbk77ValidateCollection } from "@/lib/pos/dbk77-legacy-finance-core";
 
 export const dynamic = "force-dynamic";
 
@@ -61,12 +62,21 @@ export async function POST(request: Request) {
       return NextResponse.json(await dbk63RecordReceivable(body,seller),
         {headers:{'Cache-Control':'private, no-store'}});
     }
-    if (dbk62CutoverRequested()) return NextResponse.json({message:"Sanity receivable writes are disabled during Neon cutover"},{status:503});
+    const legacyBridge = dbk77LegacyFinanceEnabled(dbk62CutoverRequested(),process.env.DBK77_LEGACY_FINANCE_BRIDGE);
+    if (dbk62CutoverRequested() && !legacyBridge)
+      return NextResponse.json({message:"Historical financial bridge is disabled"},{status:503});
     if (isDbk61SyntheticOrderId(body.orderId)) {
       return NextResponse.json({ message: "Test orders cannot receive real payments" }, { status: 403 });
     }
 
     const seller = { id: staff.customerId, name: staff.customerName, email: staff.customerEmail, role: staff.role, storeLocationId: staff.storeLocationId, storeLocationName: staff.storeLocationName, storeLocationCode: staff.storeLocationCode };
+    if (legacyBridge) {
+      dbk77RequireSameOriginJson(request);
+      const confirmed = dbk77ValidateCollection(body);
+      return NextResponse.json(await recordOutstandingCashPayment({orderId:body.orderId,amount:confirmed.amount,
+        seller,legacyBridge:{reference:confirmed.paymentReference,requestId:confirmed.requestId}}),
+        {headers:{'Cache-Control':'private, no-store'}});
+    }
     return NextResponse.json(await recordOutstandingCashPayment({ orderId: body.orderId, amount: Number(body.amount || 0), seller }));
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to record receivable payment." }, { status: 400 });
