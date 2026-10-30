@@ -855,7 +855,7 @@ function addPaymentRecordToTransaction({
   };
   if (strictCreate) transaction.create(record);
   else transaction.createIfNotExists(record);
-}}
+}
 
 function addAuditToTransaction({
   transaction,
