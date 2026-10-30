@@ -16,6 +16,8 @@ import {
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements } from "@/lib/db/dbk69-inventory-neon";
+import { dbk83ArchiveReadsEnabled, dbk83ListArchivedMovements, dbk83GetVerifiedRestorableMovement } from "@/lib/db/dbk83-movement-archive";
+import { mergeMovementHistory, movementQueryPattern } from "@/lib/inventory/dbk83-history-core";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +117,8 @@ export async function GET(request: Request) {
   const scope = staff.role === "MANAGER" ? staff.storeLocationId || "__NONE__" : "";
   const neon = dbk69InventoryEnabled();
   // Fetch enough from each source to page the merged chronological history.
-  const movementStart = neon ? 0 : offset;
+  const archiveEnabled = dbk83ArchiveReadsEnabled();
+  const movementStart = neon || archiveEnabled ? 0 : offset;
   const movementEnd = offset + MOVEMENT_PAGE_SIZE + 1;
   const movements = await serverClient.fetch<Array<Record<string, unknown>>>(
     `*[
@@ -137,15 +140,25 @@ export async function GET(request: Request) {
     { cache: "no-store" },
   );
 
-  const neonRows = neon ? await dbk69ListMovements({q:query,from:from || '',to:to || '',type:movementType,scope,limit:movementEnd}) : [];
-  const combined = neon
-    ? [...movements,...neonRows].sort((a,b)=>String(b.createdAt || '').localeCompare(String(a.createdAt || ''))).slice(offset)
-    : movements;
+  const [neonRows, skuProducts] = await Promise.all([
+    neon ? dbk69ListMovements({q:query,from:from || '',to:to || '',type:movementType,scope,limit:movementEnd}) : Promise.resolve([]),
+    archiveEnabled && needle ? serverClient.fetch<Array<{_id:string}>>(
+      `*[_type == "product" && lower(coalesce(sku, "")) match $needle]{_id}`,
+      {needle}, {cache:"no-store"},
+    ) : Promise.resolve([]),
+  ]);
+  const archiveRows = archiveEnabled ? await dbk83ListArchivedMovements({
+    pattern: movementQueryPattern(query), from:from || "", to:to || "", type:movementType,
+    scope, skuProductIds:skuProducts.map(p=>p._id), limit:movementEnd,
+  }) : [];
+  const result = neon || archiveEnabled
+    ? mergeMovementHistory(movements as Array<{_id:string;createdAt?:string}>, archiveRows, neonRows as Array<{_id:string;createdAt?:string}>, offset, MOVEMENT_PAGE_SIZE)
+    : { movements, hasMore: movements.length > MOVEMENT_PAGE_SIZE };
   const hideCost = staff.role === "MANAGER" || staff.role === "STORE_STAFF";
-  const page = combined.slice(0, MOVEMENT_PAGE_SIZE);
+  const page = result.movements;
   return NextResponse.json({
     movements: hideCost ? page.map(({ unitCost: _unitCost, movementValue: _movementValue, ...movement }) => movement) : page,
-    hasMore: combined.length > MOVEMENT_PAGE_SIZE,
+    hasMore: result.hasMore,
   });
 }
 
@@ -495,5 +508,31 @@ export async function PATCH(request: Request) {
   } catch (cause) {
     console.error("Stock movement correction failed:", cause);
     return NextResponse.json({ message: cause instanceof Error && /revision|conflict/i.test(cause.message) ? "Stock changed during correction. Refresh and try again." : "Unable to correct stock. No partial correction was saved." }, { status: 409 });
+  }
+}
+
+// DBK-83: restore an archived movement on demand for an audited correction.
+// This creates ONLY the original history document (no change in stock or payments).
+// The existing revision-checked PATCH is still required for the actual correction.
+export async function PUT(request: Request) {
+  const staff = await getApiStaff(["ADMIN", "STORE"]);
+  if (!staff.ok) return NextResponse.json({message:"Only Admin and Store Manager can restore movement history.",status:staff.status},{status:staff.status});
+  if (dbk69InventoryEnabled()) return NextResponse.json({message:"Restoration blocked during Neon inventory authority."},{status:409});
+  let body: { movementId?: string };
+  try { body = await request.json(); } catch { return NextResponse.json({message:"Invalid restoration request."},{status:400}); }
+  const id = typeof body.movementId === "string" ? body.movementId.trim() : "";
+  if (!/^inventoryMovement\.[A-Za-z0-9_-]+$/.test(id)) return NextResponse.json({message:"Invalid movement ID."},{status:400});
+  try {
+    const doc = await dbk83GetVerifiedRestorableMovement(id);
+    const existing = await serverClient.fetch<{_id:string}|null>(
+      `*[_type == "inventoryMovement" && _id == $id][0]{_id}`, {id}, {cache:"no-store"});
+    if (!existing) {
+      await serverClient.createIfNotExists(doc as Parameters<typeof serverClient.createIfNotExists>[0]);
+    }
+    return NextResponse.json({ok:true, movementId:id, restored:!existing,
+      message:"Historical movement is available for reviewed correction. Reload the movement and use Edit / Void."});
+  } catch (error) {
+    console.error("DBK-83 movement restoration rejected", error);
+    return NextResponse.json({message:"Unable to restore verified historical movement. No stock balances were changed."},{status:409});
   }
 }
