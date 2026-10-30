@@ -538,7 +538,7 @@ function incrementVariantStock(variants: Array<Record<string, unknown>> | undefi
   return changed ? next : undefined;
 }
 
-export async function processReturnRefund(input: RefundInput, seller: PosSeller) {
+export async function processReturnRefund(input: RefundInput, seller: PosSeller, legacyBridge = false) {
   if (!["ADMIN", "STORE", "MANAGER"].includes(seller.role)) throw new Error("Only Admin, Store Manager or Manager can process refunds or returns.");
   const order = await serverClient.fetch<RefundOrder | null>(
     `*[_type == "commerceOrder" && _id == $id][0]{
@@ -547,6 +547,13 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller)
     { id: input.orderId }, { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
+  // In the historical bridge, Paystack is never called from this endpoint and
+  // no stock, cancellation or unconfirmed monetary mutation is permitted.
+  if (legacyBridge && (input.restock || input.cancelOutstanding ||
+    (input.items?.length || 0) > 0 || order.paymentProvider?.toLowerCase() === 'paystack' ||
+    input.manualRefundConfirmed !== true)) {
+    throw new Error('This legacy refund requires provider/Neon reconciliation and cannot use the historical bridge');
+  }
   const receiptNumber = cleanText(input.receiptNumber);
   if (!receiptNumber || receiptNumber !== order.receiptNumber) {
     throw new Error("The selected receipt does not match this sale. Open the refund from the correct receipt and try again.");

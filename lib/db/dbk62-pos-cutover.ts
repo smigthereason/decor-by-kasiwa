@@ -65,7 +65,12 @@ export async function dbk62ListRealOrders():Promise<RealNeonOrder[]> {
       'event_key',p.event_key,'recorded_at',p.recorded_at) ORDER BY p.recorded_at)
       FROM public.dbk56_pos_payments p WHERE p.order_id=o.order_id),'[]'::jsonb) AS payments
     FROM public.dbk62_manual_sales s JOIN public.dbk56_pos_orders o ON o.order_id=s.order_id
-    ORDER BY o.created_at DESC LIMIT 500`;
+    ORDER BY o.created_at DESC LIMIT 501`;
+  // A partial financial history must never look like the complete ledger.
+  // Pagination is required before this operational source exceeds 500 rows.
+  if (rows.length > 500) {
+    throw new Error('DBK-76 manual POS history exceeds 500 records; pagination required before financial cutover');
+  }
   return rows as unknown as RealNeonOrder[];
 }
 export async function dbk62CreateRealManualSale(input:PosSaleInput,seller:PosSeller) {

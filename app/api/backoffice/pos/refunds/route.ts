@@ -5,6 +5,7 @@ import { processReturnRefund } from "@/lib/pos/operations";
 import { dbk62CutoverRequested } from "@/lib/db/dbk62-pos-cutover";
 import { dbk63RecordManualRefund } from '@/lib/db/dbk63-financial-neon';
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
+import { dbk77LegacyFinanceEnabled, dbk77RequireSameOriginJson, dbk77ValidateLegacyRefund } from "@/lib/pos/dbk77-legacy-finance-core";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,14 @@ export async function POST(request: Request) {
       return NextResponse.json(await dbk63RecordManualRefund(body,seller),
         {headers:{'Cache-Control':'private, no-store'}});
     }
-    if (dbk62CutoverRequested()) return NextResponse.json({message:'Sanity refunds disabled during Neon cutover'},{status:503});
-    return NextResponse.json(await processReturnRefund(body, seller));
+    const legacyBridge = dbk77LegacyFinanceEnabled(dbk62CutoverRequested(),process.env.DBK77_LEGACY_FINANCE_BRIDGE);
+    if (dbk62CutoverRequested() && !legacyBridge)
+      return NextResponse.json({message:'Historical financial bridge is disabled'},{status:503});
+    if (legacyBridge) {
+      dbk77RequireSameOriginJson(request);
+      dbk77ValidateLegacyRefund(body);
+    }
+    return NextResponse.json(await processReturnRefund(body, seller, legacyBridge));
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to process return/refund." }, { status: 400 });
   }

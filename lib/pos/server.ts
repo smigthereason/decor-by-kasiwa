@@ -814,6 +814,7 @@ function addPaymentRecordToTransaction({
   seller,
   now,
   providerReceiptNumber,
+  strictCreate,
 }: {
   transaction: ReturnType<typeof serverClient.transaction>;
   reference: string;
@@ -828,8 +829,9 @@ function addPaymentRecordToTransaction({
   seller: PosSeller;
   now: string;
   providerReceiptNumber?: string;
+  strictCreate?: boolean;
 }) {
-  transaction.createIfNotExists({
+  const record = {
     _id: paymentTransactionId(reference),
     _type: "paymentTransaction",
     reference,
@@ -850,8 +852,10 @@ function addPaymentRecordToTransaction({
     createdAt: now,
     updatedAt: now,
     ...(status === "paid" || status === "partially_paid" ? { paidAt: now } : {}),
-  });
-}
+  };
+  if (strictCreate) transaction.create(record);
+  else transaction.createIfNotExists(record);
+}}
 
 function addAuditToTransaction({
   transaction,
@@ -2032,13 +2036,31 @@ export async function getPosReceipt(orderId: string) {
   };
 }
 
-export async function recordOutstandingCashPayment({ orderId, amount, seller }: { orderId: string; amount: number; seller: PosSeller }) {
+export async function recordOutstandingCashPayment({ orderId, amount, seller, legacyBridge }: {
+  orderId: string; amount: number; seller: PosSeller;
+  legacyBridge?: { reference: string; requestId: string };
+}) {
   const order = await serverClient.fetch<(PosOrder & { salesChannel?: "ONLINE" | "POS"; assignedStore?: string }) | null>(
     `*[_type == "commerceOrder" && _id == $orderId][0]{_id,_rev,orderNumber,paymentStatus,status,total,amountPaid,balanceDue,receiptNumber,paymentReference,paymentChannel,customerName,customerEmail,customerPhone,"customerId":customer._ref,soldByName,soldAt,salesChannel,assignedStore,"storeLocationId":storeLocation._ref}`,
     { orderId },
     { cache: "no-store" },
   );
   if (!order) throw new Error("Order not found.");
+  // A stable reference is globally unique: concurrent retries cannot collect twice.
+  // Replays are acknowledged only if the exact order + amount + external receipt agree.
+  const bridgePaymentRef = legacyBridge ? `DBK77-LEGACY-${legacyBridge.reference}` : undefined;
+  if (bridgePaymentRef) {
+    const previous = await serverClient.fetch<{orderId?:string;amount?:number;providerReceiptNumber?:string}|null>(
+      `*[_id==$id][0]{"orderId":order._ref,amount,providerReceiptNumber}`,
+      {id:paymentTransactionId(bridgePaymentRef)},{cache:'no-store'});
+    if (previous) {
+      if (previous.orderId!==orderId || previous.amount!==amount ||
+          previous.providerReceiptNumber!==legacyBridge!.reference) {
+        throw new Error('Historical payment reference was already used for a different payment');
+      }
+      return summary(order);
+    }
+  }
   if (seller.role === "MANAGER") {
     const main = await getMainStore();
     const effectiveStoreId = order.storeLocationId ||
@@ -2056,7 +2078,7 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller }: 
   const nextBalance = Math.max(0, Number(order.total || 0) - nextPaid);
   const nextStatus = nextBalance > 0 ? "partially_paid" : "paid";
   const now = new Date().toISOString();
-  const reference = `${order.orderNumber}-PAY-${Date.now()}`;
+  const reference = bridgePaymentRef || `${order.orderNumber}-PAY-${Date.now()}`;
   const transaction = serverClient.transaction();
   transaction.patch(order._id, (patch) => patch.ifRevisionId(order._rev).set({
     amountPaid: nextPaid,
@@ -2065,6 +2087,19 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller }: 
     ...(nextBalance <= 0 ? { paidAt: now } : {}),
     updatedAt: now,
   }));
+  if (legacyBridge && order.customerId) {
+    // Historic bridge does not risk an acknowledged payment with a separately
+    // failed customer-balance patch: both changes commit or both roll back.
+    const customer = await serverClient.fetch<{_rev:string;outstandingBalance?:number}|null>(
+      `*[_id==$id][0]{_rev,outstandingBalance}`,{id:order.customerId},{cache:'no-store'});
+    if (!customer?._rev) throw new Error('Customer balance missing: reconcile before collecting historic debt');
+    const previous = Number(customer.outstandingBalance || 0);
+    if (!Number.isFinite(previous) || previous < 0)
+      throw new Error('Invalid customer outstanding balance');
+    transaction.patch(order.customerId, patch => patch.ifRevisionId(customer._rev).set({
+      outstandingBalance:Math.max(0,previous-payment),updatedAt:now
+    }));
+  }
   addPaymentRecordToTransaction({
     transaction,
     reference,
@@ -2078,11 +2113,13 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller }: 
     amount: payment,
     seller,
     now,
+    providerReceiptNumber:legacyBridge?.reference,
+    strictCreate:Boolean(legacyBridge),
   });
   addAuditToTransaction({ transaction, key: `receivable-payment|${reference}`, eventType: "RECEIVABLE_PAYMENT_RECORDED", entityId: order._id, entityLabel: order.orderNumber, seller, detail: `Cash balance payment KES ${payment.toLocaleString("en-KE")} recorded. Remaining KES ${nextBalance.toLocaleString("en-KE")}.`, now });
   await transaction.commit();
 
-  if (order.customerId) {
+  if (order.customerId && !legacyBridge) {
     const currentBalance = await serverClient.fetch<number>(`coalesce(*[_id == $id][0].outstandingBalance,0)`, { id: order.customerId });
     await serverClient.patch(order.customerId).set({ outstandingBalance: Math.max(0, Number(currentBalance || 0) - payment), updatedAt: now }).commit();
   }
