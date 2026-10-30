@@ -22,6 +22,7 @@ type StoreLocation = { _id: string; name: string; code?: string; active?: boolea
 type InventoryMovement = {
   _id: string;
   _rev?: string;
+  archived?: boolean;
   movementNumber?: string;
   correctedQuantity?: number;
   correctedAt?: string;
@@ -219,6 +220,26 @@ export default function InventoryManagementPage() {
     const filters = { q: movementQuery.trim(), from: movementFrom, to: movementTo, type: movementType };
     appliedMovementFilters.current = filters;
     void loadMovements(filters);
+  }
+
+  async function restoreArchivedMovement(movement: InventoryMovement) {
+    if (!canCorrectStock || !movement.archived || correctingMovement) return;
+    if (!window.confirm("Restore this historical movement to Sanity for a reviewed stock correction? This alone does not alter stock quantities.")) return;
+    setCorrectingMovement(true);
+    setMovementError(null);
+    try {
+      await fetch("/api/backoffice/inventory/movements", {
+        method: "PUT", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({movementId:movement._id}),
+      }).then(async response => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || "Restoration failed");
+      });
+      setMessage("Archived movement restored. Find it in the refreshed history, then select Edit / Void.");
+      await loadMovements(appliedMovementFilters.current);
+    } catch (cause) {
+      setMovementError(cause instanceof Error ? cause.message : "Unable to restore movement");
+    } finally { setCorrectingMovement(false); }
   }
 
   function beginCorrection(movement: InventoryMovement) {
@@ -492,7 +513,7 @@ export default function InventoryManagementPage() {
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
                 const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={!movement._rev || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : "Edit / Void"}</button></td>}</tr>;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={(!movement.archived && !movement._rev) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}

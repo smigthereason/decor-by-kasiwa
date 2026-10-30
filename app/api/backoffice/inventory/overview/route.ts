@@ -4,12 +4,13 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import { dbk69AllBalances, dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { DBK69_QUARANTINED } from "@/lib/db/dbk69-inventory-core";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { dbk83ArchiveReadsEnabled, dbk83ListArchivedPurchases } from "@/lib/db/dbk83-movement-archive";
 
 export const dynamic = "force-dynamic";
 
 type ProductValue = { _id: string; stock?: number; retail?: number; cost?: number };
 type OrderRow = { createdAt?: string; subtotal?: number; discountAmount?: number; paymentStatus?: string; status?: string };
-type ReceiptRow = { createdAt?: string; quantityChange?: number; unitCost?: number; movementValue?: number };
+type ReceiptRow = { _id: string; createdAt?: string; quantityChange?: number; unitCost?: number; movementValue?: number };
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -28,7 +29,7 @@ export async function GET() {
   start.setHours(0, 0, 0, 0);
   start.setMonth(start.getMonth() - 5);
 
-  const [products, orders, receipts] = await Promise.all([
+  const [products, orders, receipts, archivedReceipts] = await Promise.all([
     serverClient.fetch<ProductValue[]>(
       `*[_type == "product"]{
         _id,
@@ -42,9 +43,10 @@ export async function GET() {
       { from: start.toISOString() }, { cache: "no-store" },
     ),
     serverClient.fetch<ReceiptRow[]>(
-      `*[_type == "inventoryMovement" && createdAt >= $from && (movementType == "PURCHASE" || (movementType == "RECEIPT" && !defined(incomingBefore)))]{createdAt,quantityChange,unitCost,movementValue}`,
+      `*[_type == "inventoryMovement" && createdAt >= $from && (movementType == "PURCHASE" || (movementType == "RECEIPT" && !defined(incomingBefore)))]{_id,createdAt,quantityChange,unitCost,"movementValue":coalesce(correctedMovementValue,movementValue)}`,
       { from: start.toISOString() }, { cache: "no-store" },
     ),
+    dbk83ArchiveReadsEnabled() ? dbk83ListArchivedPurchases(start.toISOString()) : Promise.resolve([]),
   ]);
 
   const months = Array.from({ length: 6 }, (_, index) => {
@@ -65,7 +67,9 @@ export async function GET() {
     if (!row) continue;
     row.sales += Math.max(0, Number(order.subtotal || 0) - Number(order.discountAmount || 0));
   }
-  for (const receipt of receipts) {
+  const uniqueReceipts = new Map(archivedReceipts.map(row => [row._id, row]));
+  for (const row of receipts) uniqueReceipts.set(row._id, row); // current Sanity wins
+  for (const receipt of uniqueReceipts.values()) {
     if (!receipt.createdAt) continue;
     const row = byMonth.get(monthKey(new Date(receipt.createdAt)));
     if (!row) continue;

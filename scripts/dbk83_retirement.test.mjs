@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {hashDoc,retirementCandidate,requireCommitAuthorization,PINNED_HOST} from './dbk83_retirement_core.mjs';
+const now=Date.parse('2026-10-30T14:00:00Z');
+const base={_id:'inventoryMovement.abc',_rev:'r1',_type:'inventoryMovement',movementType:'RECEIPT',productId:'product.x',createdAt:'2026-10-10T00:00:00Z',_createdAt:'2026-10-10T00:00:00Z',_updatedAt:'2026-10-10T00:00:00Z'};
+const live={_rev:'r1'},arch={source_revision:'r1',source_sha256:hashDoc(base)};
+test('permits only complete exact old archived movement',()=>assert.equal(retirementCandidate(base,live,arch,now),null));
+test('blocks changed live revision',()=>assert.equal(retirementCandidate(base,{_rev:'r2'},arch,now),'live_revision_changed'));
+test('blocks archive digest drift',()=>assert.equal(retirementCandidate(base,live,{...arch,source_sha256:'0'.repeat(64)},now),'archive_not_exact'));
+test('preserves last 7 days',()=>assert.equal(retirementCandidate({...base,_updatedAt:'2026-10-29T00:00:00Z'},live,arch,now),'retained_last_7_days'));
+test('rejects unsupported movement without product reference',()=>assert.equal(retirementCandidate({...base,productId:null},live,arch,now),'unsupported'));
+test('commit cannot bypass reader and restore verification',()=>assert.throws(()=>requireCommitAuthorization({requested:true,flags:{reads:true},host:PINNED_HOST,age:1000,bytes:200000,expectedSha:'a',actualSha:'a'})));
+test('commit rejects stale backup',()=>assert.throws(()=>requireCommitAuthorization({requested:true,flags:{reads:true,restore:true,approval:true},host:PINNED_HOST,age:9000000,bytes:200000,expectedSha:'a',actualSha:'a'})));
+test('commit can be authorized with all prerequisites',()=>assert.doesNotThrow(()=>requireCommitAuthorization({requested:true,flags:{reads:true,restore:true,approval:true},host:PINNED_HOST,age:1000,bytes:200000,expectedSha:'a',actualSha:'a'})));
