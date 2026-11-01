@@ -279,7 +279,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
       `*[_type == "paymentTransaction" && createdAt >= $start && createdAt <= $end && status in ["failed","pending","timed_out"] && ${relatedOrderPredicate}]{status}`,
       { start, end, storeId, mainStoreId }, { cache: "no-store" },
     ),
-    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && ${storeOrderPredicate}].balanceDue),0)`, { storeId, mainStoreId }, { cache: "no-store" }),
+    serverClient.fetch<number>(`coalesce(math::sum(*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && status != "cancelled" && paymentStatus != "failed" && ${storeOrderPredicate}].balanceDue),0)`, { storeId, mainStoreId }, { cache: "no-store" }),
     serverClient.fetch<Array<{ ledgerAccount?: string; expenseCategory?: string; expenseType?: string; amount?: number }>>(
       `*[_type == "expenseTransaction" && expenseDate >= $start && expenseDate <= $end && (!defined($storeId) || storeLocation._ref == $storeId)]{ledgerAccount,expenseCategory,expenseType,amount}`,
       { start, end, storeId }, { cache: "no-store" },
