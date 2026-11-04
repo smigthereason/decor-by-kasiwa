@@ -9,6 +9,8 @@ import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
 import { dbk94JournalOnExistingOrder } from "@/lib/pos/dbk94-sales-movement";
 import { dbk94ProjectAfterCommit } from "@/lib/db/dbk94-project-sale-movements";
+import { dbk95AuditEnabled, dbk95AppendAudit, dbk95PosAuditEntry } from "@/lib/pos/dbk95-transaction-audit";
+import { dbk95ProjectAfterCommit } from "@/lib/db/dbk95-project-audits";
 import { manualPaymentBreakdown, toCents } from "@/lib/pos/manual-payment";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -878,6 +880,13 @@ function addAuditToTransaction({
   detail: string;
   now: string;
 }) {
+  if (dbk95AuditEnabled()) {
+    // This patch is in the SAME transaction as the POS order/payment mutation.
+    // Order journal is durable for replay if Neon temporarily fails.
+    transaction.patch(entityId, patch => dbk95AppendAudit(patch,
+      dbk95PosAuditEntry({key,eventType,entityId,entityLabel,seller,detail,now})));
+    return;
+  }
   const id = auditId(key);
   transaction.createIfNotExists({
     _id: id,
@@ -1020,6 +1029,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
 
   await transaction.commit();
   await dbk94ProjectAfterCommit(orderId);
+  await dbk95ProjectAfterCommit(orderId);
   const created = await fetchPosOrder(reference);
   if (!created) throw new Error("POS manual payment sale completed but could not be reloaded.");
   await linkCustomerToCompletedSale(created, customer);
@@ -1114,6 +1124,7 @@ async function createPendingPaystackOrder(input: PosSaleInput, seller: PosSeller
     now,
   });
   await transaction.commit();
+  await dbk95ProjectAfterCommit(orderId);
   return { existing: await fetchPosOrder(reference), customer };
 }
 
@@ -1206,6 +1217,7 @@ async function createPendingDarajaOrder(input: PosSaleInput, seller: PosSeller) 
   });
 
   await transaction.commit();
+  await dbk95ProjectAfterCommit(orderId);
   return { existing: await fetchPosOrder(reference), customer };
 }
 
@@ -1432,6 +1444,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   }
 
   await dbk94ProjectAfterCommit(order._id);
+  await dbk95ProjectAfterCommit(order._id);
   const finalized = await fetchPosOrder(reference);
   if (!finalized) throw new Error("Payment was confirmed but the POS order could not be reloaded.");
   const customer = customerDetails({
@@ -1500,6 +1513,7 @@ async function reconcilePaidPosInventory(order: PosOrder, now = new Date().toISO
     });
     await transaction.commit();
     await dbk94ProjectAfterCommit(order._id);
+    await dbk95ProjectAfterCommit(order._id);
 
     return {
       order: (await fetchPosOrder(reference)) || order,
@@ -1653,6 +1667,7 @@ async function finalizeDarajaPosPayment(order: PosOrder, payment: {
     throw cause;
   }
 
+  await dbk95ProjectAfterCommit(order._id);
   const financiallyPaid = await fetchPosOrder(reference);
   if (!financiallyPaid || financiallyPaid.paymentStatus !== "paid") {
     throw new Error("M-PESA payment was confirmed but the paid financial state could not be reloaded.");
@@ -2129,6 +2144,7 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller, le
     const currentBalance = await serverClient.fetch<number>(`coalesce(*[_id == $id][0].outstandingBalance,0)`, { id: order.customerId });
     await serverClient.patch(order.customerId).set({ outstandingBalance: Math.max(0, Number(currentBalance || 0) - payment), updatedAt: now }).commit();
   }
+  await dbk95ProjectAfterCommit(order._id);
   const updated = await serverClient.fetch<PosOrder | null>(`*[_id == $orderId][0]{_id,_rev,orderNumber,paymentStatus,status,total,amountPaid,balanceDue,receiptNumber,paymentReference,paymentChannel,customerName,customerEmail,customerPhone,"customerId":customer._ref,soldByName,soldAt}`, { orderId });
   if (!updated) throw new Error("Payment was recorded but the order could not be reloaded.");
   return summary(updated);
