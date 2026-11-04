@@ -4,6 +4,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
+import { dbk94JournalOnExistingOrder } from "@/lib/pos/dbk94-sales-movement";
+import { dbk94ProjectAfterCommit } from "@/lib/db/dbk94-project-sale-movements";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getMainStore } from "@/lib/stores/main-store";
@@ -1028,6 +1030,17 @@ export async function finalizePaystackPayment(reference: string) {
   );
   const now = new Date().toISOString();
 
+  const dbk94Journal = addInventoryMovementsToTransaction({
+    transaction: mutation,
+    movementKey: `online-sale|${order.orderNumber}`,
+    movementType: "SALE",
+    orderId: order._id,
+    orderNumber: order.orderNumber,
+    movements: stockMovements,
+    note: "Inventory deducted after verified online Paystack payment.",
+    createdAt: now,
+  });
+
   mutation.patch(order._id, (patch) => {
     let next = patch
       .ifRevisionId(order._rev)
@@ -1062,19 +1075,10 @@ export async function finalizePaystackPayment(reference: string) {
       next = next.unset(["inventoryReviewRaisedAt"]);
     }
 
-    return next;
+    return dbk94JournalOnExistingOrder(next,dbk94Journal);
   });
 
-  addInventoryMovementsToTransaction({
-    transaction: mutation,
-    movementKey: `online-sale|${order.orderNumber}`,
-    movementType: "SALE",
-    orderId: order._id,
-    orderNumber: order.orderNumber,
-    movements: stockMovements,
-    note: "Inventory deducted after verified online Paystack payment.",
-    createdAt: now,
-  });
+
 
   mutation.createIfNotExists({
     _id: `paymentTransaction.${safeReferenceForDocumentId(reference)}`,
@@ -1168,6 +1172,7 @@ export async function finalizePaystackPayment(reference: string) {
     throw cause;
   }
 
+  await dbk94ProjectAfterCommit(order._id);
   const finalized = await fetchPendingOrder(reference);
 
   if (!finalized) {
