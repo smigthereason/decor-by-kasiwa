@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { serverClient } from "@/sanity/lib/serverClient";
 import type { PosSeller } from "@/lib/pos/server";
 import { neonAuditWritesEnabled, recordIndependentAuditInNeon } from "@/lib/db/audit-write-neon";
+import { dbk94NeonSalesEnabled, type Dbk94SaleMovement } from "@/lib/pos/dbk94-sales-movement";
 
 function safeId(value: string) {
   return value.replace(/[^A-Za-z0-9._-]/g, "-");
@@ -177,9 +178,26 @@ export function addInventoryMovementsToTransaction({
   note?: string;
   createdAt?: string;
 }) {
+  const toNeon = movementType === "SALE" && dbk94NeonSalesEnabled();
+  const journal: Dbk94SaleMovement[] = [];
   movements.forEach((movement, index) => {
     const key = `${movementKey}|${movement.productId}|${movement.variantId || "default"}|${index}`;
     const id = `inventoryMovement.${hashId(key)}`;
+    if (toNeon) {
+      if (!orderId || !orderNumber) throw new Error('DBK-94 sale must have an order');
+      journal.push({
+        _type:'dbk94SaleMovement',_key:hashId(key),movementId:id,orderId,orderNumber,
+        productId:movement.productId,productName:movement.productName,
+        ...(movement.variantId ? {variantId:movement.variantId} : {}),
+        quantityChange:movement.quantityChange,
+        ...(movement.stockBefore !== undefined ? {stockBefore:movement.stockBefore} : {}),
+        ...(movement.stockAfter !== undefined ? {stockAfter:movement.stockAfter} : {}),
+        ...(movement.sourceStoreId ? {sourceStoreId:movement.sourceStoreId} : {}),
+        ...(movement.sourceLocation ? {sourceLocation:movement.sourceLocation} : {}),
+        ...(note ? {note} : {}), createdAt,
+      });
+      return;
+    }
     transaction.createIfNotExists({
       _id: id,
       _type: "inventoryMovement",
@@ -207,4 +225,5 @@ export function addInventoryMovementsToTransaction({
       createdAt,
     });
   });
+  return journal;
 }

@@ -7,6 +7,8 @@ import { createHash, createHmac } from "node:crypto";
 import { upsertPosCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import type { ApiStaffRole } from "@/lib/auth/api-authorization";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
+import { dbk94JournalOnExistingOrder } from "@/lib/pos/dbk94-sales-movement";
+import { dbk94ProjectAfterCommit } from "@/lib/db/dbk94-project-sale-movements";
 import { manualPaymentBreakdown, toCents } from "@/lib/pos/manual-payment";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -785,7 +787,7 @@ function addSaleInventoryMutations(
     });
   }
 
-  addInventoryMovementsToTransaction({
+  return addInventoryMovementsToTransaction({
     transaction,
     movementKey: `sale|${orderNumber}`,
     movementType: "SALE",
@@ -957,7 +959,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   const receiptNumber = receiptNumberFor(orderNumber);
   const transaction = serverClient.transaction();
 
-  addSaleInventoryMutations(transaction, products, lines, orderId, orderNumber, seller, now);
+  const dbk94Journal = addSaleInventoryMutations(transaction, products, lines, orderId, orderNumber, seller, now);
 
   transaction.create({
     _id: orderId,
@@ -1003,6 +1005,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
       discountAuthorizedByName: seller.name,
     } : {}),
     lineItems: orderLineDocuments(lines),
+    ...(dbk94Journal.length ? {dbk94SaleMovementJournal:dbk94Journal} : {}),
   });
 
   addPaymentRecordToTransaction({
@@ -1016,6 +1019,7 @@ export async function createPosManualSale(input: PosSaleInput, seller: PosSeller
   });
 
   await transaction.commit();
+  await dbk94ProjectAfterCommit(orderId);
   const created = await fetchPosOrder(reference);
   if (!created) throw new Error("POS manual payment sale completed but could not be reloaded.");
   await linkCustomerToCompletedSale(created, customer);
@@ -1383,9 +1387,9 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
   seller.storeLocationCode = storedSeller?.storeLocationCode;
 
   const firstFulfilmentStage = order.fulfilmentStages?.[0];
-  addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
+  const dbk94Journal = addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
   transaction.patch(order._id, (patch) =>
-    patch.ifRevisionId(order._rev).set({
+    dbk94JournalOnExistingOrder(patch.ifRevisionId(order._rev).set({
       paymentStatus: "paid",
       status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
       ...(firstFulfilmentStage ? { currentFulfilmentStage: firstFulfilmentStage } : {}),
@@ -1397,7 +1401,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
       paidAt: payment.paid_at || now,
       updatedAt: now,
       failureReason: "",
-    }),
+    }),dbk94Journal),
   );
   transaction.patch(paymentTransactionId(reference), (patch) => patch.set({
     status: "paid",
@@ -1427,6 +1431,7 @@ async function finalizeVerifiedPosPayment(order: PosOrder, payment: NonNullable<
     throw cause;
   }
 
+  await dbk94ProjectAfterCommit(order._id);
   const finalized = await fetchPosOrder(reference);
   if (!finalized) throw new Error("Payment was confirmed but the POS order could not be reloaded.");
   const customer = customerDetails({
@@ -1470,7 +1475,7 @@ async function reconcilePaidPosInventory(order: PosOrder, now = new Date().toISO
     const firstFulfilmentStage = order.fulfilmentStages?.[0];
     const transaction = serverClient.transaction();
 
-    addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
+    const dbk94Journal = addSaleInventoryMutations(transaction, products, order.lineItems || [], order._id, order.orderNumber, seller, now);
     transaction.patch(order._id, (patch) => {
       let next = patch.set({
         status: firstFulfilmentStage ? "processing" : Number(order.deliveryFee || 0) > 0 ? "processing" : "delivered",
@@ -1481,7 +1486,7 @@ async function reconcilePaidPosInventory(order: PosOrder, now = new Date().toISO
         updatedAt: now,
       });
       next = next.unset(["inventoryReviewRaisedAt"]);
-      return next;
+      return dbk94JournalOnExistingOrder(next,dbk94Journal);
     });
     addAuditToTransaction({
       transaction,
@@ -1494,6 +1499,7 @@ async function reconcilePaidPosInventory(order: PosOrder, now = new Date().toISO
       now,
     });
     await transaction.commit();
+    await dbk94ProjectAfterCommit(order._id);
 
     return {
       order: (await fetchPosOrder(reference)) || order,
