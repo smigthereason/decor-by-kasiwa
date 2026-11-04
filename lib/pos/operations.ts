@@ -7,6 +7,8 @@ import { createHash } from "node:crypto";
 import type { PosSeller } from "@/lib/pos/server";
 import { allSoldProducts, kenyaCalendarDay, kenyaReportWindow } from "@/lib/pos/reporting-core";
 import { addInventoryMovementsToTransaction, recordAuditEvent } from "@/lib/pos/ledger";
+import {dbk95AuditEnabled,dbk95PosAuditEntry,dbk95AppendAudit} from "@/lib/pos/dbk95-transaction-audit";
+import {dbk95ProjectAfterCommit} from "@/lib/db/dbk95-project-audits";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -753,7 +755,14 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller,
     processedBy: { _type: "reference", _ref: seller.id }, processedByName: seller.name, processedByRole: seller.role, createdAt: now,
   });
   addInventoryMovementsToTransaction({ transaction, movementKey: `return|${returnId}`, movementType: "RETURN", orderId: order.id, orderNumber: order.orderNumber, actor: seller, movements, note: reason, createdAt: now });
-  transaction.createIfNotExists({
+  const dbk95ReturnAudit=dbk95AuditEnabled() ? dbk95PosAuditEntry({
+    key:`return|${returnId}`,eventType:'RETURN_REFUND_PROCESSED',
+    entityId:order.id,entityLabel:order.orderNumber,seller,
+    detail:`${returnNumber} · receipt ${receiptNumber} · refund KES ${refundAmount.toLocaleString("en-KE")} · ${input.restock ? "restocked" : "not restocked"} · ${manualRefund ? `external reference ${manualRefundReference} · ` : ""}${reason}`,
+    now,
+  }) : null;
+  if(dbk95ReturnAudit) transaction.patch(order.id, patch => dbk95AppendAudit(patch,dbk95ReturnAudit));
+  else transaction.createIfNotExists({
     _id: `auditEvent.${hashId(`return|${returnId}`)}`, _type: "auditEvent", eventNumber: `AUD-${hashId(`return|${returnId}`).slice(0, 12).toUpperCase()}`,
     eventType: "RETURN_REFUND_PROCESSED", entityType: "commerceOrder", entityId: order.id, entityLabel: order.orderNumber,
     actor: { _type: "reference", _ref: seller.id }, actorName: seller.name, actorRole: seller.role,
@@ -772,6 +781,7 @@ export async function processReturnRefund(input: RefundInput, seller: PosSeller,
     });
   }
   await transaction.commit();
+  await dbk95ProjectAfterCommit(order.id);
 
   if (order.customerId && input.cancelOutstanding && Number(order.balanceDue || 0) > 0) {
     const currentBalance = await serverClient.fetch<number>(`coalesce(*[_id == $id][0].outstandingBalance,0)`, { id: order.customerId });

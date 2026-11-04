@@ -6,6 +6,8 @@ import { upsertCustomerFromPurchase } from "@/lib/auth/sanity-users";
 import { addInventoryMovementsToTransaction } from "@/lib/pos/ledger";
 import { dbk94JournalOnExistingOrder } from "@/lib/pos/dbk94-sales-movement";
 import { dbk94ProjectAfterCommit } from "@/lib/db/dbk94-project-sale-movements";
+import { dbk95AuditEnabled,dbk95OnlineAuditEntry,dbk95AppendAudit } from '@/lib/pos/dbk95-transaction-audit';
+import { dbk95ProjectAfterCommit } from '@/lib/db/dbk95-project-audits';
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getMainStore } from "@/lib/stores/main-store";
@@ -1041,6 +1043,12 @@ export async function finalizePaystackPayment(reference: string) {
     createdAt: now,
   });
 
+  const dbk95Online = dbk95AuditEnabled() ? dbk95OnlineAuditEntry({
+    reference,idSuffix:safeReferenceForDocumentId(reference),
+    entityId:order._id,entityLabel:order.orderNumber,
+    detail:`Verified Paystack payment · ${transaction.channel || order.paymentChannel || "paystack"} · transaction ${transaction.id}`,
+    now,
+  }) : null;
   mutation.patch(order._id, (patch) => {
     let next = patch
       .ifRevisionId(order._rev)
@@ -1075,7 +1083,8 @@ export async function finalizePaystackPayment(reference: string) {
       next = next.unset(["inventoryReviewRaisedAt"]);
     }
 
-    return dbk94JournalOnExistingOrder(next,dbk94Journal);
+    next = dbk94JournalOnExistingOrder(next,dbk94Journal);
+    return dbk95Online ? dbk95AppendAudit(next,dbk95Online) : next;
   });
 
 
@@ -1121,7 +1130,7 @@ export async function finalizePaystackPayment(reference: string) {
     failureReason: "",
   }));
 
-  mutation.createIfNotExists({
+  if (!dbk95Online) mutation.createIfNotExists({
     _id: `auditEvent.online-${safeReferenceForDocumentId(reference)}`,
     _type: "auditEvent",
     eventNumber: `AUD-ONLINE-${safeReferenceForDocumentId(reference).slice(-10).toUpperCase()}`,
@@ -1173,6 +1182,7 @@ export async function finalizePaystackPayment(reference: string) {
   }
 
   await dbk94ProjectAfterCommit(order._id);
+  await dbk95ProjectAfterCommit(order._id);
   const finalized = await fetchPendingOrder(reference);
 
   if (!finalized) {
