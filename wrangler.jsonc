@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dbk36-whatsapp-pilot",
+  "main": "./cloudflare/dbk36-worker.mjs",
+  "compatibility_date": "2026-11-05",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "*/30 * * * *"
+    ]
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "DBK36_CLOUDFLARE_DEPLOYMENT": "YES",
+    "WHATSAPP_BOT_ENABLED": "YES",
+    "DBK36_PRODUCTION_WEBHOOK_ENABLED": "YES",
+    "DBK36_PRODUCTION_CATALOGUE_SYNC_ENABLED": "YES",
+    "DBK36_SANITY_WEBHOOK_ENABLED": "NO",
+    "DBK36_PRODUCTION_PILOT_ENABLED": "YES",
+    "DBK36_PRODUCTION_SENDING_APPROVED": "NO",
+    "DBK36_PRODUCTION_LAUNCH_APPROVED": "NO"
+  }
+}

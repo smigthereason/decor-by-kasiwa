@@ -51,3 +51,5 @@ DBK-23A-online-ledger-approved.csv
 # Records-only reconciliation artifacts: local and bound to Sanity revisions
 DBK-25-records-only-approved.csv
 DBK-25-records-only-review.csv
+
+.open-next/

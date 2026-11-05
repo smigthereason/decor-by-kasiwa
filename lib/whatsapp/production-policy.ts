@@ -15,7 +15,10 @@ export function isProductionDatabase(databaseUrl: string | undefined): boolean {
 }
 
 export function isProductionRuntime(env: Environment): boolean {
-  return env.NODE_ENV === 'production' && env.VERCEL_ENV === 'production' &&
+  // Cloudflare is an independently verified production deployment, never a fake Vercel environment.
+  const vercel = env.VERCEL_ENV === 'production' && env.DBK36_CLOUDFLARE_DEPLOYMENT !== 'YES';
+  const cloudflare = env.DBK36_CLOUDFLARE_DEPLOYMENT === 'YES' && !env.VERCEL_ENV;
+  return env.NODE_ENV === 'production' && (vercel || cloudflare) &&
     env.DBK36_TEST_WEBHOOK_BYPASS !== 'YES' &&
     env.DBK36_TEST_READ_ONLY_STAFF_AUTH !== 'YES' &&
     isProductionDatabase(env.DATABASE_URL);
@@ -50,7 +53,7 @@ export function isLiveSendingApproved(env: Environment): boolean {
 /** Retain the recipient allowlist for development, preview, and the restricted production pilot. */
 export function isAllowedWhatsAppRecipient(to: string, env: Environment): boolean {
   if (!normalizedNumber(to)) return false;
-  if (env.VERCEL_ENV === 'production' || (env.NODE_ENV === 'production' && !env.VERCEL_ENV)) {
+  if (env.DBK36_CLOUDFLARE_DEPLOYMENT === 'YES' || env.VERCEL_ENV === 'production' || (env.NODE_ENV === 'production' && !env.VERCEL_ENV)) {
     if (isLiveSendingApproved(env)) return true;
     return isProductionRuntime(env) && productionPhoneMatches(env) &&
       env.DBK36_PRODUCTION_PILOT_ENABLED === 'YES' && approvedTestRecipient(to, env);
