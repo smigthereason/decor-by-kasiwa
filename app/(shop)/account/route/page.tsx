@@ -1,3 +1,5 @@
+import { getLocalReadOnlyCustomerById } from "@/lib/auth/local-readonly-customer";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
@@ -27,7 +29,9 @@ export default async function AccountRoleRouterPage({
 
   // Always read the current Sanity record. A JWT role can be stale after an
   // owner changes somebody's role from Admin/Sanity while their session lives.
-  const customer = await getCustomerByDocumentId(session.user.id);
+  const customer = (isLocalReadOnlyStaffAuth(process.env)
+    ? await getLocalReadOnlyCustomerById(session.user.id)
+    : await getCustomerByDocumentId(session.user.id));
 
   if (!customer) {
     redirect("/account/access-denied?reason=account");

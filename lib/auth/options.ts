@@ -5,6 +5,9 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { authenticatePasswordCustomer } from "@/lib/auth/password-auth";
 import { ensureGoogleCustomer, getGoogleCustomer } from "@/lib/auth/sanity-users";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
+import { isExistingReadOnlyAdminGoogleAccount } from "@/lib/auth/google-readonly-policy";
+import { getLocalReadOnlyGoogleCustomer } from "@/lib/auth/local-readonly-customer";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -57,6 +60,14 @@ export const authOptions: NextAuthOptions = {
 
         if (account?.provider !== "google" || !account.providerAccountId || !user.email) return false;
 
+        // Local WhatsApp tests use a Sanity Viewer token. Google sign-in must
+        // therefore only recognize a previously linked, active ADMIN account.
+        // Never auto-create, link, or update a Sanity user without write access.
+        if (isLocalReadOnlyStaffAuth(process.env)) {
+          const existing = await getLocalReadOnlyGoogleCustomer(account.providerAccountId);
+          return isExistingReadOnlyAdminGoogleAccount(existing, account.providerAccountId, user.email);
+        }
+
         const googleProfile = profile as { name?: string; picture?: string } | undefined;
         const customer = await ensureGoogleCustomer({
           googleId: account.providerAccountId,
@@ -81,7 +92,21 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === "google" && account.providerAccountId) {
         const googleProfile = profile as { picture?: string } | undefined;
         const googleImage = user?.image || googleProfile?.picture || undefined;
-        const customer = await getGoogleCustomer(account.providerAccountId);
+        const localReadOnly = isLocalReadOnlyStaffAuth(process.env);
+        const customer = localReadOnly
+          ? await getLocalReadOnlyGoogleCustomer(account.providerAccountId)
+          : await getGoogleCustomer(account.providerAccountId);
+
+        // If the account is no longer an active linked ADMIN, do not create a
+        // JWT identity from an earlier or stale OAuth session.
+        if (localReadOnly && !isExistingReadOnlyAdminGoogleAccount(
+          customer, account.providerAccountId, user?.email || "",
+        )) {
+          delete token.customerId;
+          delete token.role;
+          delete token.googleId;
+          return token;
+        }
         if (customer) {
           token.customerId = customer._id;
           token.role = customer.role;

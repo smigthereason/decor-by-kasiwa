@@ -6,6 +6,8 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { NextResponse, type NextRequest } from 'next/server';
 import { callbackProvider, isWriteMethod, isPausedPage, validateQueuedBody } from './lib/maintenance/dbk74-core';
+import { allowLocalReadOnlyStaffAuthPost, allowLocalWhatsAppStaffTestPost } from './lib/auth/local-test-auth-policy';
+import { allowProductionDbk36WebhookPost } from './lib/whatsapp/production-policy';
 
 const HOST = 'ep-steep-scene-bausr4ct-pooler.c-8.eu-central-1.aws.neon.tech';
 function database() {
@@ -26,8 +28,76 @@ function isValidPaystackSignature(body: string, signature: string | null): boole
   const digest = createHmac('sha512', process.env.PAYSTACK_SECRET_KEY).update(body).digest('hex');
   return timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(signature, 'hex'));
 }
+/**
+ * DBK-36 test transport only. Meta's signed webhook is allowed to reach the
+ * route handler on a separate Neon test branch in local development or Vercel
+ * Preview, where the production DBK-74 maintenance gate cannot be queried.
+ * This does NOT bypass DBK-74 in Vercel Production and does not relax the
+ * application's own Meta signature check.
+ */
+function allowIsolatedWhatsAppTestWebhook(request: NextRequest): boolean {
+  if (request.method !== 'POST' || request.nextUrl.pathname !== '/api/whatsapp/webhook') return false;
+  if (process.env.DBK36_TEST_WEBHOOK_BYPASS !== 'YES') return false;
+  if (process.env.VERCEL_ENV === 'production') return false;
+  if (process.env.NODE_ENV !== 'development' && process.env.VERCEL_ENV !== 'preview') return false;
+  try {
+    const url = new URL(process.env.DATABASE_URL || '');
+    // Fail closed if the connection points to the production DB or a non-Neon service.
+    return ['postgres:', 'postgresql:'].includes(url.protocol)
+      && url.hostname.endsWith('.neon.tech')
+      && url.hostname !== HOST
+      && decodeURIComponent(url.pathname.slice(1)) === 'neondb';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * DBK-36C: Allow an authenticated catalogue refresh to reach its
+ * route handler on the isolated LOCAL test server only.
+ *
+ * Production and preview are not exempted.
+ * The route handler independently verifies WHATSAPP_WORKER_SECRET.
+ */
+function allowIsolatedWhatsAppCatalogueSync(
+  request: NextRequest
+): boolean {
+  if (
+    request.method !== 'POST' ||
+    request.nextUrl.pathname !== '/api/whatsapp/catalogue/sync'
+  ) return false;
+
+
+  if (process.env.NODE_ENV !== 'development') return false;
+  if (process.env.VERCEL_ENV) return false;
+  if (process.env.DBK36_TEST_WEBHOOK_BYPASS !== 'YES') return false;
+
+  try {
+    const url = new URL(process.env.DATABASE_URL || '');
+
+    return (
+      ['postgres:', 'postgresql:'].includes(url.protocol) &&
+      url.hostname.endsWith('.neon.tech') &&
+      url.hostname !== HOST &&
+      decodeURIComponent(url.pathname.slice(1)) === 'neondb'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  // Only selected NextAuth POSTs may skip the production-only DBK-74 database
+  // identity check in an explicitly isolated, read-only local test session.
+  // NextAuth's own CSRF, OAuth and account checks remain enforced.
+  if (allowLocalReadOnlyStaffAuthPost(request.method, pathname, process.env)) return NextResponse.next();
+  // Isolated test-only, allowlisted WhatsApp staff actions. The destination
+  // handler independently requires ADMIN, same-origin, and valid action data.
+  if (allowLocalWhatsAppStaffTestPost(request.method, pathname, process.env)) return NextResponse.next();
+  if (allowIsolatedWhatsAppTestWebhook(request) || allowIsolatedWhatsAppCatalogueSync(request)) return NextResponse.next();
+  // Production-only signed webhook ingress. The exact handlers validate the Meta/Sanity signature.
+  if (allowProductionDbk36WebhookPost(request.method, pathname, process.env)) return NextResponse.next();
   const needsRead = isWriteMethod(request.method) || isPausedPage(pathname);
   if (!needsRead) return NextResponse.next();
   try {

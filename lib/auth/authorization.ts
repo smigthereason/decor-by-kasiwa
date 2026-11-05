@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
 import { authOptions } from "@/lib/auth/options";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
+import { getLocalReadOnlyCustomerById } from "@/lib/auth/local-readonly-customer";
 import {
   getCustomerByDocumentId,
   type CustomerRole,
@@ -54,7 +56,9 @@ export async function requireStaffAccess(
    *
    * are respected by the protected application.
    */
-  const customer = await getCustomerByDocumentId(session.user.id);
+  const customer = isLocalReadOnlyStaffAuth(process.env)
+    ? await getLocalReadOnlyCustomerById(session.user.id)
+    : await getCustomerByDocumentId(session.user.id);
 
   if (!customer) {
     redirect("/account/access-denied?reason=account");

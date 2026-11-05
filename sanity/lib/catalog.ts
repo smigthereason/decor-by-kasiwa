@@ -13,10 +13,17 @@ import type {
 
 import { client } from "./client";
 import { optimizeSanityImageUrl } from "./optimizedImage";
-import { serverClient } from "./serverClient";
 import { locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { dbk69AllBalances, dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { dbk69OverlayStock, type Dbk69Balance } from "@/lib/db/dbk69-inventory-core";
+
+// Only authenticated, uncached reads require this client. Importing it eagerly
+// makes public ecommerce reads and Meta webhook verification fail when the
+// isolated WhatsApp test process intentionally has no Sanity write token.
+async function getAuthenticatedCatalogClient() {
+  const { serverClient } = await import("./serverClient");
+  return serverClient;
+}
 
 const imageBuilder = imageUrlBuilder(client);
 
@@ -1284,7 +1291,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
   // 10s Next cache. POS inventory reads remain direct and uncached.
   // Checkout/payment settlement must continue to validate authoritative stock.
   const catalogueReader = channel === "pos" || process.env.DBK_PUBLIC_CATALOG_CDN === "0"
-    ? serverClient
+    ? await getAuthenticatedCatalogClient()
     : client;
   const records =
     await catalogueReader.fetch<
@@ -1319,7 +1326,7 @@ export async function getStoreProducts(channel: "ecommerce" | "pos" = "ecommerce
   // POS must show the same location-specific inventory that checkout validates.
   // Do not use product.initialStock or company-wide variant quantities here.
   type StoreInventoryRow = { productId: string; balance?: LocationBalance | null };
-  const rows = await serverClient.fetch<StoreInventoryRow[]>(
+  const rows = await (await getAuthenticatedCatalogClient()).fetch<StoreInventoryRow[]>(
     `*[_type == "inventoryRecord" && count(locationBalances[store._ref == $storeId || storeId == $storeId]) > 0]{
       "productId": product._ref,
       "balance": locationBalances[store._ref == $storeId || storeId == $storeId][0]{onHand,variants[]{variantId,onHand}}
@@ -1368,7 +1375,7 @@ export async function getStoreProductBySlug(
     { slug },
     { next: { revalidate: 10 } },
   );
-  const record = cachedRecord ?? await serverClient.fetch<SanityProductRecord | null>(
+  const record = cachedRecord ?? await (await getAuthenticatedCatalogClient()).fetch<SanityProductRecord | null>(
     query,
     { slug },
     { cache: "no-store" },

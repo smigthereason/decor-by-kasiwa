@@ -1,5 +1,7 @@
 import "server-only";
 
+import { getLocalReadOnlyCustomerById } from "@/lib/auth/local-readonly-customer";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth/options";
@@ -28,7 +30,9 @@ export async function getApiStaff(
     return { ok: false, status: 401 };
   }
 
-  const customer = await getCustomerByDocumentId(session.user.id);
+  const customer = (isLocalReadOnlyStaffAuth(process.env)
+    ? await getLocalReadOnlyCustomerById(session.user.id)
+    : await getCustomerByDocumentId(session.user.id));
 
   if (!customer || customer.status !== "ACTIVE") {
     return { ok: false, status: 403 };

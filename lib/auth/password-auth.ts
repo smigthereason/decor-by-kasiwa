@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { serverClient } from "@/sanity/lib/serverClient";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
 import type { CustomerRole, CustomerStatus } from "@/lib/auth/sanity-users";
 
 function deriveKey(password: string, salt: Buffer, length: number) {
@@ -94,8 +95,14 @@ export async function authenticatePasswordCustomer(email: string, password: stri
   if (!customer?.passwordHash || customer.status !== "ACTIVE") return null;
   if (!(await verifyPassword(password, customer.passwordHash))) return null;
 
-  const now = new Date().toISOString();
-  await serverClient.patch(customer._id.replace(/^drafts\./, "")).set({ lastLoginAt: now, updatedAt: now }).commit();
+  // In isolated development with an explicitly enabled Viewer token, the
+  // password is still verified and the ADMIN role is still checked against
+  // Sanity on every protected request, but no Sanity write is attempted.
+  // Normal production logins retain their existing last-login audit write.
+  if (!isLocalReadOnlyStaffAuth(process.env)) {
+    const now = new Date().toISOString();
+    await serverClient.patch(customer._id.replace(/^drafts\./, "")).set({ lastLoginAt: now, updatedAt: now }).commit();
+  }
 
   const { passwordHash: _passwordHash, ...safeCustomer } = customer;
   return safeCustomer;

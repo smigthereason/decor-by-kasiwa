@@ -1,24 +1,40 @@
 import "server-only";
 
-import { createClient } from "@sanity/client";
+import { createClient, type SanityClient } from "@sanity/client";
+import { blocksSanityMutation, resolveSanityServerConfig } from "@/lib/auth/sanity-client-policy";
 
-const projectId = process.env.NEXT_PUBLIC_SANITY_PROJECT_ID?.trim();
-const dataset = (process.env.NEXT_PUBLIC_SANITY_DATASET || "production").trim();
-const token = process.env.SANITY_API_WRITE_TOKEN?.trim().replace(/^['"]|['"]$/g, "");
+let resolvedClient: SanityClient | null = null;
+let readOnly = false;
 
-if (!projectId) {
-  throw new Error("NEXT_PUBLIC_SANITY_PROJECT_ID is missing.");
+function getClient(): SanityClient {
+  if (!resolvedClient) {
+    // Do not require privileged Sanity credentials at module evaluation time.
+    // The WhatsApp webhook can run without loading the admin login service.
+    const settings = resolveSanityServerConfig(process.env);
+    readOnly = settings.readOnly;
+    resolvedClient = createClient({
+      projectId: settings.projectId,
+      dataset: settings.dataset,
+      apiVersion: "2026-08-27",
+      useCdn: false,
+      token: settings.token,
+      perspective: "published",
+    });
+  }
+  return resolvedClient;
 }
 
-if (!token) {
-  throw new Error("SANITY_API_WRITE_TOKEN is missing.");
-}
-
-export const serverClient = createClient({
-  projectId,
-  dataset,
-  apiVersion: "2026-08-27",
-  useCdn: false,
-  token,
-  perspective: "published",
+// Preserve the existing SanityClient API so all existing call sites continue
+// working, but defer credentials until an authenticated operation needs them.
+export const serverClient: SanityClient = new Proxy({} as SanityClient, {
+  get(_target, property) {
+    const client = getClient();
+    if (readOnly && blocksSanityMutation(property)) {
+      return () => {
+        throw new Error("Sanity write operation prohibited in read-only WhatsApp test mode.");
+      };
+    }
+    const value = Reflect.get(client, property, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
 });

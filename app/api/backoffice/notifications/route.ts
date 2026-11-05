@@ -1,3 +1,5 @@
+import { getLocalReadOnlyCustomerById } from "@/lib/auth/local-readonly-customer";
+import { isLocalReadOnlyStaffAuth } from "@/lib/auth/sanity-client-policy";
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -13,7 +15,9 @@ export async function GET() {
   if (!staff.ok) return NextResponse.json({ message: staff.status === 401 ? "Authentication required." : "Access denied." }, { status: staff.status });
 
   try {
-    const customer = await getCustomerByDocumentId(staff.customerId);
+    const customer = (isLocalReadOnlyStaffAuth(process.env)
+    ? await getLocalReadOnlyCustomerById(staff.customerId)
+    : await getCustomerByDocumentId(staff.customerId));
     const manager = staff.role === "ADMIN" || staff.role === "STORE" || staff.role === "MANAGER";
     const stages: string[] = [];
     if (staff.role === "PRODUCTION_STAFF" || customer?.permissions?.includes("PRODUCTION")) stages.push("PRODUCTION");
