@@ -16,7 +16,9 @@ import {
   ContactRound,
   FolderTree,
   GitBranch,
+  Bot,
   LayoutDashboard,
+  MessageCircle,
   Layers3,
   LogOut,
   Menu,
@@ -61,6 +63,9 @@ const adminNavigation: NavigationItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Point of Sale", href: "/admin/pos", icon: ShoppingCart },
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
+  { label: "WhatsApp Paid Orders", href: "/admin/whatsapp/paid-intake", icon: MessageCircle },
+  { label: "WhatsApp Fulfillment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
+  { label: "AI Shopping Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
   { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
   { label: "Stores / Locations", href: "/admin/stores", icon: Warehouse },
@@ -157,6 +162,8 @@ export default function BackOfficeShell({
   }
 
   function isActive(href: string) {
+    // Use the most specific WhatsApp route for the fulfillment submenu.
+    if (href === "/admin/whatsapp/paid-intake" && pathname.startsWith("/admin/whatsapp/paid-intake/fulfillment")) return false;
     return pathname === href || (href !== rootHref && pathname.startsWith(`${href}/`));
   }
 
