@@ -81,6 +81,7 @@ const adminNavigation: NavigationItem[] = [
 
 const storeManagerNavigation: NavigationItem[] = [
   { label: "Store Overview", href: "/store", icon: Warehouse },
+  { label: "WhatsApp Sales", href: "/store/whatsapp", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
@@ -95,6 +96,7 @@ const storeManagerNavigation: NavigationItem[] = [
 
 const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
+  { label: "WhatsApp Sales", href: "/store/whatsapp", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
   { label: "Products", href: "/store/products", icon: Boxes },
@@ -106,6 +108,7 @@ const salesStaffNavigation: NavigationItem[] = [
 ];
 
 const fulfilmentStaffNavigation: NavigationItem[] = [
+  { label: "WhatsApp Sales", href: "/store/whatsapp", icon: MessageCircle },
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
 ];
 
@@ -196,7 +199,7 @@ export default function BackOfficeShell({
       <AnimatePresence>
         {menuOpen && (
           <motion.div
-            className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--ink)] text-[var(--paper)] lg:hidden"
+            className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--ink)] text-[var(--paper)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:hidden"
             initial={{ y: "-100%" }}
             animate={{ y: 0 }}
             exit={{ y: "-100%" }}
@@ -293,7 +296,7 @@ export default function BackOfficeShell({
               </div>
             </Link>
 
-            <nav className="mt-8 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" aria-label={`${title} navigation`}>
+            <nav className="mt-8 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" aria-label={`${title} navigation`}>
               {navigation.map((item) => {
                 const active = isActive(item.href);
                 const count = countFor(item);
