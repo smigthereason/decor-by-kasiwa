@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dbk36-whatsapp-production",
+  "main": "./dbk36-prod-worker.mjs",
+  "compatibility_date": "2026-11-10",
+  "workers_dev": true,
+  "vars": {
+    "DBK36_PRODUCTION_WORKER": "YES",
+    "DBK36_STAGING_WORKER": "NO",
+    "DBK36_PRODUCTION_BACKEND_ORIGIN": "https://decorbykasiwa.co.ke",
+    "DBK36_PRODUCTION_META_ENABLED": "NO",
+    "DBK36_PRODUCTION_MPESA_CALLBACK_ENABLED": "NO",
+    "DBK36_PRODUCTION_RECONCILE_ENABLED": "NO",
+    "DBK36_PRODUCTION_MESSAGE_RECOVERY_ENABLED": "NO",
+    "DBK36_PRODUCTION_CATALOGUE_REFRESH_ENABLED": "YES"
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *",
+      "*/30 * * * *"
+    ]
+  }
+}
