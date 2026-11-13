@@ -1,7 +1,8 @@
 'use client';
 import {useEffect,useState} from 'react';
-type Turn={role:'user'|'assistant';content:string};
-type Reply={answer?:string;error?:string;enabled?:boolean;model?:string;realAI?:boolean};
+type ProductCard={id:string;name:string;price:number;imageUrl:string;href?:string};
+type Turn={role:'user'|'assistant';content:string;products?:ProductCard[]};
+type Reply={answer?:string;products?:ProductCard[];error?:string;enabled?:boolean;model?:string;realAI?:boolean};
 const API='/api/backoffice/whatsapp/ai-demo';
 const prompts=[
   'Help me style a warm, elegant living room under KES 5,000.',
@@ -17,13 +18,13 @@ export default function WhatsAppAiDemoPage(){
   }).catch(e=>{setError(String(e instanceof Error?e.message:e));setEnabled(false);});},[]);
   async function send(raw:string){
     const text=raw.trim();if(!text||busy||enabled!==true)return;
-    const history=messages.slice(-6);setMessages([...messages,{role:'user',content:text}]);setQuestion('');setBusy(true);setError('');
+    const history=messages.slice(-6).map(m=>({role:m.role,content:m.content}));setMessages([...messages,{role:'user',content:text}]);setQuestion('');setBusy(true);setError('');
     try{
       const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
         body:JSON.stringify({question:text,turns:history})});
       const response=await r.json() as Reply;
       if(!r.ok||!response.answer||response.realAI!==true)throw new Error(response.error||'AI_UNAVAILABLE');
-      setMessages(prev=>[...prev,{role:'assistant',content:response.answer!}]);
+      setMessages(prev=>[...prev,{role:'assistant',content:response.answer!,products:response.products||[]}]);
     }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   return <main className="mx-auto max-w-4xl space-y-6 px-5 py-10 text-neutral-900">
@@ -37,7 +38,17 @@ export default function WhatsAppAiDemoPage(){
       <div className="mb-4 flex flex-wrap gap-2">{prompts.map(p=><button key={p} disabled={busy||enabled!==true} onClick={()=>void send(p)} className="rounded-lg border px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-50">{p}</button>)}</div>
       <div aria-live="polite" className="min-h-52 space-y-4 rounded-xl bg-neutral-50 p-4">
         {messages.length===0&&<p className="text-sm text-neutral-500">Choose an example or ask about décor. The AI will recommend only products returned by the store catalogue.</p>}
-        {messages.map((m,i)=><div key={i} className={m.role==='user'?'ml-auto max-w-[85%] rounded-xl bg-neutral-900 p-3 text-sm text-white':'mr-auto max-w-[90%] rounded-xl border bg-white p-3 text-sm whitespace-pre-wrap'}>{m.content}</div>)}
+                 {messages.map((m,i)=><div key={i} className={m.role==='user'?'ml-auto max-w-[85%]':'mr-auto max-w-[90%]'}>
+           <div className={m.role==='user'?'rounded-xl bg-neutral-900 p-3 text-sm text-white':'rounded-xl border bg-white p-3 text-sm whitespace-pre-wrap'}>{m.content}</div>
+           {m.role==='assistant'&&m.products?.length? <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+             {m.products.map(item=><div key={item.id} className="overflow-hidden rounded-xl border bg-white">
+               <img src={item.imageUrl} alt={item.name} loading="lazy" className="aspect-square w-full object-cover"/>
+               <div className="space-y-1 p-2 text-xs"><p className="font-semibold">{item.name}</p><p>KES {item.price.toLocaleString('en-KE')}</p>
+                 {item.href?<a className="underline" href={item.href}>View product</a>:null}</div>
+             </div>)}
+           </div>:null}
+         </div>)}
+
         {busy&&<p className="text-sm text-neutral-500">Checking the catalogue and preparing a recommendation…</p>}
       </div>
       <form onSubmit={e=>{e.preventDefault();void send(question);}} className="mt-4 flex gap-2">
