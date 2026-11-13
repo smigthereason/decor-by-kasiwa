@@ -344,9 +344,16 @@ export default function PointOfSalePage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return products
-      .filter((product) => product.available !== false)
-      .filter((product) => !term || [product.name, product.sku, product.category].some((value) => value?.toLowerCase().includes(term)));
+    // Include variant titles/colours/SKUs in the POS search, even when the
+    // parent product has been explicitly marked unavailable. Such products
+    // remain disabled for selling, but staff can see why a variant is missing.
+    return products.filter((product) => {
+      if (!term) return true;
+      const searchable = [product.name, product.sku, product.category,
+        ...(product.variants || []).flatMap((variant) => [variant.title, variant.colour, variant.size, variant.sku]),
+      ].filter(Boolean).join(" ").toLowerCase();
+      return term.split(/\s+/).every((token) => searchable.includes(token));
+    });
   }, [products, search]);
 
   const subtotal = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
@@ -373,18 +380,41 @@ export default function PointOfSalePage() {
     ? cart.map((line) => {
         const product = products.find((item) => item.id === line.productId);
         const variant = product?.variants?.find((item) => item.id === line.variantId);
-        return !product || stockAvailable(product, variant) < line.quantity
-          ? `${line.name} has insufficient stock at the selected store. Refresh products or remove the item.`
+        return !product || product.available === false || (line.variantId && !variant) || stockAvailable(product, variant) < line.quantity
+          ? `${line.name} is unavailable or has insufficient stock at the selected store. Refresh products or remove the item.`
           : null;
       }).find((error) => error !== null)
     : cart.length > 0 ? "Store inventory is not loaded. Refresh products before checkout." : null;
 
   function selectedVariant(product: StoreProduct) {
+    const variants = product.variants || [];
     const selectedId = variantSelections[product.id];
-    return product.variants?.find((variant) => variant.id === selectedId) || product.variants?.[0];
+    // Never override a cashier's explicit colour/size selection.
+    const chosen = variants.find((variant) => variant.id === selectedId);
+    if (chosen) return chosen;
+
+    // A search for Silver should display Silver, not an out-of-stock default
+    // colour. A matching variant with no store stock stays unsellable.
+    const term = search.trim().toLowerCase();
+    if (term) {
+      const parentText = [product.name, product.sku, product.category].filter(Boolean).join(" ").toLowerCase();
+      const variantTokens = term.split(/\s+/).filter((token) => !parentText.includes(token));
+      if (variantTokens.length) {
+        const matching = variants.filter((variant) => {
+          const variantText = [variant.title, variant.colour, variant.size, variant.sku].filter(Boolean).join(" ").toLowerCase();
+          return variantTokens.every((token) => variantText.includes(token));
+        });
+        if (matching.length) return matching.find((variant) => Number(variant.stockQuantity ?? 0) > 0) || matching[0];
+      }
+    }
+    return variants.find((variant) => Number(variant.stockQuantity ?? 0) > 0) || variants[0];
   }
 
   function addProduct(product: StoreProduct) {
+    if (product.available === false) {
+      setMessage(`${product.name} is disabled in the product catalogue. An admin must review its availability flag before it can be sold.`);
+      return;
+    }
     if (!saleStoreId || catalogStoreId !== saleStoreId) {
       setMessage("Select a store and load its live stock before adding products.");
       return;
@@ -788,7 +818,7 @@ export default function PointOfSalePage() {
                             </div>
                           )}
                           <span className="absolute right-2 top-2 rounded-full bg-[var(--paper)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-tight text-[var(--brand-green)] shadow-sm backdrop-blur-md">
-                            {stockLabel(product, variant)}
+                            {product.available === false ? "Unavailable · check product settings" : stockLabel(product, variant)}
                           </span>
                         </div>
 
@@ -853,10 +883,10 @@ export default function PointOfSalePage() {
                         <button
                           type="button"
                           onClick={() => addProduct(product)}
-                          disabled={available <= 0 || !saleStoreId || catalogStoreId !== saleStoreId}
+                          disabled={product.available === false || available <= 0 || !saleStoreId || catalogStoreId !== saleStoreId}
                           className="inline-flex h-8 items-center gap-1 rounded-lg bg-[var(--brand-green)] px-3 text-[10px] font-semibold uppercase tracking-wider text-soft-cream shadow-xs transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Plus size={12} strokeWidth={2.5} /> {available <= 0 ? "Out of stock" : "Add"}
+                          <Plus size={12} strokeWidth={2.5} /> {product.available === false ? "Unavailable" : available <= 0 ? "Out of stock" : "Add"}
                         </button>
                       </div>
                     </article>
