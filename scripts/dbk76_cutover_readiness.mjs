@@ -57,14 +57,33 @@ try {
       provider_callbacks_ready, receivables_ready, refunds_ready, reports_ready
       FROM public.dbk62_cutover_config WHERE singleton`,
   ]);
+  // DBK-90 logs both full stock states. Compare the current entire Neon state
+  // against the logged AFTER state; a fingerprint alone is not sufficient.
+  const presence = await sql`SELECT to_regclass('public.dbk90_stock_reconciliation_log') IS NOT NULL AS installed`;
+  const dbk90Rows = presence[0]?.installed ? await sql`
+    SELECT next_fingerprint, reconciled_at,
+      after_state = (SELECT coalesce(jsonb_object_agg(
+        product_id || chr(31) || variant_id || chr(31) || location_id,
+        jsonb_build_object('on_hand',on_hand,'incoming',incoming,
+          'product_revision',product_revision,'inventory_revision',inventory_revision,
+          'seed_fingerprint',seed_fingerprint)), '{}'::jsonb)
+        FROM public.dbk51_stock_balances) AS rows_match
+    FROM public.dbk90_stock_reconciliation_log ORDER BY id DESC LIMIT 1`
+    : [];
+  const dbk90 = dbk90Rows[0] ? {
+    nextFingerprint: dbk90Rows[0].next_fingerprint,
+    reconciledAt: dbk90Rows[0].reconciled_at?.toISOString?.() || String(dbk90Rows[0].reconciled_at),
+    rowsMatch: dbk90Rows[0].rows_match,
+  } : null;
   const state = {
     identity: 'production-neondb', freezeActive: freezeRows[0]?.active,
+    dbk90,
     stock: normalizeDBK76StockRow(stockRows[0]), legacyReceivables, pendingCallbacks: callbackRows[0]?.count,
     paidUncommittedMpesa: mpesaRows[0]?.count, paidUncommittedOnline: onlineRows[0]?.count,
     manualHistory: manualHistoryRows[0]?.count, mpesaHistory: mpesaHistoryRows[0]?.count,
     gates: gateRows.map(g=>({name:g.name,enabled:g.enabled})), dbk62: configRows[0],
   };
-  console.log(JSON.stringify({observed:{freezeActive:state.freezeActive,stock:state.stock,
+  console.log(JSON.stringify({observed:{freezeActive:state.freezeActive,stock:state.stock,dbk90:state.dbk90,
     legacyReceivables:state.legacyReceivables,pendingCallbacks:state.pendingCallbacks,paidUncommittedMpesa:state.paidUncommittedMpesa,
     paidUncommittedOnline:state.paidUncommittedOnline,manualHistory:state.manualHistory,
     mpesaHistory:state.mpesaHistory,activeGates:state.gates.filter(g=>g.enabled).map(g=>g.name),

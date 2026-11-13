@@ -1,0 +1,14 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const sql=readFileSync(new URL('../migration/dbk90-reconcile-stock.sql',import.meta.url),'utf8');
+const js=readFileSync(new URL('./dbk90_stock_reconcile.mjs',import.meta.url),'utf8');
+test('SQL has advisory lock and table lock',()=>{assert.match(sql,/pg_advisory_xact_lock/);assert.match(sql,/LOCK TABLE public\.dbk51_stock_balances IN ACCESS EXCLUSIVE MODE/)});
+test('SQL freezes and disables gates before changes',()=>{assert.match(sql,/WHERE singleton AND active/);assert.match(sql,/gate_count<>10 OR enabled_count<>0/)});
+test('SQL requires exact before-state equality',()=>assert.match(sql,/previous_state IS DISTINCT FROM p_before/));
+test('SQL refuses operational history',()=>{assert.match(sql,/EXISTS\(SELECT 1 FROM public\.dbk51_stock_operations/);assert.match(sql,/EXISTS\(SELECT 1 FROM public\.dbk69_inventory_movements/)});
+test('SQL performs transactional replacement and stores reversal snapshot',()=>{assert.match(sql,/DELETE FROM public\.dbk51_stock_balances/);assert.match(sql,/INSERT INTO public\.dbk90_stock_reconciliation_log/);assert.match(sql,/before_state jsonb NOT NULL/)});
+test('SQL post check compares entire state',()=>assert.match(sql,/next_state IS DISTINCT FROM expected_next_state/));
+test('JS verifies Sanity live document revisions twice',()=>assert.equal((js.match(/await compareLiveRevisions\(\)/g)||[]).length,3));
+test('JS does not automatically activate write gates',()=>assert.doesNotMatch(js,/UPDATE public\.dbk62_cutover_config|UPDATE public\.dbk51_stock_engine_config/));
+test('JS apply needs explicit operator and confirmation',()=>{assert.match(js,/DBK90_STOCK_RECONCILE/);assert.match(js,/DBK90_ALL_SANITY_WRITERS_FROZEN/);assert.match(js,/DBK90_INDEPENDENT_BACKUP_CONFIRMED/)});

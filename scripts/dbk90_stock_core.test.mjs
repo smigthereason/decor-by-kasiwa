@@ -1,0 +1,17 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {normalizeRows,buildCandidate,readiness} from './dbk90_stock_core.mjs';
+const a={product_id:'p',variant_id:'',location_id:'s',on_hand:3,incoming:0,product_revision:'a',inventory_revision:'b',seed_fingerprint:'f'.repeat(64)};
+const params={source:[a],before:[a],revisions:{exactMatch:true},frozen:true,gates:Array.from({length:10},(_,i)=>({name:String(i),enabled:false})),operations:0,fingerprint:'f'.repeat(64),callbacks:0,paidUncommitted:0,legacyReceivables:{count:0}};
+test('normalization preserves exact stock and revisions',()=>assert.deepEqual(normalizeRows([a]),[a]));
+test('invalid stock rejected',()=>assert.throws(()=>normalizeRows([{...a,on_hand:-1}])));
+test('duplicate stock key rejected',()=>assert.throws(()=>normalizeRows([a,a])));
+test('reconciliation fingerprint required',()=>assert.throws(()=>buildCandidate([a],'wrong')));
+test('reconciliation produces new fingerprint',()=>assert.equal(buildCandidate([a],'e'.repeat(64))[0].seed_fingerprint,'e'.repeat(64)));
+test('perfect match all gates passes',()=>assert.equal(readiness(params).fullCutoverReady,true));
+test('freeze absent blocks',()=>assert.equal(readiness({...params,frozen:false}).stockSyncReady,false));
+test('write gate enabled blocks',()=>assert.equal(readiness({...params,gates:[{name:'stock',enabled:true},...params.gates.slice(1)]}).stockSyncReady,false));
+test('operations exist blocks',()=>assert.equal(readiness({...params,operations:1}).stockSyncReady,false));
+test('source revision drift blocks',()=>assert.equal(readiness({...params,revisions:{exactMatch:false}}).stockSyncReady,false));
+test('legacy receivables bar full cutover',()=>assert.equal(readiness({...params,legacyReceivables:{count:874}}).fullCutoverReady,false));
+test('different quantities detected',()=>assert.equal(readiness({...params,source:[{...a,on_hand:2}]}).diff.changeCount,1));

@@ -70,3 +70,34 @@ test('live audit includes all positive legacy balances, regardless of payment st
   const state=base();state.legacyReceivables={count:3,amountKES:30000,pendingOrPartiallyPaidCount:1,otherStatusCount:2};
   assert.match(assessDBK76(state).blockers.join(' '),/Legacy Sanity receivables remain/);
 });
+
+test('audited DBK-90 stock replaces obsolete DBK-71 seed, never approves cutover automatically',()=>{
+  const state=base();
+  state.stock={rows:1093,onHand:'537453',incoming:'91279',fingerprint:'4c2eb3062a470dffa5624f7b9b3c7f6ff5f0cf5d7c65bfbd86b29f211203792d'};
+  state.dbk90={nextFingerprint:state.stock.fingerprint,rowsMatch:true,reconciledAt:'2026-11-01T21:20:00Z'};
+  state.dbk62.reconciliation_fingerprint=state.stock.fingerprint;
+  const result=assessDBK76(state);
+  assert.equal(result.stockReconciliationMatches,true);
+  assert.equal(result.databaseChecksPassed,true);
+  assert.equal(result.status,'HOLD');
+});
+test('DBK-90 recorded fingerprint alone cannot certify changed stock',()=>{
+  const state=base();
+  state.dbk90={nextFingerprint:state.stock.fingerprint,rowsMatch:false,reconciledAt:'2026-11-01T21:20:00Z'};
+  assert.match(assessDBK76(state).blockers.join(' '),/Neon inventory/);
+  state.dbk90.rowsMatch=true;state.dbk90.nextFingerprint='f'.repeat(64);
+  assert.equal(assessDBK76(state).stockReconciliationMatches,false);
+  state.dbk90.nextFingerprint=state.stock.fingerprint;
+  state.dbk90.reconciledAt='invalid';
+  assert.equal(assessDBK76(state).stockReconciliationMatches,false);
+});
+test('DBK-90 successful audit still blocks if legacy finance or readiness flags incomplete',()=>{
+  const state=base();
+  state.dbk90={nextFingerprint:state.stock.fingerprint,rowsMatch:true,reconciledAt:'2026-11-01T21:20:00Z'};
+  state.legacyReceivables={count:874,amountKES:1391682.96};
+  state.dbk62.refunds_ready=false;
+  const result=assessDBK76(state);
+  assert.match(result.blockers.join(' '),/Legacy Sanity receivables remain/);
+  assert.match(result.blockers.join(' '),/refunds_ready/);
+  assert.equal(result.status,'HOLD');
+});
