@@ -179,7 +179,7 @@ export default function StaffManagerPage() {
             <p className="mt-2 max-w-2xl text-xs leading-5 text-[var(--muted)]">Use the employee&apos;s work email and assign the correct role. New staff can use Forgot password on the sign-in page to securely set their first password.</p>
             <div className="mt-5 flex flex-wrap gap-2 border-b hairline pb-4" role="tablist" aria-label="Staff management sections">
               <button type="button" role="tab" aria-selected={staffPanel === "details"} onClick={() => setStaffPanel("details")} className={`rounded-full px-4 py-2 text-xs font-semibold ${staffPanel === "details" ? "bg-[var(--brand-green)] text-white" : "border hairline"}`}>Staff details</button>
-              <button type="button" role="tab" aria-selected={staffPanel === "rights"} onClick={() => setStaffPanel("rights")} className={`rounded-full px-4 py-2 text-xs font-semibold ${staffPanel === "rights" ? "bg-[var(--brand-green)] text-white" : "border hairline"}`}>Rights preview (display only)</button>
+              <button type="button" role="tab" aria-selected={staffPanel === "rights"} onClick={() => setStaffPanel("rights")} className={`rounded-full px-4 py-2 text-xs font-semibold ${staffPanel === "rights" ? "bg-[var(--brand-green)] text-white" : "border hairline"}`}>Rights</button>
             </div>
             {staffPanel === "details" && <>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -197,12 +197,11 @@ export default function StaffManagerPage() {
               </div>
             </div>
             </>}
-            {staffPanel === "rights" && <section role="tabpanel" aria-label="Rights preview" className="mt-5">
+            {staffPanel === "rights" && <section role="tabpanel" aria-label="Rights" className="mt-5">
               <h3 className="text-base font-semibold">Rights overview{selected ? ` · ${selected.name}` : ""}</h3>
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Display only.</strong> These checkboxes cannot be edited, are not stored, do not represent granted permissions, and do not change access to Products, Sales, Reports or Inventory. Existing role rules and Additional responsibilities remain the only active controls.</p>
               <div className="mt-4 overflow-x-auto rounded-xl border hairline">
                 <table className="w-full min-w-[590px] text-left text-xs">
-                  <thead className="bg-[var(--paper)]"><tr><th className="px-3 py-3">Module</th>{["View", "Add", "Edit", "Delete"].map((right) => <th key={right} className="px-3 py-3 text-center">{right}</th>)}<th className="px-3 py-3">Other rights (preview)</th></tr></thead>
+                  <thead className="bg-[var(--paper)]"><tr><th className="px-3 py-3">Module</th>{["View", "Add", "Edit", "Delete"].map((right) => <th key={right} className="px-3 py-3 text-center">{right}</th>)}<th className="px-3 py-3">Other rights</th></tr></thead>
                   <tbody className="divide-y hairline">
                     {([
                       ["Products", "Product cost · Product price · Adjustments · Print barcodes · Stock counts"],
