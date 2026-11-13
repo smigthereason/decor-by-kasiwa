@@ -134,6 +134,7 @@ export default function InventoryManagementPage() {
   const canChangeStock = canManage && role !== "MANAGER";
   const canCorrectStock = role === "ADMIN" || role === "STORE";
   const [search, setSearch] = useState("");
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
   const [location, setLocation] = useState("All");
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [assignedStoreId, setAssignedStoreId] = useState("");
@@ -309,12 +310,13 @@ export default function InventoryManagementPage() {
 
   const inventory = data?.products || [];
   const filtered = useMemo(() => inventory.map((item) => inventoryView(item, location)).filter((item) => {
+    if (stockFilter !== "all" && stockStatus(item) !== stockFilter) return false;
     if (search.trim()) {
       const term = search.trim().toLowerCase();
       if (![item.name, item.sku, item.category, ...(item.variants || []).flatMap((variant) => [variant.title, variant.sku, variant.colour, variant.size])].some((value) => String(value || "").toLowerCase().includes(term))) return false;
     }
     return true;
-  }), [inventory, location, search]);
+  }), [inventory, location, search, stockFilter]);
 
   const movementProductOptions = useMemo(() => inventory.filter((item) =>
     !movementProductSearch.trim() || [item.name, item.sku].some((value) => String(value || "").toLocaleLowerCase().includes(movementProductSearch.trim().toLocaleLowerCase()))
@@ -470,12 +472,23 @@ export default function InventoryManagementPage() {
 
       <div className={`${action ? "mt-6" : "mt-4"} border-y hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8`}><div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search STOCK INVENTORY by product, SKU, category or variant..." aria-label="Search stock inventory products" className="min-h-12 w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none focus:border-[var(--brand-green)]"/></div>
+        <label className="grid gap-1 text-[10px] font-semibold uppercase text-[var(--muted)]">Stock level
+          <select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as "all" | "low" | "out")} aria-label="Filter inventory by stock level" className="min-h-12 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-normal normal-case text-[var(--ink)]">
+            <option value="all">All stock</option><option value="low">Low stock only</option><option value="out">Out of stock</option>
+          </select>
+        </label>
         <span className="self-center text-xs text-[var(--muted)]">{filtered.length} / {inventory.length} inventory products</span>
         <div className="relative min-w-52"><select value={location} disabled={Boolean(assignedStoreId && (role === "MANAGER" || role === "STORE_STAFF"))} onChange={(e)=>setLocation(e.target.value)} className="min-h-12 w-full appearance-none rounded-full border hairline bg-[var(--paper)] py-3 pl-4 pr-11 text-sm disabled:opacity-70"><option value="All">Company total</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.code?` · ${store.code}`:""}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div>
-        <div className="sm:ml-auto flex flex-wrap gap-2">
-          <ExportButtons title="Filtered Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/>
-          <ExportButtons title="Full Inventory Breakdown" columns={fullInventoryColumns} rows={fullInventoryRows}/>
-        </div>
+        <details className="relative sm:ml-auto rounded-xl border hairline bg-white text-xs">
+          <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 font-semibold">Export inventory <ChevronDown size={14}/></summary>
+          <div className="relative z-10 grid gap-3 border-t hairline bg-white p-4 sm:min-w-[270px]">
+            <p className="font-semibold">Current filtered view</p>
+            <ExportButtons title="Filtered Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/>
+            <p className="border-t hairline pt-3 font-semibold">Full inventory breakdown</p>
+            <p className="text-[10px] text-[var(--muted)]">Independent of the current search and stock filter.</p>
+            <ExportButtons title="Full Inventory Breakdown" columns={fullInventoryColumns} rows={fullInventoryRows}/>
+          </div>
+        </details>
       </div></div>
 
       {canManage && <section className="px-4 pt-4 sm:px-6 lg:px-8">
