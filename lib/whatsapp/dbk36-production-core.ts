@@ -1,6 +1,12 @@
 /** v23 pure checks. Never treat an unsigned Safaricom callback as a settled payment. */
 export const PROD_REF=/^DBKWA[A-Z0-9]{7}$/;
 export const PROD_PHONE=/^254(?:7|1)\d{8}$/;
+/** Default cap stays at KES 500. Raising it to KES 5,000 requires
+ * explicit production approval AND a successful real-payment rehearsal.
+ * Never use customer/AI-provided values to change this limit. */
+export function maxProductionStkKes():number{
+  return process.env.DBK100_WA_EXTENDED_STK_APPROVED==='YES'?5000:500;
+}
 export type CanonicalLine={productId:string;variantId:string;quantity:number;subtotalMinor:number};
 export function parseCheckout(input:unknown):{
   reference:string;waId:string;amountKes:number;cart:CanonicalLine[];fulfillment:'pickup'
@@ -8,7 +14,7 @@ export function parseCheckout(input:unknown):{
   if(!input||typeof input!=='object'||Array.isArray(input))return null;
   const x=input as Record<string,unknown>;
   if(!PROD_REF.test(String(x.reference||''))||!PROD_PHONE.test(String(x.waId||''))||
-    !Number.isSafeInteger(x.amountKes)||(x.amountKes as number)<1||(x.amountKes as number)>500||
+    !Number.isSafeInteger(x.amountKes)||(x.amountKes as number)<1||(x.amountKes as number)>maxProductionStkKes()||
     x.fulfillment!=='pickup'||!Array.isArray(x.cart)||!x.cart.length||x.cart.length>12)return null;
   const lines:CanonicalLine[]=[];const unique=new Set<string>();let sum=0;
   for(const item of x.cart){

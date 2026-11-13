@@ -4,7 +4,8 @@ import {randomUUID} from 'node:crypto';
 import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
-import {cleanError} from './dbk36-production-core';
+import {cleanError,maxProductionStkKes} from './dbk36-production-core';
+import {buildNaturalRecommendation} from './dbk100-ai-adviser';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
  * staging browse-flow, cart-store, processor, or staging database helpers. */
@@ -65,7 +66,16 @@ async function cart(waId:string,products:SaleItem[]){
 export async function handleProductionChat(waId:string,rawText:string):Promise<{reply:string}>{
   if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES'||!phone.test(waId))
     throw new Error('PRODUCTION_CHAT_GATE_OFF');
-  const text=rawText.trim().slice(0,500),cmd=text.replace(/\s+/g,' ').toUpperCase(),db=sql();
+  const text=rawText.trim().slice(0,500),db=sql();
+  let cmd=text.replace(/\s+/g,' ').toUpperCase();
+  // Normal language never bypasses the existing quote > pickup > PAY checks.
+  // Only explicit requests for a new payment prompt map to PAY.
+  if(/^(PLEASE )?(SEND (ME )?(AN? )?)?(M-PESA|MPESA|STK) PUSH( NOW)?$/.test(cmd)||
+     /^(PLEASE )?SEND (ME )?(AN? )?(M-PESA|MPESA|STK) (PAYMENT )?PROMPT( NOW)?$/.test(cmd)||
+     cmd==='PAY NOW')cmd='PAY';
+  if(['I WILL PICK UP','I WILL COLLECT','CONFIRM PICKUP','I CONFIRM PICKUP'].includes(cmd))cmd='PICKUP';
+  if(['BUY THESE ITEMS','I WANT TO BUY THESE','I WANT TO PURCHASE THESE ITEMS',
+      'PLACE MY ORDER','PROCEED TO CHECKOUT','I WANT TO CHECK OUT'].includes(cmd))cmd='CHECKOUT';
   if(/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)){
     await db`UPDATE public.dbk36_wa_conversations SET mode='human',updated_at=now() WHERE wa_id=${waId}`;
     return reply('Your request has been flagged for a Decor By Kasiwa team member. Please wait for a staff response.');
@@ -124,8 +134,8 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
     if(['CHECKOUT','CHECK OUT'].includes(cmd)){
       if(!fresh)return reply('Checkout is paused until the product catalogue refreshes. No payment requested.');
       const c=await cart(waId,products);
-      if(!c.lines.length||c.invalid||c.totalMinor%100!==0||c.totalMinor<100||c.totalMinor>50000)
-        return reply('A pickup quote requires valid whole-KES items totaling KES 1–500. Reply CART or STAFF.');
+      if(!c.lines.length||c.invalid||c.totalMinor%100!==0||c.totalMinor<100||c.totalMinor>maxProductionStkKes()*100)
+        return reply(`A pickup quote requires valid whole-KES items totaling KES 1–${maxProductionStkKes().toLocaleString('en-KE')}. Reply CART or STAFF.`);
       const ref='DBKWA'+randomUUID().replace(/-/g,'').slice(0,7).toUpperCase();
       const order=await createProductionCheckout({reference:ref,waId,amountKes:c.totalMinor/100,
         cart:c.lines.map(l=>({productId:l.item.id,variantId:'',quantity:l.quantity,subtotalMinor:l.subtotalMinor})),
@@ -151,6 +161,18 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
     if(code.includes('OUTCOME_UNCERTAIN')||code.includes('ALREADY_IN_PROGRESS'))
       return reply('M-PESA status uncertain. Do not retry PAY. Reply PAYMENT STATUS or STAFF.');
     return reply(`Checkout unavailable (${code}). No new charge should be attempted. Reply STAFF.`);
+  }
+  // Only the official bot, with a fresh Neon catalogue cache, uses OpenAI.
+  // Product names, prices and links are rendered from Neon, NOT invented by AI.
+  if(process.env.DBK100_WA_AI_ENABLED==='YES'&&fresh&&products.length){
+    const suggestion=await buildNaturalRecommendation(text,products);
+    if(suggestion.firstProductId){
+      await db`INSERT INTO public.dbk36_wa_carts(wa_id,last_viewed_product_id)
+        VALUES(${waId},${suggestion.firstProductId})
+        ON CONFLICT(wa_id) DO UPDATE SET
+        last_viewed_product_id=excluded.last_viewed_product_id,updated_at=now()`;
+    }
+    return reply(suggestion.message);
   }
   return reply('I can help you shop. Reply MENU, SEARCH followed by an item, CART, or STAFF.');
 }
