@@ -77,7 +77,18 @@ export async function listArchivedAudits(limit=500,since?:string,actorId?:string
       AND (${actor}::text IS NULL OR document_json->'actor'->>'_ref' = ${actor}::text)
     ORDER BY COALESCE(document_json->>'createdAt',document_json->>'_createdAt','') DESC, sanity_id DESC
     LIMIT ${bounded}`;
-  const snapshots = (rows as ArchiveRow[]).map(asAudit);
+  const emergencyRows = await sql`
+    SELECT source_id AS sanity_id, document_json
+    FROM public.dbk96_verified_sanity_audit_archive
+    WHERE source_type = 'auditEvent'
+      AND (${date}::text IS NULL OR COALESCE(document_json->>'createdAt',document_json->>'_createdAt','') >= ${date}::text)
+      AND (${actor}::text IS NULL OR document_json->'actor'->>'_ref' = ${actor}::text)
+    ORDER BY COALESCE(document_json->>'createdAt',document_json->>'_createdAt','') DESC, source_id DESC
+    LIMIT ${bounded}`;
+  const snapshots = mergeUniqueById(
+    (rows as ArchiveRow[]).map(asAudit),
+    (emergencyRows as ArchiveRow[]).map(asAudit)
+  ).slice(0, bounded);
   if (!neonAuditReadsEnabled()) return snapshots;
 
   // DBK-48A live events are authoritative for their own IDs. Historical
@@ -94,7 +105,13 @@ export async function listArchivedAudits(limit=500,since?:string,actorId?:string
 export async function archivedAuditIds(): Promise<string[]> {
   const sql=getNeonSql();
   const rows=await sql`SELECT sanity_id FROM public.dbk_sanity_operational_archive WHERE document_type='auditEvent'`;
-  const archived=(rows as {sanity_id:string}[]).map(row=>row.sanity_id);
+  const recovered = await sql`
+    SELECT source_id AS sanity_id FROM public.dbk96_verified_sanity_audit_archive
+    WHERE source_type='auditEvent'`;
+  const archived = [...new Set([
+    ...(rows as {sanity_id:string}[]).map(row=>row.sanity_id),
+    ...(recovered as {sanity_id:string}[]).map(row=>row.sanity_id),
+  ])];
   if (!neonAuditReadsEnabled()) return archived;
   const live=await sql`SELECT id FROM public.dbk_live_audit_events`;
   return [...new Set([...archived,...(live as {id:string}[]).map(row=>row.id)])];
