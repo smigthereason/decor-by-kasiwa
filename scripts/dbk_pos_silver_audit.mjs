@@ -3,7 +3,8 @@
  * --apply requires exact product, store and an interactive business approval.
  * No inventory, money, reservation or sales writes are performed by this tool.
  */
-import { loadEnvConfig } from '@next/env';
+import nextEnv from '@next/env';
+const { loadEnvConfig } = nextEnv;
 import { createClient } from '@sanity/client';
 import { neon } from '@neondatabase/serverless';
 import { createInterface } from 'node:readline/promises';
@@ -16,6 +17,11 @@ const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const productIdArg = args.find(x => x.startsWith('--product-id='))?.split('=').slice(1).join('=') || '';
 const storeIdArg = args.find(x => x.startsWith('--store-id='))?.split('=').slice(1).join('=') || '';
+const variantIdArg = args.find(x => x.startsWith('--variant-id='))?.split('=').slice(1).join('=') || '';
+// DBK-POS-26.1 PINNED SILVER VARIANT: no other product, store, or variant can be enabled.
+const PINNED_PRODUCT = 'product.3c8594a8377849d98f4bbc23b86bd811';
+const PINNED_STORE = 'storeLocation.4fcbd28b74494e7da7176525e63d73f4';
+const PINNED_VARIANT = '6291c4e4-317';
 const projectId = (process.env.NEXT_PUBLIC_SANITY_PROJECT_ID || '').trim();
 const dataset = (process.env.NEXT_PUBLIC_SANITY_DATASET || 'production').trim();
 if (projectId !== EXPECTED_PROJECT || dataset !== EXPECTED_DATASET) {
@@ -82,24 +88,29 @@ if (!apply) {
   console.log('NEXT: Search Silver in POS after installing the UI patch. Only if a visibility flag is false AND the exact store has Silver stock, use --apply with --product-id and --store-id.');
   process.exit(0);
 }
-if (!productIdArg || !storeIdArg) throw new Error('APPLY_REQUIRES_EXACT_PRODUCT_ID_AND_STORE_ID');
+if (!productIdArg || !storeIdArg || !variantIdArg) throw new Error('APPLY_REQUIRES_EXACT_PRODUCT_STORE_AND_VARIANT');
+if (productIdArg !== PINNED_PRODUCT || storeIdArg !== PINNED_STORE || variantIdArg !== PINNED_VARIANT)
+  throw new Error('APPLY_PIN_MISMATCH: only OTC Mall Round Head Silver is authorized by this script');
 if (targets.length !== 1 || details.length !== 1) throw new Error('APPLY_AMBIGUOUS_PRODUCT');
 const d = details[0], p = targets[0];
-if (d.silverVariants.length !== 1) throw new Error('APPLY_REQUIRES_EXACTLY_ONE_SILVER_VARIANT');
+if (!d.silverVariants.some(v => v.id === variantIdArg && /round head silver/i.test(v.title) && v.companyStock > 0))
+  throw new Error('APPLY_BLOCKED_EXACT_VARIANT_MISSING_OR_NOT_STOCKED');
+if (p.posEnabled === false) throw new Error('APPLY_BLOCKED_POS_DISABLED_OUT_OF_SCOPE');
 const matchStore = d.stores.find(s => s.storeId === storeIdArg);
-if (!matchStore?.silverVariants.some(v => v.silverStoreOnHand > 0)) throw new Error('APPLY_BLOCKED_NO_SILVER_STOCK_IN_SELECTED_STORE');
+if (!matchStore?.silverVariants.some(v => v.variantId === variantIdArg && v.silverStoreOnHand > 0))
+  throw new Error('APPLY_BLOCKED_NO_EXACT_VARIANT_STOCK_AT_OTC');
 if (!p.slug || !(Number(p.price) > 0) || Number(d.reserved) > 0) throw new Error('APPLY_BLOCKED_CATALOGUE_OR_RESERVATION');
 if (d.blockers.some(b => ['NO_PUBLISHED_SILVER_VARIANT','SILVER_VARIANT_KEY_MISSING','MISSING_SLUG_OR_PRICE'].includes(b)))
   throw new Error('APPLY_BLOCKED_INVALID_PRODUCT');
 const changes = {};
 if (p.available === false) changes.available = true;
-if (p.posEnabled === false) changes.posEnabled = true;
+// POS was already enabled; do not modify posEnabled or any other field.
 if (!Object.keys(changes).length) {
   console.log('ALREADY_ENABLED: No catalogue flag changes necessary. Inspect selected POS store and variant search; stock was not changed.');
   process.exit(0);
 }
 if (!writeToken) throw new Error('SANITY_API_WRITE_TOKEN_MISSING: no write attempted');
-console.log('CAUTION: these are PRODUCT-LEVEL visibility flags. Other variants with stock may also become visible; checkout still enforces store stock.');
+console.log('CAUTION: available=true applies to the ENTIRE product (including storefront visibility). Zero-stock variants remain blocked by checkout stock checks.');
 console.log('Flags to change:',Object.keys(changes).join(', '));
 const rl = createInterface({input,output});
 const expected=`ENABLE SILVER POS ${p.sku}`;
@@ -108,5 +119,19 @@ try { approval = await rl.question(`Type ${expected} to enable POS visibility fo
 finally { rl.close(); }
 if (approval !== expected) throw new Error('NOT_APPROVED: no changes made');
 const writer = createClient({projectId,dataset,apiVersion:'2026-08-27',useCdn:false,token:writeToken,perspective:'published'});
+// Recheck the exact location/variant immediately before changing visibility.
+const refreshed = await client.fetch(`*[_type == 'inventoryRecord' && product._ref == $id][0]{
+  reserved, "balances":locationBalances[]{"storeId":coalesce(store._ref,storeId),
+  "variants":variants[]{variantId,onHand}}
+}`, {id:p._id}, {cache:'no-store'});
+if (Number(refreshed?.reserved || 0) > 0) throw new Error('APPLY_ABORTED_NEW_RESERVATION');
+if (!useNeon) {
+  const qty = refreshed?.balances?.find(b => b.storeId === PINNED_STORE)?.variants?.find(v => v.variantId === PINNED_VARIANT)?.onHand;
+  if (!(Number(qty) > 0)) throw new Error('APPLY_ABORTED_STORE_STOCK_CHANGED');
+} else {
+  const rows = await sql`SELECT on_hand FROM public.dbk51_stock_balances
+      WHERE product_id=${PINNED_PRODUCT} AND variant_id=${PINNED_VARIANT} AND location_id=${PINNED_STORE}`;
+  if (!(Number(rows[0]?.on_hand) > 0)) throw new Error('APPLY_ABORTED_NEON_STORE_STOCK_CHANGED');
+}
 await writer.patch(p._id).ifRevisionId(p._rev).set(changes).commit();
 console.log(`FLAGS_UPDATED=YES; PRODUCT=${p._id}; FIELDS=${Object.keys(changes).join(',')}; STOCK_CHANGED=NO; NO_PAYMENTS=YES`);
