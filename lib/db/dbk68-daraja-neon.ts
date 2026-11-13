@@ -47,8 +47,32 @@ export async function dbk68CreateSale(input:PosSaleInput,seller:PosSeller) {
   const reference=`DBK-POS-${input.requestId}`;
   const prior=await dbk68GetReference(reference);
   if (prior) {
-    if (prior.store_id!==seller.storeLocationId || input.paymentMethod!=='mpesa') {
-      throw new Error('Order location or payment method changed');
+    if (prior.store_id!==seller.storeLocationId || input.paymentMethod!=='mpesa' ||
+        prior.snapshot.sellerId!==seller.id) {
+      throw new Error('Order location, seller or payment method changed');
+    }
+    // The reference is an idempotency key, NOT permission to show another
+    // customer's existing payment. Replays may not modify its identity/cart.
+    const digits=typeof input.customerPhone==='string' ? input.customerPhone.replace(/\D/g,'') : '';
+    const phone=digits.startsWith('0') ? `254${digits.slice(1)}`
+      : digits.length===9 ? `254${digits}` : digits;
+    const wanted=new Map<string,number>();
+    if (!Array.isArray(input.cart) || input.cart.length===0) throw new Error('Original POS cart is required');
+    for (const line of input.cart) {
+      if (typeof line.productId!=='string' || !Number.isSafeInteger(line.quantity) || line.quantity<=0)
+        throw new Error('Invalid POS cart replay');
+      wanted.set(line.productId,(wanted.get(line.productId)||0)+line.quantity);
+    }
+    const original=new Map<string,number>();
+    for (const line of prior.snapshot.lines) {
+      original.set(line.productId,(original.get(line.productId)||0)+line.quantity);
+    }
+    const sameCart=wanted.size===original.size && [...wanted].every(([id,qty])=>original.get(id)===qty);
+    if (!sameCart || phone!==prior.snapshot.customerPhone ||
+        String(input.customerName||'').trim()!==prior.snapshot.customerName ||
+        input.cart.some(line=>line.variantId && !prior.snapshot.lines.some(existing=>
+          existing.productId===line.productId && existing.variantId===line.variantId))) {
+      throw new Error('This POS request ID already belongs to a different cart or customer. Reconcile it; do not initiate another STK request.');
     }
     return safeState(prior);
   }

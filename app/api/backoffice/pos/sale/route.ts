@@ -71,6 +71,17 @@ export async function POST(request: Request) {
       return NextResponse.json(testResult, { headers: { "Cache-Control": "private, no-store" } });
     }
 
+    // DBK-101 production safety: once instructed to use Neon exclusively, an
+    // accidentally missing DBK-62 env switch must NOT send financial writes
+    // back to Sanity (which is already at its document limit).
+    if (process.env.DBK101_POS_NEON_REQUIRED === "YES" && !dbk62CutoverRequested()) {
+      return NextResponse.json({
+        message: "POS is awaiting the approved Neon cutover. No sale or M-PESA request was initiated.",
+        code: "NEON_CUTOVER_NOT_ACTIVE",
+        retryable: false,
+      }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
+
     // Never fall back to Sanity if the Neon cutover is requested but fails.
     // Provider callbacks and online checkout must migrate before enabling DBK-62.
     if (dbk62CutoverRequested()) {
@@ -89,6 +100,32 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (cause) {
     console.error("[POS sale] failed", cause);
+    // Financial operations can commit before a subsequent receipt read fails.
+    // A generic 500 causes cashiers to retry a real payment with a new ID.
+    // Surface a reconciliation instruction rather than suggesting a new sale.
+    const detail = cause instanceof Error ? cause.message : "";
+    if (/Neon sale committed but receipt readback failed|STK accepted but database reconciliation required|STK accepted; pending record requires reconciliation/i.test(detail)) {
+      return NextResponse.json({
+        message: "Payment or sale may already have been recorded. Reconcile the original POS request before retrying; do not create a new payment request.",
+        code: "POS_RECONCILE_REQUIRED",
+        retryable: false,
+      }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (/This POS request ID already belongs to a different cart or customer|Order location, seller or payment method changed/i.test(detail)) {
+      return NextResponse.json({
+        message: "This POS request ID already belongs to an earlier payment request. Check its original payment status; do not initiate another STK push.",
+        code: "POS_REPLAY_CONFLICT",
+        retryable: false,
+      }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+    }
+    // A closed DB gate must not be misreported as a cashier validation error.
+    if (/DBK-62 real POS cutover is disabled|DBK-62 production cutover not approved|DBK-68 disabled|DBK-68 Daraja POS cutover disabled|DBK-62 refuses non-production Neon database|DBK-62 requires production DATABASE_URL/i.test(detail)) {
+      return NextResponse.json({
+        message: "Neon POS cutover is not approved in the application/database. No new sale should be attempted until the cutover is confirmed.",
+        code: "NEON_CUTOVER_NOT_READY",
+        retryable: false,
+      }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
     const failure = toSanityServiceError(cause, "Unable to complete POS sale.");
     // Preserve actionable stock, payment, and configuration validation failures.
     // Unexpected server failures must not be disguised as invalid cashier input.
