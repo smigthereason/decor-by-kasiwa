@@ -68,8 +68,9 @@ export async function fulfillmentQueue(){
     FROM public.dbk36_wa_paid_intake p
     LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=p.reference
     ORDER BY p.created_at DESC LIMIT 100`;
-  return {orders:rows,stockCommitEnabled:process.env.DBK36_WA_STOCK_COMMIT_ENABLED==='YES',
-    inventoryAuthority:'SANITY',paymentsInitiated:0};
+  return {orders:rows,stockCommitEnabled:process.env.DBK36_WA_STOCK_COMMIT_ENABLED==='YES' ||
+      process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES',
+    inventoryAuthority:process.env.DBK_INVENTORY_BACKEND==='neon'?'NEON':'SANITY',paymentsInitiated:0};
 }
 export async function fulfillmentPreview(reference:string){
   const sql=sqlClient();
@@ -112,6 +113,22 @@ export async function commitAutomaticallyVerifiedStock(reference:string){
     WHERE reference=${reference} AND status='paid' AND stock_state IN ('PENDING','REVIEW_REQUIRED','COMMITTED')
       AND receipt IS NOT NULL AND paid_at IS NOT NULL LIMIT 1`;
   if(proven.length!==1)throw new Error('PRODUCTION_PAYMENT_PROOF_NOT_FOUND');
+  // DBK-103: once Neon is the stock authority, NEVER update legacy Sanity
+  // inventory. One pinned PostgreSQL function claims the provider-verified order,
+  // deducts the full basket, and finalizes fulfillment in the SAME transaction.
+  if(process.env.DBK_INVENTORY_BACKEND==='neon'){
+    if(process.env.DBK103_WA_NEON_STOCK_ENABLED!=='YES' ||
+       process.env.DBK62_POS_BACKEND!=='neon')
+      throw new Error('DBK103_NEON_FULFILLMENT_NOT_APPROVED');
+    // An old Sanity receipt must not be silently converted into a second sale.
+    await sanityReceiptAlreadyUsed(paid.provider_receipt,reference);
+    const rows=await sql`SELECT public.dbk103_commit_verified_wa_stock(${reference},${STORE}) AS result`;
+    const result=rows[0]?.result as {stockState?:string;orderId?:string;replayed?:boolean}|undefined;
+    if(result?.stockState!=='COMMITTED')throw new Error('DBK103_NEON_STOCK_RECONCILIATION_REQUIRED');
+    return {reference,...result,stockUpdatedIn:'NEON',refundIssued:false};
+  }
+  // Pre-cutover historical paid-intake stock still follows the guarded legacy path.
+  // The explicit stock authority check in postStockOnce() prevents cross-store writes.
   return postStockOnce(reference,actor,'daraja_api_verified');
 }
 async function postStockOnce(reference:string,actor:{customerId:string;customerEmail:string},

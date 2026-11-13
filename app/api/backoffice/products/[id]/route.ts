@@ -166,7 +166,7 @@ export async function GET(
     }
   }
   // Display up-to-date Neon stock even though catalogue metadata remains in Sanity.
-  if (dbk69InventoryEnabled()) {
+  if (dbk69InventoryEnabled() || process.env.DBK102_OPERATIONAL_NEON_ONLY === "YES") {
     const mapped = dbk69OverlayStock({
       id:productId,onHand:Number(product.initialStock || 0),incoming:Number(product.inventory?.incoming || 0),
       available:product.available,
@@ -235,7 +235,7 @@ export async function PATCH(
       body = (await request.json()) as Record<string, unknown>;
     }
 
-    if (dbk69InventoryEnabled() && [
+    if ((dbk69InventoryEnabled() || process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES') && [
       'onHand','initialStock','incoming','reserved','variants','storeLocationId',
       'location','inventoryRevision'
     ].some(key => body[key] !== undefined)) {

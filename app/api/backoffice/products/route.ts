@@ -111,7 +111,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
-  if (dbk69InventoryEnabled()) {
+  if (dbk69InventoryEnabled() || process.env.DBK102_OPERATIONAL_NEON_ONLY === "YES") {
     return NextResponse.json({message:'New products require an atomic Neon inventory seed. Product creation is paused during stock cutover.'},{status:409});
   }
 

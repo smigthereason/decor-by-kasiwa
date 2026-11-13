@@ -163,6 +163,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
+  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+  }
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
   if (staff.role === "MANAGER") {
@@ -361,6 +365,10 @@ export async function POST(request: Request) {
 // The original quantity remains on the movement; every correction has an immutable
 // companion audit document and a revision-protected atomic ledger adjustment.
 export async function PATCH(request: Request) {
+  // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
+  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+  }
   if (dbk69InventoryEnabled()) {
     return NextResponse.json({message:'Historical movement corrections are blocked during Neon cutover. Use a reviewed ledger adjustment.'},{status:409});
   }
@@ -515,6 +523,10 @@ export async function PATCH(request: Request) {
 // This creates ONLY the original history document (no change in stock or payments).
 // The existing revision-checked PATCH is still required for the actual correction.
 export async function PUT(request: Request) {
+  // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
+  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+  }
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({message:"Only Admin and Store Manager can restore movement history.",status:staff.status},{status:staff.status});
   if (dbk69InventoryEnabled()) return NextResponse.json({message:"Restoration blocked during Neon inventory authority."},{status:409});

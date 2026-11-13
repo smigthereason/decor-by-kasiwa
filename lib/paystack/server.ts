@@ -510,7 +510,7 @@ export async function initializePaystackCheckout({
   }
 
   const neonCheckout = dbk64OnlineRequested();
-  if (!neonCheckout && process.env.DBK62_POS_BACKEND === 'neon') {
+  if (!neonCheckout && (process.env.DBK62_POS_BACKEND === 'neon' || process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES')) {
     throw new Error('Online checkout is temporarily unavailable during Neon cutover; no Sanity stock writes are permitted.');
   }
   const reference = neonCheckout

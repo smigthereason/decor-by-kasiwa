@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     // DBK-101 production safety: once instructed to use Neon exclusively, an
     // accidentally missing DBK-62 env switch must NOT send financial writes
     // back to Sanity (which is already at its document limit).
-    if (process.env.DBK101_POS_NEON_REQUIRED === "YES" && !dbk62CutoverRequested()) {
+    if ((process.env.DBK101_POS_NEON_REQUIRED === "YES" || process.env.DBK102_OPERATIONAL_NEON_ONLY === "YES") && !dbk62CutoverRequested()) {
       return NextResponse.json({
         message: "POS is awaiting the approved Neon cutover. No sale or M-PESA request was initiated.",
         code: "NEON_CUTOVER_NOT_ACTIVE",
