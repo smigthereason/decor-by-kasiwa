@@ -19,7 +19,7 @@ function mainSql(){
 function demoEnabled(){return process.env.VERCEL_ENV==='production'&&process.env.DBK36_WA_AI_DEMO_ENABLED==='YES'&&process.env.DBK36_STAGING_WORKER!=='YES';}
 export async function GET(){
   const staff=await getApiStaff(['ADMIN']);if(!staff.ok)return fail('ACCESS_DENIED',staff.status);
-  return NextResponse.json({enabled:demoEnabled()&&Boolean(process.env.OPENAI_API_KEY),model:'gpt-5.6-luna',mode:'ADMIN_DEMO',payments:false,stockWrites:false},{headers:HEADERS});
+  return NextResponse.json({enabled:demoEnabled()&&Boolean(process.env.OPENAI_API_KEY),model:'gpt-4.1-mini',mode:'ADMIN_DEMO',payments:false,stockWrites:false},{headers:HEADERS});
 }
 export async function POST(req:NextRequest){
   const staff=await getApiStaff(['ADMIN']);if(!staff.ok)return fail('ACCESS_DENIED',staff.status);
@@ -43,13 +43,22 @@ export async function POST(req:NextRequest){
     if(!products.length)return fail('NO_AVAILABLE_CATALOGUE_ITEMS',503);
     const res=await fetch('https://api.openai.com/v1/responses',{
       method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},
-      body:JSON.stringify({model:'gpt-5.6-luna',reasoning:{effort:'none'},instructions:DEMO_INSTRUCTIONS,
+      body:JSON.stringify({model:'gpt-4.1-mini',instructions:DEMO_INSTRUCTIONS,
         input:makeInput(question,turns,products),max_output_tokens:420,store:false}),
       signal:AbortSignal.timeout(28000),cache:'no-store',
     });
-    if(!res.ok)return fail('AI_PROVIDER_TEMPORARILY_UNAVAILABLE',502);
+    if(!res.ok){
+      // Never log credentials, customer messages, or the full provider response.
+      let providerCode='unknown';
+      try{
+        const data=await res.json() as {error?:{code?:string;type?:string}};
+        providerCode=data?.error?.code||data?.error?.type||'unknown';
+      }catch{}
+      console.error('DBK36_AI_PROVIDER_FAILURE',{status:res.status,code:providerCode,model:'gpt-4.1-mini'});
+      return fail('AI_PROVIDER_TEMPORARILY_UNAVAILABLE',502);
+    }
     const answer=extractResponseText(await res.json() as unknown);
-    return NextResponse.json({answer,model:'gpt-5.6-luna',catalogueItemsConsidered:products.length,
+    return NextResponse.json({answer,model:'gpt-4.1-mini',catalogueItemsConsidered:products.length,
       realAI:true,priceAndStockConfirmedAtCheckout:true,actionsPerformed:[]},{headers:HEADERS});
   }catch{
     return fail('AI_DEMO_TEMPORARILY_UNAVAILABLE',503);

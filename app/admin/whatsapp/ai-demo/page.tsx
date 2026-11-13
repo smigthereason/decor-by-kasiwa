@@ -33,7 +33,7 @@ export default function WhatsAppAiDemoPage(){
       <a href="/admin/whatsapp/paid-intake/fulfillment" className="text-sm underline">View production fulfillment</a>
     </header>
     <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">{enabled===null?'Checking access…':enabled?'AI connected · gpt-5.6-luna':'AI demo not enabled or access denied'}</p>
+      <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">{enabled===null?'Checking access…':enabled?'AI configured · gpt-4.1-mini':'AI demo not enabled or access denied'}</p>
       <div className="mb-4 flex flex-wrap gap-2">{prompts.map(p=><button key={p} disabled={busy||enabled!==true} onClick={()=>void send(p)} className="rounded-lg border px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-50">{p}</button>)}</div>
       <div aria-live="polite" className="min-h-52 space-y-4 rounded-xl bg-neutral-50 p-4">
         {messages.length===0&&<p className="text-sm text-neutral-500">Choose an example or ask about décor. The AI will recommend only products returned by the store catalogue.</p>}
