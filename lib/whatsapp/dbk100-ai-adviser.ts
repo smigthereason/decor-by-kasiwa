@@ -1,4 +1,5 @@
 import 'server-only';
+import {KASIWA_SHORTLIST_INTRO,KASIWA_AI_INTRO_POLICY} from './dbk122-kasiwa-policy';
 /** DBK-100 natural-language assistant for the *existing* production bot.
  * LLM can only write a brief introduction. The products, prices and links
  * are deterministic from the current Neon catalogue cache. Never call tools
@@ -14,23 +15,23 @@ function choose(query:string,products:Product[]):Product[]{
   return scored.slice(0,3).map(x=>x.p);
 }
 async function shortIntroduction(query:string):Promise<string>{
-  if(!process.env.OPENAI_API_KEY)return 'Here are a few options from the current catalogue:';
+  if(!process.env.OPENAI_API_KEY)return KASIWA_SHORTLIST_INTRO;
   try{
     const result=await fetch('https://api.openai.com/v1/responses',{
       method:'POST',cache:'no-store',signal:AbortSignal.timeout(8000),
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${process.env.OPENAI_API_KEY}`},
       body:JSON.stringify({model:'gpt-4.1-mini',store:false,max_output_tokens:65,
-        instructions:'Write exactly one brief, friendly Kenyan-English sentence introducing a store product shortlist. Do not name specific products or give prices, stock, discounts, checkout instructions, payment promises, links or contact details. No markdown.',
+        instructions:KASIWA_AI_INTRO_POLICY,
         input:query.slice(0,350)})
     });
-    if(!result.ok)return 'Here are a few options from the current catalogue:';
+    if(!result.ok)return KASIWA_SHORTLIST_INTRO;
     const data=await result.json() as {output?:Array<{content?:Array<{type?:string;text?:string}>}>};
     const raw=(data.output||[]).flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text||'').join(' ').trim();
     // Only a safe short intro; all commerce facts come from Neon data below.
     if(!raw||raw.length>160||/\b(?:KES|KSH|M-?PESA|STK|https?:|[0-9]{3,})\b/i.test(raw))
-      return 'Here are a few options from the current catalogue:';
+      return KASIWA_SHORTLIST_INTRO;
     return raw.replace(/[\r\n*`]/g,' ');
-  }catch{return 'Here are a few options from the current catalogue:';}
+  }catch{return KASIWA_SHORTLIST_INTRO;}
 }
 export async function buildNaturalRecommendation(query:string,products:Product[]):Promise<{message:string;firstProductId:string|null}>{
   const picked=choose(query,products);

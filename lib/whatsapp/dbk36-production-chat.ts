@@ -6,6 +6,7 @@ import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError,maxProductionStkKes} from './dbk36-production-core';
 import {buildNaturalRecommendation} from './dbk100-ai-adviser';
+import {KASIWA_GREETING,KASIWA_RETURN_GREETING,KASIWA_FALLBACK} from './dbk122-kasiwa-policy';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
  * staging browse-flow, cart-store, processor, or staging database helpers. */
@@ -83,10 +84,10 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
   const conversation=await db`SELECT mode FROM public.dbk36_wa_conversations WHERE wa_id=${waId}`;
   if(cmd==='BOT'){
     await db`UPDATE public.dbk36_wa_conversations SET mode='bot',updated_at=now() WHERE wa_id=${waId}`;
-    return reply('Welcome back. Reply MENU, SEARCH followed by a product name, or CART.');
+    return reply(KASIWA_RETURN_GREETING);
   }
   if(conversation[0]?.mode==='human')return reply('A staff member will assist you. Reply BOT to return to automated shopping.');
-  if(/^(MENU|HI|HELLO|START)$/.test(cmd))return reply('Welcome to Decor By Kasiwa! 🛍️\nSEARCH vase — find products\nADD — add last viewed product\nCART — review basket\nCHECKOUT — pickup quote\nPICKUP then PAY — M-PESA prompt\nDELIVERY QUOTE or STAFF — talk to our team.');
+  if(/^(MENU|HI|HELLO|START)$/.test(cmd))return reply(KASIWA_GREETING);
   if(/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd))return reply('Delivery needs a staff quote before payment. No M-PESA charge was requested. Reply STAFF.');
   const {products,fresh}=await catalogue();
   if(/^(SEARCH\s+.+|PRODUCTS|SHOP)$/.test(cmd)){
@@ -174,5 +175,5 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
     }
     return reply(suggestion.message);
   }
-  return reply('I can help you shop. Reply MENU, SEARCH followed by an item, CART, or STAFF.');
+  return reply(KASIWA_FALLBACK);
 }

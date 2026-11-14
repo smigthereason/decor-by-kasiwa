@@ -9,6 +9,7 @@ import { ChevronDown, ClipboardList, CreditCard, FileClock, HandCoins, ReceiptTe
 import ExternalTillReconciliation from "@/components/backoffice/ExternalTillReconciliation";
 import ExportButtons from "@/components/backoffice/ExportButtons";
 import IndependentSalesReports from "@/components/backoffice/IndependentSalesReports";
+import SalesCalendarReport from "@/components/backoffice/SalesCalendarReport";
 import { formatMoney } from "@/lib/money";
 
 type Tab = "history" | "reports" | "receivables" | "expenses" | "reconciliation" | "audit";
@@ -522,6 +523,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
             </div>
             <p className="mt-3 text-xs text-[var(--muted)]">{selectedStore ? `${selectedStore.name} · ` : "All stores · "}{report.period === "custom" ? `Showing ${new Date(report.start).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi" })} – ${new Date(report.end).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi" })}` : `Showing ${report.period} report`}</p>
           </div>
+          <SalesCalendarReport storeId={storeFilter} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[
           ["Business revenue", formatMoney(report.totalSales)],["Delivery payables", formatMoney(report.deliveryPayables)],["Money In", formatMoney(report.moneyIn)],["Total orders", String(report.orders)],["Average revenue / order", formatMoney(report.orders ? report.totalSales/report.orders : 0)],["Online revenue", formatMoney(report.onlineSales)],["POS revenue", formatMoney(report.posSales)],["Manual payment money in", formatMoney(report.manualPayments)],["M-PESA money in", formatMoney(report.mpesaPayments)],["Paystack money in", formatMoney(report.paystackPayments)],["Receivables", formatMoney(report.outstandingReceivables)],["Refunds", formatMoney(report.refunds)]
         ].map(([label,value]) => <div key={String(label)} className="rounded-2xl border hairline bg-[var(--paper)] p-5"><p className="text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]">{label}</p><p className="mt-2 text-2xl font-semibold">{value}</p></div>)}</div><IndependentSalesReports key={`${storeFilter}:${report.start}:${report.end}`} initial={report} storeId={storeFilter} /><p className="text-xs text-[var(--muted)]">Pending payments: {report.pendingPayments} · Failed payments: {report.failedPayments} · Total orders in period: {report.orders}</p></div>}
