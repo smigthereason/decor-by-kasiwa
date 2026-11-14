@@ -4,6 +4,11 @@ import Link from "next/link";
 import PrintReceiptButton from "@/components/backoffice/PrintReceiptButton";
 import { formatMoney } from "@/lib/money";
 import { getPosReceipt } from "@/lib/pos/server";
+import { getApiStaff } from "@/lib/auth/api-authorization";
+import { dbk68IsOrderId } from "@/lib/db/dbk68-daraja-core";
+import { dbk68ReadEnabled, dbk68ReadReceipt } from "@/lib/db/dbk68-daraja-neon";
+import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
+import { dbk62ReadEnabled, dbk62ReadReceipt } from "@/lib/db/dbk62-pos-cutover";
 
 function paymentLabel(provider?: string, channel?: string) {
   if (provider === "daraja") return "Safaricom M-PESA";
@@ -25,11 +30,55 @@ function discountDescription(type?: "percent" | "fixed", value?: number, reason?
   return [rule, cleanReason].filter(Boolean).join(" · ");
 }
 
-export default async function PosReceiptPage({ orderId, basePath }: { orderId: string; basePath: "/admin" | "/store" }) {
-  const receipt = await getPosReceipt(orderId);
-  if (!receipt) {
-    return <div className="p-8"><p className="text-sm">Receipt not found.</p></div>;
+// DBK-116: All receipt entry points (Admin, Store, Operations, and POS modal)
+// converge here. Resolve immutable Neon IDs from Neon, never from legacy Sanity.
+// The pre-existing API route does this already; SSR previously did not.
+type Receipt = NonNullable<Awaited<ReturnType<typeof getPosReceipt>>>;
+
+async function getReceiptForPage(orderId: string): Promise<Receipt | null> {
+  if (dbk68IsOrderId(orderId) || isDbk62RealOrderId(orderId)) {
+    const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
+    if (!staff.ok) return null;
+
+    if (dbk68IsOrderId(orderId)) {
+      if (!dbk68ReadEnabled()) throw new Error("DBK-68 receipt reads are unavailable");
+      const record = await dbk68ReadReceipt(orderId);
+      if (!record) return null;
+      if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") &&
+          (!staff.storeLocationId || staff.storeLocationId !== record.storeLocationId)) return null;
+      return {
+        ...record,
+        lineItems: record.lineItems.map((item, i) => ({ ...item, _key: `dbk68-${i}` })),
+      } as unknown as Receipt;
+    }
+
+    if (!dbk62ReadEnabled()) throw new Error("DBK-62 receipt reads are unavailable");
+    const record = await dbk62ReadReceipt(orderId);
+    if (!record) return null;
+    if ((staff.role === "MANAGER" || staff.role === "STORE_STAFF") &&
+        (!staff.storeLocationId || staff.storeLocationId !== record.storeLocationId)) return null;
+    return {
+      ...record,
+      lineItems: record.lineItems.map((item, i) => ({ ...item, _key: `dbk62-${i}` })),
+    } as unknown as Receipt;
   }
+
+  // Historical receipts must remain readable from their original source.
+  return getPosReceipt(orderId);
+}
+
+export default async function PosReceiptPage({ orderId, basePath }: { orderId: string; basePath: "/admin" | "/store" }) {
+  let receipt: Receipt | null;
+  try {
+    receipt = await getReceiptForPage(orderId);
+  } catch (error) {
+    console.error("[DBK116 POS receipt] Read unavailable", error);
+    return <div className="p-8"><p className="text-sm">Receipt temporarily unavailable. A payment may already be complete. Do not initiate a second payment. Check POS operations before retrying this page.</p></div>;
+  }
+  if (!receipt) {
+    return <div className="p-8"><p className="text-sm">Receipt not found. If payment was confirmed, do not charge again; check POS operations.</p></div>;
+  }
+  const inventoryReviewRequired = "inventoryReviewRequired" in receipt && receipt.inventoryReviewRequired === true;
 
   const printable = receipt.paymentStatus === "paid" || receipt.paymentStatus === "partially_paid";
   const delivery = receipt.deliveryAddress;
@@ -85,6 +134,11 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
           {printable ? <PrintReceiptButton /> : <span className="rounded-full bg-amber-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-amber-800">Payment not confirmed</span>}
         </div>
 
+        {inventoryReviewRequired && (
+          <p className="mb-4 rounded-lg border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900">
+            M-PESA payment is confirmed, but inventory needs review before dispatch. Do not charge the customer again.
+          </p>
+        )}
         <header className="border-b-2 border-[var(--ink)]/15 pb-4 text-center">
           <Image
             src="/logo.png"
