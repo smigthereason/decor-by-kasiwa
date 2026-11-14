@@ -18,6 +18,7 @@ import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type Sto
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
+import { dbk120InventoryFailure } from "@/lib/db/dbk120-inventory-errors";
 import { dbk83ArchiveReadsEnabled, dbk83ListArchivedMovements, dbk83GetVerifiedRestorableMovement } from "@/lib/db/dbk83-movement-archive";
 import { mergeMovementHistory, movementQueryPattern } from "@/lib/inventory/dbk83-history-core";
 
@@ -364,7 +365,12 @@ export async function POST(request: Request) {
       movementId,
     });
   } catch (cause) {
-    console.error("Inventory movement failed:", cause);
+    console.error("DBK120 inventory movement failed:", cause);
+    if (dbk69InventoryEnabled()) {
+      const failure = dbk120InventoryFailure(cause);
+      return NextResponse.json({message:failure.message,code:failure.code},
+        {status:failure.status,headers:{'Cache-Control':'private, no-store'}});
+    }
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to update inventory." }, { status: 500 });
   }
 }

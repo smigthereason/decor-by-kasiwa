@@ -121,6 +121,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const [product, setProduct] = useState<EditorProduct | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(isEditing);
+  const [neonInventory, setNeonInventory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
@@ -156,9 +157,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     if (!productId) return;
     void fetch(`/api/backoffice/products/${encodeURIComponent(productId)}`, { cache: "no-store" })
       .then(async (response) => {
-        const payload = await readApiResponse<{ product?: EditorProduct }>(response);
+        const payload = await readApiResponse<{ product?: EditorProduct; stockAuthority?: string }>(response);
         if (!response.ok || !payload.product) throw new Error(payload.message || "Unable to load product.");
         const next = payload.product;
+        setNeonInventory(payload.stockAuthority === "neon");
         setProduct(next);
         setSelected({
           categories: next.categories || [],
@@ -237,9 +239,16 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     setMessage(null);
     setPricingError(null);
     const form = new FormData(event.currentTarget);
+    // DBK-120: the live Neon ledger owns all stock and allocations. The product
+    // editor may update variant metadata but must never submit cached quantities.
+    if (isEditing && neonInventory) {
+      for (const key of ["initialStock", "onHand", "incoming", "reserved", "location", "storeLocationId", "inventoryRevision"]) {
+        form.delete(key);
+      }
+    }
     if (isEditing) {
       if (product?._rev) form.set("productRevision", product._rev);
-      if (product?.inventory?._rev) form.set("inventoryRevision", product.inventory._rev);
+      if (!neonInventory && product?.inventory?._rev) form.set("inventoryRevision", product.inventory._rev);
     }
     const retailPrice = Number(form.get("price"));
     const compareAtPrice = Number(form.get("compareAtPrice"));
@@ -279,7 +288,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
       ...variant,
       price: variant.price ? Number(variant.price) : null,
-      ...(!managerMode ? { stockQuantity: _stockQuantity !== "" ? Number(_stockQuantity) : 0 } : {}),
+      ...(!managerMode && !neonInventory ? { stockQuantity: _stockQuantity !== "" ? Number(_stockQuantity) : 0 } : {}),
     }))));
     variants.forEach((variant, index) => {
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
@@ -392,7 +401,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
           <Card title="Variants" action={<button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>}>
             <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">Stock quantities are company totals. Saving allocates the unassigned remainder to the inventory location below; stock already at other stores is preserved.</p>
-            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <div className="mb-3 flex items-center gap-2"><img src={variant.imageUrl} alt="Current variant" className="h-20 w-20 rounded-lg border hairline object-cover"/>{canRemoveImages && variant._key && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("variant", variant._key)} className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove variant image</button>}</div>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={managerMode && key === "stockQuantity"} aria-readonly={managerMode && key === "stockQuantity"} onChange={(e)=>{if (managerMode && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label>{variant.image && <button type="button" onClick={() => setVariants((current) => current.map((item, i) => i === index ? { ...item, image: undefined } : item))} className="mt-2 inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={12}/>Clear selected variant image</button>}</div>)}</div>}
+            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <div className="mb-3 flex items-center gap-2"><img src={variant.imageUrl} alt="Current variant" className="h-20 w-20 rounded-lg border hairline object-cover"/>{canRemoveImages && variant._key && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("variant", variant._key)} className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove variant image</button>}</div>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={(managerMode || neonInventory) && key === "stockQuantity"} aria-readonly={(managerMode || neonInventory) && key === "stockQuantity"} onChange={(e)=>{if ((managerMode || neonInventory) && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label>{variant.image && <button type="button" onClick={() => setVariants((current) => current.map((item, i) => i === index ? { ...item, image: undefined } : item))} className="mt-2 inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={12}/>Clear selected variant image</button>}</div>)}</div>}
           </Card>
         </div>
 
@@ -409,10 +418,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
                 </Field>
               ) : (
                 <Field label="Initial stock" hint="Company total; unallocated units will be assigned to the selected store on save">
-                  <input key="initial-stock" name={managerMode ? undefined : "initialStock"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={product?.initialStock ?? 0} />
+                  <input key="initial-stock" name={managerMode ? undefined : "initialStock"} type="number" min="0" readOnly={managerMode || neonInventory} aria-readonly={managerMode || neonInventory} defaultValue={product?.initialStock ?? 0} />
                 </Field>
               )}
-              <Field label="Incoming"><input name={managerMode ? undefined : "incoming"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={inventory?.incoming ?? 0} /></Field>
+              <Field label="Incoming"><input name={managerMode ? undefined : "incoming"} type="number" min="0" readOnly={managerMode || neonInventory} aria-readonly={managerMode || neonInventory} defaultValue={inventory?.incoming ?? 0} /></Field>
               <Field label="Reorder level"><input name={managerMode ? undefined : "reorderPoint"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={inventory?.reorderPoint ?? 5} /></Field>
               {!managerMode && <Field label="Cost of Production / Initial Cost (KES)" hint="Used as procurement cost / COGS in profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>}
               <Field label="Inventory location" hint="Default assignment; stock balances are still tracked per location" className="sm:col-span-2 lg:col-span-1 xl:col-span-2">

@@ -9,6 +9,7 @@ import { getApiStaff } from "@/lib/auth/api-authorization";
 import { dbk69InventoryEnabled, dbk69ProductBalances } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { dbk69OverlayStock } from "@/lib/db/dbk69-inventory-core";
+import { dbk120RegisterCatalogueVariants, dbk120ValidateVariantReadiness } from "@/lib/db/dbk120-variant-registration";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, locationStoreId, type LocationBalance } from "@/lib/inventory/location-stock";
@@ -193,9 +194,9 @@ export async function GET(
   if (staff.role === "MANAGER") {
     const { procurementCost: _cost, inventory, ...safe } = product;
     const { unitCost: _unitCost, ...safeInventory } = inventory || {};
-    return NextResponse.json({ product: { ...safe, inventory: inventory ? safeInventory : null } });
+    return NextResponse.json({ product: { ...safe, inventory: inventory ? safeInventory : null }, stockAuthority: dbk69InventoryEnabled() ? "neon" : "sanity" });
   }
-  return NextResponse.json({ product });
+  return NextResponse.json({ product, stockAuthority: dbk69InventoryEnabled() ? "neon" : "sanity" });
 }
 
 export async function PATCH(
@@ -245,11 +246,22 @@ export async function PATCH(
       body = (await request.json()) as Record<string, unknown>;
     }
 
-    if ((dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) && [
-      'onHand','initialStock','incoming','reserved','variants','storeLocationId',
-      'location','inventoryRevision'
+    const neonInventory = dbk69InventoryEnabled();
+    // DBK-120: variant metadata can be edited, but company stock, incoming
+    // and location balances must NEVER be rewritten from the catalogue form.
+    if ((neonInventory || dbk109LegacyInventoryWriteBlocked()) && [
+      'onHand','initialStock','incoming','reserved','location',
     ].some(key => body[key] !== undefined)) {
-      return NextResponse.json({message:'Stock, variants and inventory location changes must use the Neon ledger; catalogue-only updates remain allowed.'},{status:409});
+      return NextResponse.json({message:'Stock, variants and inventory location changes must use the Neon ledger; edit stock using Inventory instead.'},{status:409});
+    }
+    if (!neonInventory && dbk109LegacyInventoryWriteBlocked() &&
+        ['variants','storeLocationId','inventoryRevision'].some(key=>body[key]!==undefined)) {
+      return NextResponse.json({message:'Neon authority is incomplete: refusing legacy variant and inventory writes.'},{status:503});
+    }
+    if (neonInventory) {
+      // These form fields are bookkeeping metadata only; never patch the old
+      // inventory location document while Neon holds the active quantities.
+      delete body.inventoryRevision;
     }
 
     if (staff.role === "STORE_STAFF") {
@@ -259,7 +271,7 @@ export async function PATCH(
         return NextResponse.json({ message: "Sales Staff can edit catalogue descriptions only. Prices and inventory quantities are manager-only." }, { status: 403 });
       }
     } else if (staff.role === "MANAGER") {
-      if (!staff.storeLocationId || cleanString(body.storeLocationId) !== staff.storeLocationId) {
+      if (!staff.storeLocationId || (body.storeLocationId !== undefined && cleanString(body.storeLocationId) !== staff.storeLocationId)) {
         return NextResponse.json({ message: "Managers can only edit products at their assigned store." }, { status: 403 });
       }
       const managerEditableFields = new Set([
@@ -280,6 +292,17 @@ export async function PATCH(
       if (restrictedField) {
         return NextResponse.json({ message: "Only Admin users can edit the full product catalogue." }, { status: 403 });
       }
+    }
+
+    if (neonInventory && body.storeLocationId !== undefined) {
+      const existingStoreId = await serverClient.fetch<string | null>(
+        `*[_type == "inventoryRecord" && product._ref == $id][0].defaultStore._ref`,
+        { id: productId }, { cache: "no-store" },
+      );
+      if (cleanString(body.storeLocationId) !== (existingStoreId || "")) {
+        return NextResponse.json({message:'Use the Neon inventory workflow to change locations. Existing assignment was preserved.'},{status:409});
+      }
+      delete body.storeLocationId;
     }
 
     const productPatch: Record<string, unknown> = {};
@@ -456,6 +479,7 @@ export async function PATCH(
       productPatch.gallery = [...retained, ...uploaded];
     }
 
+    let dbk120DesiredVariantKeys: string[] | null = null;
     let managerProductRevision: string | undefined;
     if (body.variants !== undefined) {
       let variants: VariantInput[] = [];
@@ -469,6 +493,39 @@ export async function PATCH(
 
       const managerVariants = staff.role === "MANAGER";
       const currentVariantStock = new Map<string, number>();
+      let neonCurrentVariants = new Map<string, { stockQuantity: number }>();
+      if (neonInventory) {
+        const current = await serverClient.fetch<{
+          _rev:string; variants?:Array<{_key?:string;stockQuantity?:number}>;
+        } | null>(
+          `*[_type == "product" && _id == $id][0]{_rev,variants[]{_key,stockQuantity}}`,
+          {id:productId}, {cache:"no-store"},
+        );
+        if (!current) return NextResponse.json({message:'Product not found.'},{status:404});
+        if (!body.productRevision || body.productRevision !== current._rev) {
+          return NextResponse.json({message:'Product changed. Reload before editing variants.'},{status:409});
+        }
+        const existingKeys = (current.variants || []).map(v=>v._key).filter((k):k is string=>Boolean(k));
+        const requestedKeys = variants.map(v=>v._key || "").filter(Boolean);
+        if (new Set(requestedKeys).size !== requestedKeys.length) {
+          return NextResponse.json({message:'Variant identifiers must be unique.'},{status:400});
+        }
+        if (existingKeys.some(k=>!requestedKeys.includes(k))) {
+          return NextResponse.json({message:'Existing variants cannot be removed after Neon cutover; retain them and mark unavailable instead.'},{status:409});
+        }
+        if (variants.length>100) return NextResponse.json({message:'Maximum 100 variants per product.'},{status:400});
+        const existing = new Set(existingKeys);
+        if (variants.some(v=>!v._key && Number(v.stockQuantity || 0)>0) ||
+            variants.some(v=>v._key && !existing.has(v._key) && Number(v.stockQuantity || 0)>0)) {
+          return NextResponse.json({message:'New variants must start with zero stock. Purchase and receive stock through Inventory.'},{status:409});
+        }
+        neonCurrentVariants = new Map<string, {stockQuantity:number}>(
+          (current.variants || []).filter(v=>v._key).map(v=>[
+            v._key as string, {stockQuantity:Number(v.stockQuantity || 0)}
+          ] as [string, {stockQuantity:number}]),
+        );
+        managerProductRevision = current._rev;
+      }
       const currentVariantImages = new Map<string, string>();
       if (managerVariants) {
         const current = await serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number; imageAssetRef?: string }> } | null>(
@@ -533,14 +590,22 @@ export async function PATCH(
           size: variant.size?.trim() || undefined,
           sku: variant.sku?.trim() || undefined,
           price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
-          stockQuantity: managerVariants
-            ? currentVariantStock.get(variant._key || "") ?? 0
-            : typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
+          stockQuantity: neonInventory
+            ? neonCurrentVariants.get(variant._key || "")?.stockQuantity ?? 0
+            : managerVariants
+              ? currentVariantStock.get(variant._key || "") ?? 0
+              : typeof variant.stockQuantity === "number" && variant.stockQuantity >= 0 ? variant.stockQuantity : undefined,
           ...(image ? { image } : {}),
         });
       }
       productPatch.variants = variantDocuments;
-      if (variantDocuments.length > 0 && !managerVariants) {
+      if (neonInventory) {
+        if (!variantDocuments.length) {
+          return NextResponse.json({message:'Cannot switch a Neon-registered product to a non-variant product. Retain the variant identifiers.'},{status:409});
+        }
+        dbk120DesiredVariantKeys = variantDocuments.map(v=>v._key);
+      }
+      if (variantDocuments.length > 0 && !managerVariants && !neonInventory) {
         productPatch.initialStock = variantDocuments.reduce(
           (total, variant) => total + (typeof variant.stockQuantity === "number" ? variant.stockQuantity : 0),
           0,
@@ -584,7 +649,7 @@ export async function PATCH(
     // Product quantities are company totals, while POS uses locationBalances. On an
     // explicit editor stock submission, place only the *unallocated* remainder at
     // the selected default store. Never take stock away from another branch.
-    if (staff.role !== "MANAGER" && (productPatch.initialStock !== undefined || productPatch.variants !== undefined)) {
+    if (!neonInventory && staff.role !== "MANAGER" && (productPatch.initialStock !== undefined || productPatch.variants !== undefined)) {
       const [currentProduct, inventoryRecords] = await Promise.all([
         serverClient.fetch<{ _rev: string; initialStock?: number; variants?: Array<{ _key?: string; stockQuantity?: number }> } | null>(
           `*[_type == "product" && _id == $id][0]{_rev,initialStock,variants[]{_key,stockQuantity}}`, { id: productId }, { cache: "no-store" },
@@ -674,6 +739,18 @@ export async function PATCH(
       stockInventoryId = inventory?._id;
     }
 
+    if (neonInventory && dbk120DesiredVariantKeys) {
+      stockProductRevision = managerProductRevision;
+      try {
+        await dbk120ValidateVariantReadiness(productId, dbk120DesiredVariantKeys);
+      } catch (preflightError) {
+        console.error('DBK120 variant safety preflight:', preflightError);
+        return NextResponse.json({code:'DBK120_VARIANT_STOCK_CONFLICT',
+          message:preflightError instanceof Error ? preflightError.message : 'Variant stock reconciliation required.'},
+          {status:409,headers:{'Cache-Control':'private, no-store'}});
+      }
+    }
+
     const transaction = serverClient.transaction();
 
     if (Object.keys(productPatch).length > 0 || productUnset.length > 0) {
@@ -706,6 +783,20 @@ export async function PATCH(
     }
 
     await transaction.commit();
+    // Sanity holds only variant names/images/prices. The new Neon keys are
+    // registered at zero balance, never copied from stale Sanity quantities.
+    // If registration fails, the catalogue is already saved: return an honest
+    // incomplete status. Repeating the metadata save can safely retry it.
+    if (dbk120DesiredVariantKeys) {
+      try {
+        await dbk120RegisterCatalogueVariants(productId, dbk120DesiredVariantKeys);
+      } catch (registrationError) {
+        console.error('DBK120 variant registration incomplete:', registrationError);
+        return NextResponse.json({code:'DBK120_NEON_REGISTRATION_PENDING',
+          message:'Variant details were saved, but zero-stock Neon registration is incomplete. Do not purchase this variant yet; reload and retry the save.'},
+          {status:503,headers:{'Cache-Control':'private, no-store'}});
+      }
+    }
     revalidatePath("/");
     revalidatePath("/shop");
 

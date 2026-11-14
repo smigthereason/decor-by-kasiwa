@@ -29,10 +29,17 @@ export function dbk69OverlayStock<T extends Dbk69InventoryItem>(
   if (!rows.length) throw new Error(`Product ${item.id} is absent from Neon stock: refusing Sanity fallback`);
   if (rows.some(r => r.product_id !== item.id)) throw new Error('Neon product stock mismatch');
   const expectedVariants = new Set((item.variants || []).map(v => v.id));
-  const known = rows.filter(r => r.variant_id !== DBK69_QUARANTINED);
-  if (known.some(r => expectedVariants.size ? !expectedVariants.has(r.variant_id) : r.variant_id !== '')) {
+  const candidate = rows.filter(r => r.variant_id !== DBK69_QUARANTINED);
+  // DBK-120: an interrupted catalogue/Neon variant registration can leave
+  // zero-only legacy or new-variant keys briefly visible on one side.
+  // Ignore ONLY zero rows. Any mismatched row with on-hand or incoming units
+  // is a genuine data-integrity failure and must still block the read.
+  const unmatched = candidate.filter(r => expectedVariants.size
+    ? !expectedVariants.has(r.variant_id) : r.variant_id !== '');
+  if (unmatched.some(r => quantity(r.on_hand)>0 || quantity(r.incoming)>0)) {
     throw new Error('Neon product variants do not match catalogue; reconciliation required');
   }
+  const known = candidate.filter(r => !unmatched.includes(r));
   const groups = new Map<string, {storeId:string;storeName:string;storeCode?:string;onHand:number;incoming:number;
     variants:Array<{variantId:string;onHand:number;incoming:number}>}>();
   const previous = new Map((item.locationBalances || []).map(x => [x.storeId,x] as const));
