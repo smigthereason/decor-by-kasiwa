@@ -2,6 +2,7 @@ import "server-only";
 import { dbk75NeonReportsRequested, dbk75ReadNeonReport } from "@/lib/pos/dbk75-neon-report";
 import { distinctReportOrders } from "@/lib/pos/dbk75-report-core";
 import { dbk107ApplyToLegacyOrders, dbk107ReportCollections } from "@/lib/db/dbk107-legacy-finance-neon";
+import { dbk108ApplyLegacyRefunds, dbk108ReportLegacyRefunds } from "@/lib/db/dbk108-legacy-refunds-neon";
 
 import { createHash } from "node:crypto";
 
@@ -156,7 +157,7 @@ export async function listSalesHistory({ limit = 100, channel, cashier, query, f
     { limit: safeLimit, channel: channel || null, cashier: cashierName, storeId: cleanText(storeId) || null, mainStoreId: main?.id || null, searchPattern, start, end },
     { cache: "no-store" },
   );
-  return dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main));
+  return dbk108ApplyLegacyRefunds(await dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main)));
 }
 
 export async function listSalesCashiers(storeId?: string) {
@@ -180,7 +181,7 @@ export async function listReceivables(storeId?: string) {
       "Historical receivables exceed 2,000 rows; paginated read required before collecting balances."
     );
   }
-  return dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main));
+  return dbk108ApplyLegacyRefunds(await dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main)));
 }
 
 export type SalesReportPeriod = "day" | "week" | "month" | "custom";
@@ -301,6 +302,8 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     : null;
   const orders = neonReport ? distinctReportOrders(legacyOrders, neonReport.orders) : legacyOrders;
   if (neonReport) returnRows.push(...neonReport.refundRows);
+  const legacyRefunds = await dbk108ReportLegacyRefunds(start,end,storeId);
+  returnRows.push(...legacyRefunds);
   // DBK107 collections are payment events, not new sales. They reduce historic
   // debt and add cash received in the collection period without double counting
   // historical sale revenue or mutating Sanity orders.
@@ -380,6 +383,12 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     row.moneyIn+=payment.amount;
     dateMap.set(payment.date,row);
   }
+  // Refund cash is paid out on refund date, not the original sale date.
+  for (const refund of legacyRefunds) {
+    const row=dateMap.get(refund.date)||{date:refund.date,orders:0,revenue:0,deliveryPayables:0,moneyIn:0};
+    row.moneyIn-=refund.amount;
+    dateMap.set(refund.date,row);
+  }
   const grossSales = orders.reduce((sum, order) => sum + Math.max(0, Number(order.subtotal || 0)), 0);
   const discounts = orders.reduce((sum, order) => sum + Math.max(0, Number(order.discountAmount || 0)), 0);
   const returns = returnRows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0);
@@ -419,7 +428,8 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     start,
     end,
     totalSales: orders.reduce((sum, order) => sum + revenueValue(order), 0),
-    moneyIn: orders.reduce((sum, order) => sum + moneyInValue(order), 0) + legacyCollections.totalPeriodKES,
+    moneyIn: orders.reduce((sum, order) => sum + moneyInValue(order), 0) + legacyCollections.totalPeriodKES
+      - legacyRefunds.reduce((sum,refund)=>sum+refund.amount,0),
     deliveryPayables: orders.reduce((sum, order) => sum + deliveryValue(order), 0),
     onlineSales: channelRevenue((order) => order.salesChannel === "ONLINE"),
     posSales: channelRevenue((order) => order.salesChannel === "POS"),

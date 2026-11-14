@@ -46,6 +46,11 @@ export async function POST(request: Request) {
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
+    // Never fall back to historical Sanity finance writes if POS routing is partially configured.
+    if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk62CutoverRequested()) {
+      return NextResponse.json({code:'NEON_ONLY_WRITES_REQUIRED',message:'Receivable writes are paused until Neon POS routing is complete.'},
+        {status:503,headers:{'Cache-Control':'private, no-store'}});
+    }
     const body = await request.json() as {
       orderId?: string; amount?: number; requestId?:string;
       paymentReference?:string; manualPaymentConfirmed?:boolean;
