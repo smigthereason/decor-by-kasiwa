@@ -170,10 +170,15 @@ export async function listSalesCashiers(storeId?: string) {
 export async function listReceivables(storeId?: string) {
   const main = await getMainStore();
   const orders = await serverClient.fetch<PosHistoryOrder[]>(
-    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && paymentStatus in ["partially_paid","pending"] && ${storeOrderPredicate}] | order(coalesce(soldAt,createdAt) desc)[0...250]${historyProjection}`,
+    `*[_type == "commerceOrder" && coalesce(balanceDue,0) > 0 && ${storeOrderPredicate}] | order(coalesce(soldAt,createdAt) desc)[0...2001]${historyProjection}`,
     { storeId: cleanText(storeId) || null, mainStoreId: main?.id || null },
     { cache: "no-store" },
   );
+  if (orders.length > 2000) {
+    throw new Error(
+      "Historical receivables exceed 2,000 rows; paginated read required before collecting balances."
+    );
+  }
   return attributedHistoryOrders(orders, main);
 }
 

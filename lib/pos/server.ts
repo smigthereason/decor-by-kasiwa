@@ -2082,6 +2082,12 @@ export async function recordOutstandingCashPayment({ orderId, amount, seller, le
       return summary(order);
     }
   }
+  if (order.status === "cancelled" ||
+      !["pending", "partially_paid"].includes(order.paymentStatus || "")) {
+    throw new Error(
+      "Historical order payment state conflicts with its balance; reconcile before collecting."
+    );
+  }
   if (seller.role === "MANAGER") {
     const main = await getMainStore();
     const effectiveStoreId = order.storeLocationId ||
