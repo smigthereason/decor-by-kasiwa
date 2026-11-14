@@ -8,6 +8,7 @@ import { dbk62CutoverRequested, dbk62ReadEnabled, dbk62ReadHistory } from "@/lib
 import { dbk63RecordReceivable } from '@/lib/db/dbk63-financial-neon';
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
 import { dbk77LegacyFinanceEnabled, dbk77RequireSameOriginJson, dbk77ValidateCollection } from "@/lib/pos/dbk77-legacy-finance-core";
+import { dbk107LegacyNeonEnabled, dbk107RecordLegacyCollection } from "@/lib/db/dbk107-legacy-finance-neon";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +29,14 @@ export async function GET(request: Request) {
         { headers: { "Cache-Control": "private, no-store" } });
     }
     const legacy = await listReceivables(storeId);
+    const outstandingLegacy = legacy.filter(order=>order.balanceDue>0);
     if (dbk62ReadEnabled()) {
       const neon = await dbk62ReadHistory({storeId,limit:500});
-      return NextResponse.json({receivables:[...legacy,...neon.filter(o=>o.balanceDue>0)]
+      return NextResponse.json({receivables:[...outstandingLegacy,...neon.filter(o=>o.balanceDue>0)]
         .sort((a,b)=>b.soldAt.localeCompare(a.soldAt))},
         {headers:{"Cache-Control":"private, no-store"}});
     }
-    return NextResponse.json({ receivables: legacy });
+    return NextResponse.json({ receivables: outstandingLegacy }, {headers:{"Cache-Control":"private, no-store"}});
   } catch (cause) {
     return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to load receivables." }, { status: 400 });
   }
@@ -73,6 +75,16 @@ export async function POST(request: Request) {
     if (legacyBridge) {
       dbk77RequireSameOriginJson(request);
       const confirmed = dbk77ValidateCollection(body);
+      // After Neon becomes stock authority, historical money is recorded only in
+      // the append-only Neon finance ledger. Never create new Sanity documents.
+      if (dbk107LegacyNeonEnabled()) {
+        return NextResponse.json(await dbk107RecordLegacyCollection({orderId:body.orderId,
+          amount:confirmed.amount,requestId:confirmed.requestId,paymentReference:confirmed.paymentReference},seller),
+          {headers:{'Cache-Control':'private, no-store'}});
+      }
+      if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES') {
+        return NextResponse.json({message:'Historical Neon finance is not activated. No Sanity collection attempted.'},{status:503});
+      }
       return NextResponse.json(await recordOutstandingCashPayment({orderId:body.orderId,amount:confirmed.amount,
         seller,legacyBridge:{reference:confirmed.paymentReference,requestId:confirmed.requestId}}),
         {headers:{'Cache-Control':'private, no-store'}});

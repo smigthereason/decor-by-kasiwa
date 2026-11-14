@@ -105,6 +105,11 @@ try {
     paidUncommittedMpesa: mpesaRows[0]?.count, paidUncommittedOnline: onlineRows[0]?.count,
     manualHistory: manualHistoryRows[0]?.count, mpesaHistory: mpesaHistoryRows[0]?.count,
     gates: gateRows.map(g=>({name:g.name,enabled:g.enabled})), dbk62: configRows[0],
+    dbk107Ready: process.env.DBK107_LEGACY_FINANCE_NEON==='YES' &&
+      process.env.DBK77_LEGACY_FINANCE_BRIDGE==='YES' &&
+      process.env.DBK102_OPERATIONAL_NEON_ONLY==='YES' &&
+      process.env.DBK62_POS_BACKEND==='neon' && configRows[0]?.receivables_ready===true &&
+      (await sql`SELECT to_regprocedure('public.dbk107_record_legacy_collection(jsonb)') IS NOT NULL AS ready`)[0]?.ready===true,
   };
   console.log(JSON.stringify({observed:{freezeActive:state.freezeActive,stock:state.stock,dbk90:state.dbk90,dbk101:state.dbk101,
     legacyReceivables:state.legacyReceivables,pendingCallbacks:state.pendingCallbacks,paidUncommittedMpesa:state.paidUncommittedMpesa,

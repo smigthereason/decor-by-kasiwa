@@ -86,9 +86,13 @@ add('No paid M-Pesa/Paystack stock exceptions',Number(q.paid_mpesa_stock_excepti
   Number(q.paid_online_stock_exceptions)===0,
   `M-Pesa=${q.paid_mpesa_stock_exceptions}; Paystack=${q.paid_online_stock_exceptions}`);
 add('No pending M-Pesa STK operations',Number(q.pending_mpesa)===0,`Pending=${q.pending_mpesa}`);
-add('Legacy Sanity receivables safely resolved',Number(finance.receivableCount)===0 &&
-  Number(finance.receivableAmountKES)===0,
-  `Outstanding orders=${finance.receivableCount}; amountKES=${finance.receivableAmountKES}`);
+const dbk107Available=(await sql`SELECT to_regprocedure('public.dbk107_record_legacy_collection(jsonb)') IS NOT NULL AS installed`)[0]?.installed===true;
+const bridgedLegacyDebt=dbk107Available && process.env.DBK107_LEGACY_FINANCE_NEON==='YES' &&
+  process.env.DBK77_LEGACY_FINANCE_BRIDGE==='YES' && process.env.DBK102_OPERATIONAL_NEON_ONLY==='YES' &&
+  process.env.DBK62_POS_BACKEND==='neon' && c.receivables_ready===true;
+add('Legacy receivables preserved under approved finance bridge',
+  (Number(finance.receivableCount)===0 && Number(finance.receivableAmountKES)===0) || bridgedLegacyDebt,
+  `Outstanding historical orders=${finance.receivableCount}; amountKES=${finance.receivableAmountKES}; DBK107 installed=${dbk107Available}; bridgeEnabled=${bridgedLegacyDebt}`);
 add('Provider callback route independently approved',c.provider_callbacks_ready===true,'Requires callback routing and reconciliation proof');
 add('All stock writers switched',c.all_stock_writers_switched===true,'Includes POS, Paystack, admin, refunds, external integrations');
 add('Legacy finance/reporting ready',c.receivables_ready===true&&c.refunds_ready===true&&c.reports_ready===true,
@@ -107,7 +111,8 @@ const webEnv={DBK101_POS_NEON_REQUIRED:process.env.DBK101_POS_NEON_REQUIRED==='Y
   DBK68_MPESA_BACKEND:process.env.DBK68_MPESA_BACKEND==='neon',
   DBK68_CUTOVER_APPROVED:process.env.DBK68_CUTOVER_APPROVED==='YES',
   DBK_INVENTORY_BACKEND:process.env.DBK_INVENTORY_BACKEND==='neon',
-  DBK103_WA_NEON_STOCK_ENABLED:process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES'};
+  DBK103_WA_NEON_STOCK_ENABLED:process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES',
+  DBK107_LEGACY_FINANCE_NEON:process.env.DBK107_LEGACY_FINANCE_NEON==='YES'};
 const blockers=checks.filter(x=>!x.ok);
 const result={stage:'DBK-101/102/103',mode:'READ_ONLY_RELEASE_AUDIT',
   releaseStatus:blockers.length||!databaseActive?'HOLD':'DB_FLAGS_READY_RUNTIME_UNVERIFIED',

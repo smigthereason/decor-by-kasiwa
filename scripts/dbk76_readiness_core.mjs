@@ -57,8 +57,8 @@ export function assessDBK76(s) {
   if (!s.legacyReceivables || !Number.isSafeInteger(s.legacyReceivables.count) ||
       !Number.isFinite(s.legacyReceivables.amountKES)) {
     blockers.push('Live Sanity legacy receivables have not been counted');
-  } else if (s.legacyReceivables.count > 0 || s.legacyReceivables.amountKES > 0) {
-    blockers.push(`Legacy Sanity receivables remain (${s.legacyReceivables.count} orders; KES ${s.legacyReceivables.amountKES}). Current Neon cutover blocks settlement of legacy orders`);
+  } else if ((s.legacyReceivables.count > 0 || s.legacyReceivables.amountKES > 0) && s.dbk107Ready !== true) {
+    blockers.push(`Legacy Sanity receivables remain (${s.legacyReceivables.count} orders; KES ${s.legacyReceivables.amountKES}). Approved Neon historical-finance bridge not verified`);
   }
   if (!Number.isSafeInteger(s.pendingCallbacks) || s.pendingCallbacks !== 0) blockers.push('Queued callbacks remain unreconciled');
   if (!Number.isSafeInteger(s.paidUncommittedMpesa) || s.paidUncommittedMpesa !== 0) blockers.push('Paid M-Pesa stock exceptions remain');
@@ -85,7 +85,7 @@ export function assessDBK76(s) {
   }
   // External business/ops evidence is not in the database; never turn this into a GO decision.
   notes.push('DBK-101 rebaseline and DBK-90 logs are historical snapshots; revalidate current Sanity stock under an actual write freeze before authority transfer.');
-  notes.push('Code inspection: legacy Sanity receivable POST is blocked after DBK62_POS_BACKEND=neon.');
+  notes.push('Historical debt requires an independently verified DBK107 Neon finance bridge; source Sanity order balances are never silently discarded.');
   notes.push('Code inspection: legacy Sanity refund POST is blocked after DBK62_POS_BACKEND=neon.');
   notes.push('DBK-74 cannot stop independent direct Sanity Studio/API integrations.');
   notes.push('Provider payment ledgers, legacy receivables/refunds and deployed env switches require human verification.');

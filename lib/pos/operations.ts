@@ -1,6 +1,7 @@
 import "server-only";
 import { dbk75NeonReportsRequested, dbk75ReadNeonReport } from "@/lib/pos/dbk75-neon-report";
 import { distinctReportOrders } from "@/lib/pos/dbk75-report-core";
+import { dbk107ApplyToLegacyOrders, dbk107ReportCollections } from "@/lib/db/dbk107-legacy-finance-neon";
 
 import { createHash } from "node:crypto";
 
@@ -155,7 +156,7 @@ export async function listSalesHistory({ limit = 100, channel, cashier, query, f
     { limit: safeLimit, channel: channel || null, cashier: cashierName, storeId: cleanText(storeId) || null, mainStoreId: main?.id || null, searchPattern, start, end },
     { cache: "no-store" },
   );
-  return attributedHistoryOrders(orders, main);
+  return dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main));
 }
 
 export async function listSalesCashiers(storeId?: string) {
@@ -179,7 +180,7 @@ export async function listReceivables(storeId?: string) {
       "Historical receivables exceed 2,000 rows; paginated read required before collecting balances."
     );
   }
-  return attributedHistoryOrders(orders, main);
+  return dbk107ApplyToLegacyOrders(attributedHistoryOrders(orders, main));
 }
 
 export type SalesReportPeriod = "day" | "week" | "month" | "custom";
@@ -300,6 +301,10 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     : null;
   const orders = neonReport ? distinctReportOrders(legacyOrders, neonReport.orders) : legacyOrders;
   if (neonReport) returnRows.push(...neonReport.refundRows);
+  // DBK107 collections are payment events, not new sales. They reduce historic
+  // debt and add cash received in the collection period without double counting
+  // historical sale revenue or mutating Sanity orders.
+  const legacyCollections = await dbk107ReportCollections(start,end,storeId);
 
   if (expenseReadsIncludeNeon()) {
     const neonExpenses = await listNeonExpensesInRange(start, end, storeId ?? undefined);
@@ -370,6 +375,11 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     cashierMap.set(cashier, current);
   }
 
+  for (const payment of legacyCollections.dated) {
+    const row=dateMap.get(payment.date)||{date:payment.date,orders:0,revenue:0,deliveryPayables:0,moneyIn:0};
+    row.moneyIn+=payment.amount;
+    dateMap.set(payment.date,row);
+  }
   const grossSales = orders.reduce((sum, order) => sum + Math.max(0, Number(order.subtotal || 0)), 0);
   const discounts = orders.reduce((sum, order) => sum + Math.max(0, Number(order.discountAmount || 0)), 0);
   const returns = returnRows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0);
@@ -409,14 +419,14 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     start,
     end,
     totalSales: orders.reduce((sum, order) => sum + revenueValue(order), 0),
-    moneyIn: orders.reduce((sum, order) => sum + moneyInValue(order), 0),
+    moneyIn: orders.reduce((sum, order) => sum + moneyInValue(order), 0) + legacyCollections.totalPeriodKES,
     deliveryPayables: orders.reduce((sum, order) => sum + deliveryValue(order), 0),
     onlineSales: channelRevenue((order) => order.salesChannel === "ONLINE"),
     posSales: channelRevenue((order) => order.salesChannel === "POS"),
-    manualPayments: channelMoneyIn((order) => order.paymentProvider === "manual" || order.paymentChannel === "external"),
+    manualPayments: channelMoneyIn((order) => order.paymentProvider === "manual" || order.paymentChannel === "external") + legacyCollections.totalPeriodKES,
     mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
     paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),
-    outstandingReceivables: Number(globalReceivables || 0) + (neonReport?.outstandingReceivables || 0),
+    outstandingReceivables: Math.max(0, Number(globalReceivables || 0) - legacyCollections.totalAllKES) + (neonReport?.outstandingReceivables || 0),
     refunds: returns,
     failedPayments: failedPending.filter((row) => row.status === "failed" || row.status === "timed_out").length + (neonReport?.failedPayments || 0),
     pendingPayments: failedPending.filter((row) => row.status === "pending").length + (neonReport?.pendingPayments || 0),

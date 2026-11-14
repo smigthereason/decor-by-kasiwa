@@ -30,6 +30,9 @@ export async function POST(request: Request) {
     if (legacyBridge) {
       dbk77RequireSameOriginJson(request);
       dbk77ValidateLegacyRefund(body);
+      if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES') {
+        return NextResponse.json({message:'Historical refunds need an approved Neon refund workflow; no Sanity transaction was created.'},{status:503});
+      }
     }
     return NextResponse.json(await processReturnRefund(body, seller, legacyBridge));
   } catch (cause) {
