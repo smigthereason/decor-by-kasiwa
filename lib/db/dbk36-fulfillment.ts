@@ -1,4 +1,6 @@
 import 'server-only';
+import { dbk109MaintenanceDecision } from './dbk109-maintenance';
+import { dbk109NeonAuthorityRequested } from './dbk109-cutover-authority';
 import {neon} from '@neondatabase/serverless';
 import {serverClient} from '@/sanity/lib/serverClient';
 import {getStoreProducts} from '@/sanity/lib/catalog';
@@ -23,7 +25,7 @@ function sqlClient(){
   return neon(u.toString());
 }
 function checkedStockAuthority(){
-  if(process.env.DBK_INVENTORY_BACKEND==='neon'||process.env.DBK62_POS_BACKEND==='neon'||
+  if(dbk109NeonAuthorityRequested()||
     process.env.DBK62_CUTOVER_APPROVED==='YES'||process.env.DBK36_WA_STORE_LOCATION_ID!==STORE)
     throw new Error('STOCK_AUTHORITY_NOT_PINNED');
   return STORE;
@@ -92,12 +94,13 @@ async function sanityReceiptAlreadyUsed(receipt:string,reference:string){
   if(existing.some(x=>x.paymentReference!==reference))throw new Error('PAYMENT_RECEIPT_ALREADY_IN_SALES');
 }
 export async function commitPaidStock(reference:string,confirmation:string,actor:{customerId:string;customerEmail:string}){
+  if ((await dbk109MaintenanceDecision()) !== 'OPEN') throw new Error('DBK109_CUTOVER_FREEZE');
   commitEnabled();
   if(!REF.test(reference)||confirmation!==`COMMIT ${reference}`||!actor.customerId||!actor.customerEmail)
     throw new Error('STAFF_STOCK_APPROVAL_REQUIRED');
   // Staff attestations are not the independently verified Daraja payment proof
   // required by DBK-103. Fail closed rather than update Sanity after cutover.
-  if(process.env.DBK_INVENTORY_BACKEND==='neon' || process.env.DBK62_POS_BACKEND==='neon')
+  if(dbk109NeonAuthorityRequested())
     throw new Error('STAFF_ATTESTED_NEON_FULFILLMENT_NOT_APPROVED');
   return postStockOnce(reference,actor,'staff_till_attested');
 }
@@ -106,6 +109,7 @@ export async function commitPaidStock(reference:string,confirmation:string,actor
  * Never process staging rows or mark a payment successful from a bare callback.
  */
 export async function commitAutomaticallyVerifiedStock(reference:string){
+  if ((await dbk109MaintenanceDecision()) !== 'OPEN') throw new Error('DBK109_CUTOVER_FREEZE');
   if(process.env.DBK36_WA_AUTO_STOCK_ENABLED!=='YES')return {stockState:'AUTO_GATE_OFF',reference};
   const actor={customerId:'DBK36_DARAJA_AUTOMATION',customerEmail:'dbk36-automation@internal.invalid'};
   if(!REF.test(reference))throw new Error('REFERENCE_INVALID');

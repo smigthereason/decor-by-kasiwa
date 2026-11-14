@@ -1,3 +1,4 @@
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
 import { NextResponse } from "next/server";
 
 import {
@@ -18,6 +19,13 @@ type InitializeBody = {
 };
 
 export async function POST(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   try {
     const body = (await request.json()) as InitializeBody;
 

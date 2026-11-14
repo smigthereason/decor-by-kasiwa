@@ -1,3 +1,5 @@
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
+import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -11,11 +13,18 @@ import { dbk108LegacyRefundsEnabled, dbk108RecordLegacyRefund } from "@/lib/db/d
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     // A missing POS switch must never silently restore historical Sanity writes.
-    if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk62CutoverRequested()) {
+    if (dbk109NeonAuthorityRequested() && !dbk62CutoverRequested()) {
       return NextResponse.json({code:'NEON_ONLY_WRITES_REQUIRED',message:'Historical refund route is paused while Neon POS routing is incomplete.'},
         {status:503,headers:{'Cache-Control':'private, no-store'}});
     }

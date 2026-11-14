@@ -7,8 +7,12 @@ function requirePinnedInventoryDatabase() {
   const expected = process.env.DBK69_EXPECTED_NEON_HOST;
   const configured = process.env.DATABASE_URL;
   if (!expected || !configured) throw new Error('DBK-69 database pin missing');
-  const host = new URL(configured).hostname;
-  if (host !== expected || !host.endsWith('.neon.tech')) {
+  const u = new URL(configured);
+  const host = u.hostname;
+  const productionHost = 'ep-steep-scene-bausr4ct-pooler.c-8.eu-central-1.aws.neon.tech';
+  if (!['postgres:','postgresql:'].includes(u.protocol) ||
+      host !== productionHost || expected !== productionHost ||
+      decodeURIComponent(u.pathname.slice(1)) !== 'neondb') {
     throw new Error('DBK-69 database host mismatch: refusing inventory operation');
   }
 }

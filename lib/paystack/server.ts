@@ -1,3 +1,4 @@
+import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -510,7 +511,7 @@ export async function initializePaystackCheckout({
   }
 
   const neonCheckout = dbk64OnlineRequested();
-  if (!neonCheckout && (process.env.DBK62_POS_BACKEND === 'neon' || process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES')) {
+  if (!neonCheckout && dbk109NeonAuthorityRequested()) {
     throw new Error('Online checkout is temporarily unavailable during Neon cutover; no Sanity stock writes are permitted.');
   }
   const reference = neonCheckout

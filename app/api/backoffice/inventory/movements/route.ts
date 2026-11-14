@@ -1,3 +1,4 @@
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
@@ -16,6 +17,7 @@ import {
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements } from "@/lib/db/dbk69-inventory-neon";
+import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { dbk83ArchiveReadsEnabled, dbk83ListArchivedMovements, dbk83GetVerifiedRestorableMovement } from "@/lib/db/dbk83-movement-archive";
 import { mergeMovementHistory, movementQueryPattern } from "@/lib/inventory/dbk83-history-core";
 
@@ -163,8 +165,15 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
-  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+  if (dbk109LegacyInventoryWriteBlocked()) {
     return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
   }
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
@@ -365,8 +374,15 @@ export async function POST(request: Request) {
 // The original quantity remains on the movement; every correction has an immutable
 // companion audit document and a revision-protected atomic ledger adjustment.
 export async function PATCH(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
-  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+  if (dbk109LegacyInventoryWriteBlocked()) {
     return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
   }
   if (dbk69InventoryEnabled()) {
@@ -523,8 +539,15 @@ export async function PATCH(request: Request) {
 // This creates ONLY the original history document (no change in stock or payments).
 // The existing revision-checked PATCH is still required for the actual correction.
 export async function PUT(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
-  if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk69InventoryEnabled()) {
+  if (dbk109LegacyInventoryWriteBlocked()) {
     return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
   }
   const staff = await getApiStaff(["ADMIN", "STORE"]);

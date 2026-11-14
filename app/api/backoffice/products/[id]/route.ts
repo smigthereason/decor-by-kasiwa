@@ -1,3 +1,5 @@
+import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
@@ -5,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { dbk69InventoryEnabled, dbk69ProductBalances } from "@/lib/db/dbk69-inventory-neon";
+import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { dbk69OverlayStock } from "@/lib/db/dbk69-inventory-core";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -166,7 +169,7 @@ export async function GET(
     }
   }
   // Display up-to-date Neon stock even though catalogue metadata remains in Sanity.
-  if (dbk69InventoryEnabled() || process.env.DBK102_OPERATIONAL_NEON_ONLY === "YES") {
+  if (dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) {
     const mapped = dbk69OverlayStock({
       id:productId,onHand:Number(product.initialStock || 0),incoming:Number(product.inventory?.incoming || 0),
       available:product.available,
@@ -199,6 +202,13 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
 
@@ -235,7 +245,7 @@ export async function PATCH(
       body = (await request.json()) as Record<string, unknown>;
     }
 
-    if ((dbk69InventoryEnabled() || process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES') && [
+    if ((dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) && [
       'onHand','initialStock','incoming','reserved','variants','storeLocationId',
       'location','inventoryRevision'
     ].some(key => body[key] !== undefined)) {
@@ -715,10 +725,17 @@ export async function DELETE(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   const staff = await getApiStaff(["ADMIN"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
-  if (dbk69InventoryEnabled()) {
-    return NextResponse.json({message:'Product deletion is blocked while Neon stock records may reference this product. Disable sales channels instead.'},{status:409});
+  if (dbk69InventoryEnabled() || dbk109NeonAuthorityRequested()) {
+    return NextResponse.json({message:'Product deletion is blocked once any Neon sales channel is selected. Disable sales channels instead.'},{status:409});
   }
 
   const { id } = await context.params;

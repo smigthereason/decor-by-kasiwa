@@ -1,3 +1,4 @@
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -5,6 +6,7 @@ import { toSanityServiceError } from "@/lib/sanity-error";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { dbk61SandboxAllowed, dbk61StageManualSale } from "@/lib/db/dbk61-pos-compat";
 import { dbk62CutoverRequested, dbk62CreateRealManualSale } from "@/lib/db/dbk62-pos-cutover";
+import { dbk109NeonAuthorityRequested } from "@/lib/db/dbk109-cutover-authority";
 import { dbk68Requested, dbk68CreateSale } from "@/lib/db/dbk68-daraja-neon";
 import {
   createPosManualSale,
@@ -15,6 +17,13 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
 
@@ -74,7 +83,7 @@ export async function POST(request: Request) {
     // DBK-101 production safety: once instructed to use Neon exclusively, an
     // accidentally missing DBK-62 env switch must NOT send financial writes
     // back to Sanity (which is already at its document limit).
-    if ((process.env.DBK101_POS_NEON_REQUIRED === "YES" || process.env.DBK102_OPERATIONAL_NEON_ONLY === "YES") && !dbk62CutoverRequested()) {
+    if (dbk109NeonAuthorityRequested() && !dbk62CutoverRequested()) {
       return NextResponse.json({
         message: "POS is awaiting the approved Neon cutover. No sale or M-PESA request was initiated.",
         code: "NEON_CUTOVER_NOT_ACTIVE",

@@ -1,3 +1,5 @@
+import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
+import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -43,11 +45,18 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const maintenance = await dbk109MaintenanceDecision();
+  if (maintenance !== 'OPEN') {
+    return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
+      message:dbk109FreezeMessage(maintenance)},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
+  }
+
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   try {
     // Never fall back to historical Sanity finance writes if POS routing is partially configured.
-    if (process.env.DBK102_OPERATIONAL_NEON_ONLY === 'YES' && !dbk62CutoverRequested()) {
+    if (dbk109NeonAuthorityRequested() && !dbk62CutoverRequested()) {
       return NextResponse.json({code:'NEON_ONLY_WRITES_REQUIRED',message:'Receivable writes are paused until Neon POS routing is complete.'},
         {status:503,headers:{'Cache-Control':'private, no-store'}});
     }
