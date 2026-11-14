@@ -95,6 +95,10 @@ export async function commitPaidStock(reference:string,confirmation:string,actor
   commitEnabled();
   if(!REF.test(reference)||confirmation!==`COMMIT ${reference}`||!actor.customerId||!actor.customerEmail)
     throw new Error('STAFF_STOCK_APPROVAL_REQUIRED');
+  // Staff attestations are not the independently verified Daraja payment proof
+  // required by DBK-103. Fail closed rather than update Sanity after cutover.
+  if(process.env.DBK_INVENTORY_BACKEND==='neon' || process.env.DBK62_POS_BACKEND==='neon')
+    throw new Error('STAFF_ATTESTED_NEON_FULFILLMENT_NOT_APPROVED');
   return postStockOnce(reference,actor,'staff_till_attested');
 }
 /** Only a Daraja callback independently confirmed by STK Query can reach this path.

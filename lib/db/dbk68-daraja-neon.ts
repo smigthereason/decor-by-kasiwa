@@ -3,7 +3,7 @@ import { dbk62GetProductionSql, dbk62CutoverRequested } from '@/lib/db/dbk62-pos
 import { prepareDBK68MpesaSale, type PosSaleInput, type PosSeller } from '@/lib/pos/server';
 import { callbackMetadata, darajaAccountReference, darajaTransactionDate,
   initiateDarajaStkPush, queryDarajaStkStatus, type DarajaStkCallbackPayload } from '@/lib/mpesa/daraja';
-import { dbk68Kes, dbk68Summary, dbk68ValidReference, dbk68IsOrderId, dbk68PaymentProofMatches,
+import { dbk68Kes, dbk68Summary, dbk68ValidReference, dbk68IsOrderId, dbk68PaymentProofMatches, dbk68ReplayCartMatches,
   type DBK68Order } from '@/lib/db/dbk68-daraja-core';
 
 export function dbk68Requested() {
@@ -56,22 +56,9 @@ export async function dbk68CreateSale(input:PosSaleInput,seller:PosSeller) {
     const digits=typeof input.customerPhone==='string' ? input.customerPhone.replace(/\D/g,'') : '';
     const phone=digits.startsWith('0') ? `254${digits.slice(1)}`
       : digits.length===9 ? `254${digits}` : digits;
-    const wanted=new Map<string,number>();
-    if (!Array.isArray(input.cart) || input.cart.length===0) throw new Error('Original POS cart is required');
-    for (const line of input.cart) {
-      if (typeof line.productId!=='string' || !Number.isSafeInteger(line.quantity) || line.quantity<=0)
-        throw new Error('Invalid POS cart replay');
-      wanted.set(line.productId,(wanted.get(line.productId)||0)+line.quantity);
-    }
-    const original=new Map<string,number>();
-    for (const line of prior.snapshot.lines) {
-      original.set(line.productId,(original.get(line.productId)||0)+line.quantity);
-    }
-    const sameCart=wanted.size===original.size && [...wanted].every(([id,qty])=>original.get(id)===qty);
-    if (!sameCart || phone!==prior.snapshot.customerPhone ||
-        String(input.customerName||'').trim()!==prior.snapshot.customerName ||
-        input.cart.some(line=>line.variantId && !prior.snapshot.lines.some(existing=>
-          existing.productId===line.productId && existing.variantId===line.variantId))) {
+    if (!dbk68ReplayCartMatches(input.cart,prior.snapshot.lines) ||
+        phone!==prior.snapshot.customerPhone ||
+        String(input.customerName||'').trim()!==prior.snapshot.customerName) {
       throw new Error('This POS request ID already belongs to a different cart or customer. Reconcile it; do not initiate another STK request.');
     }
     return safeState(prior);

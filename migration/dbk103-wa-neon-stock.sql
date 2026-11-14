@@ -54,6 +54,18 @@ BEGIN
       AND o.receipt=v_paid.provider_receipt
       AND o.amount_kes*100=v_paid.amount_minor
   ) THEN RAISE EXCEPTION 'DBK103_PROVIDER_QUERY_PROOF_REQUIRED'; END IF;
+  -- A valid query does not license applying the same external payment twice
+  -- through a POS order and a WhatsApp order. Reject duplicate receipts before
+  -- claiming any stock (including an independently inserted paid-intake row).
+  IF EXISTS (
+    SELECT 1 FROM public.dbk56_pos_payments
+      WHERE provider='daraja' AND provider_reference=v_paid.provider_receipt
+  ) OR EXISTS (
+    SELECT 1 FROM public.dbk36_wa_paid_intake
+      WHERE provider_receipt=v_paid.provider_receipt AND reference<>p_ref
+  ) THEN
+    RAISE EXCEPTION 'DBK103_PROVIDER_RECEIPT_ALREADY_USED';
+  END IF;
   IF jsonb_array_length(v_paid.cart_snapshot) < 1
     OR jsonb_array_length(v_paid.cart_snapshot) > 12 THEN
     RAISE EXCEPTION 'DBK103_CART_INVALID';

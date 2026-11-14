@@ -12,6 +12,32 @@ export type DBK68Order = {
   merchant_id:string|null; receipt_number:string|null;
   result_description:string|null; callback_json:unknown; created_at:string|Date;
 };
+/** A POS request ID must never reveal or reuse a different variant basket.
+ * Compare the full product+variant+quantity multiset, not product totals alone.
+ */
+export function dbk68ReplayCartMatches(
+  incoming:Array<{productId:string;variantId?:string;quantity:number}>,
+  persisted:Array<{productId:string;variantId?:string;quantity:number}>,
+) {
+  if (!Array.isArray(incoming) || !Array.isArray(persisted) ||
+      incoming.length===0 || persisted.length===0 || incoming.length>200 || persisted.length>200) return false;
+  const collect=(lines:typeof incoming)=>{
+    const count=new Map<string,number>();
+    for (const line of lines) {
+      if (!line || typeof line.productId!=='string' || !line.productId || line.productId.length>180 ||
+          (line.variantId!==undefined && (typeof line.variantId!=='string' || line.variantId.length>180)) ||
+          !Number.isSafeInteger(line.quantity) || line.quantity<1 || line.quantity>1_000_000) return null;
+      const k=JSON.stringify([line.productId,line.variantId||'']);
+      const next=(count.get(k)||0)+line.quantity;
+      if (!Number.isSafeInteger(next)) return null;
+      count.set(k,next);
+    }
+    return count;
+  };
+  const a=collect(incoming),b=collect(persisted);
+  return Boolean(a && b && a.size===b.size && [...a].every(([key,quantity])=>b.get(key)===quantity));
+}
+
 export function dbk68ValidReference(ref:string) {
   return /^DBK-POS-[A-Za-z0-9-]{8,80}$/.test(ref);
 }
