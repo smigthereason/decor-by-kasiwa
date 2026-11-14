@@ -75,15 +75,38 @@ try {
     reconciledAt: dbk90Rows[0].reconciled_at?.toISOString?.() || String(dbk90Rows[0].reconciled_at),
     rowsMatch: dbk90Rows[0].rows_match,
   } : null;
+  // DBK-101 supersedes the old hardcoded DBK-71 stock baseline and DBK-90
+  // only if the EXACT live balances still match the immutable replacement snapshot.
+  const dbk101Exists = await sql`SELECT to_regclass('public.dbk101_stock_rebaseline_backups') IS NOT NULL AS installed`;
+  const dbk101Rows = dbk101Exists[0]?.installed ? await sql`
+    SELECT b.replacement_seed_fingerprint AS next_fingerprint,b.recorded_at,
+      b.new_row_count = (SELECT count(*) FROM public.dbk51_stock_balances) AND
+      (SELECT coalesce(jsonb_object_agg(r.product_id||chr(31)||r.variant_id||chr(31)||r.location_id,
+        jsonb_build_object('on_hand',r.on_hand,'incoming',r.incoming,
+          'product_revision',r.product_revision,'inventory_revision',r.inventory_revision)), '{}'::jsonb)
+       FROM jsonb_to_recordset(b.replacement_balances) AS r(
+         product_id text,variant_id text,location_id text,on_hand bigint,incoming bigint,
+         product_revision text,inventory_revision text)) =
+      (SELECT coalesce(jsonb_object_agg(s.product_id||chr(31)||s.variant_id||chr(31)||s.location_id,
+        jsonb_build_object('on_hand',s.on_hand,'incoming',s.incoming,
+          'product_revision',s.product_revision,'inventory_revision',s.inventory_revision)), '{}'::jsonb)
+       FROM public.dbk51_stock_balances s) AS rows_match
+    FROM public.dbk101_stock_rebaseline_backups b ORDER BY b.recorded_at DESC LIMIT 1`
+    : [];
+  const dbk101 = dbk101Rows[0] ? {
+    nextFingerprint: dbk101Rows[0].next_fingerprint,
+    recordedAt: dbk101Rows[0].recorded_at?.toISOString?.() || String(dbk101Rows[0].recorded_at),
+    rowsMatch: dbk101Rows[0].rows_match,
+  } : null;
   const state = {
     identity: 'production-neondb', freezeActive: freezeRows[0]?.active,
-    dbk90,
+    dbk90, dbk101,
     stock: normalizeDBK76StockRow(stockRows[0]), legacyReceivables, pendingCallbacks: callbackRows[0]?.count,
     paidUncommittedMpesa: mpesaRows[0]?.count, paidUncommittedOnline: onlineRows[0]?.count,
     manualHistory: manualHistoryRows[0]?.count, mpesaHistory: mpesaHistoryRows[0]?.count,
     gates: gateRows.map(g=>({name:g.name,enabled:g.enabled})), dbk62: configRows[0],
   };
-  console.log(JSON.stringify({observed:{freezeActive:state.freezeActive,stock:state.stock,dbk90:state.dbk90,
+  console.log(JSON.stringify({observed:{freezeActive:state.freezeActive,stock:state.stock,dbk90:state.dbk90,dbk101:state.dbk101,
     legacyReceivables:state.legacyReceivables,pendingCallbacks:state.pendingCallbacks,paidUncommittedMpesa:state.paidUncommittedMpesa,
     paidUncommittedOnline:state.paidUncommittedOnline,manualHistory:state.manualHistory,
     mpesaHistory:state.mpesaHistory,activeGates:state.gates.filter(g=>g.enabled).map(g=>g.name),

@@ -101,3 +101,16 @@ test('DBK-90 successful audit still blocks if legacy finance or readiness flags 
   assert.match(result.blockers.join(' '),/refunds_ready/);
   assert.equal(result.status,'HOLD');
 });
+
+test('DBK-101 backed rebaseline supersedes old DBK-90 stock without declaring go-live',()=>{
+  const state=base();
+  state.stock={rows:1086,onHand:'535574',incoming:'91283',fingerprint:'b0ff6ea193cf2e3224c8999e6b501a27f106b440830fe01ad5ad0f524e6fda2e'};
+  state.dbk90={nextFingerprint:'4c2eb3062a470dffa5624f7b9b3c7f6ff5f0cf5d7c65bfbd86b29f211203792d',rowsMatch:false,reconciledAt:'2026-11-01T21:20:00Z'};
+  state.dbk101={nextFingerprint:state.stock.fingerprint,rowsMatch:true,recordedAt:'2026-11-13T23:15:00Z'};
+  state.dbk62.reconciliation_fingerprint=state.stock.fingerprint;
+  const result=assessDBK76(state);
+  assert.equal(result.stockReconciliationMatches,true);
+  assert.equal(result.status,'HOLD');
+  state.dbk101.rowsMatch=false;
+  assert.equal(assessDBK76(state).stockReconciliationMatches,false);
+});

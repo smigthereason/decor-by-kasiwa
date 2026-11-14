@@ -33,8 +33,15 @@ export function assessDBK76(s) {
   // An audited DBK-90 reconciliation supersedes the one-time DBK-71 seed.
   // This is evidence of Neon state matching a logged snapshot, NOT proof
   // of current Sanity parity after commerce has resumed.
+  const hasDBK101 = s.dbk101 !== undefined && s.dbk101 !== null;
   const hasDBK90 = s.dbk90 !== undefined && s.dbk90 !== null;
-  const stockMatches = hasDBK90
+  const stockMatches = hasDBK101
+    ? s.dbk101.rowsMatch === true &&
+      typeof s.dbk101.recordedAt === 'string' &&
+      Number.isFinite(Date.parse(s.dbk101.recordedAt)) &&
+      /^[a-f0-9]{64}$/.test(s.dbk101.nextFingerprint || '') &&
+      s.stock?.fingerprint === s.dbk101.nextFingerprint
+    : hasDBK90
     ? s.dbk90.rowsMatch === true &&
       typeof s.dbk90.reconciledAt === 'string' &&
       Number.isFinite(Date.parse(s.dbk90.reconciledAt)) &&
@@ -77,7 +84,7 @@ export function assessDBK76(s) {
     if (!stockMatches || s.dbk62.reconciliation_fingerprint !== s.stock?.fingerprint) blockers.push('DBK-62 reconciliation fingerprint not signed off');
   }
   // External business/ops evidence is not in the database; never turn this into a GO decision.
-  notes.push('DBK-90 log is a historical frozen snapshot; revalidate current Sanity stock after a new freeze before authority transfer.');
+  notes.push('DBK-101 rebaseline and DBK-90 logs are historical snapshots; revalidate current Sanity stock under an actual write freeze before authority transfer.');
   notes.push('Code inspection: legacy Sanity receivable POST is blocked after DBK62_POS_BACKEND=neon.');
   notes.push('Code inspection: legacy Sanity refund POST is blocked after DBK62_POS_BACKEND=neon.');
   notes.push('DBK-74 cannot stop independent direct Sanity Studio/API integrations.');
