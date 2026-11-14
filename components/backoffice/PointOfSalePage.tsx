@@ -931,9 +931,9 @@ export default function PointOfSalePage() {
             </div>
           </div>
 
-          <div className={salePanelExpanded ? "grid min-h-0 flex-1 grid-rows-[minmax(180px,0.8fr)_minmax(0,1.2fr)] lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "flex min-h-0 flex-1 flex-col"}>
+          <div className={salePanelExpanded ? "flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:grid-rows-1" : "flex min-h-0 flex-1 flex-col"}>
           {/* Cart Item Stream */}
-          <div className={`overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-0 flex-1 border-r hairline" : "min-h-[110px] max-h-[30%] shrink-0"}`}>
+          <div className={`overflow-y-auto p-4 sm:p-6 space-y-2.5 [scrollbar-width:thin] ${salePanelExpanded ? "min-h-[96px] max-h-[28dvh] shrink-0 border-b hairline lg:min-h-0 lg:max-h-none lg:flex-1 lg:border-r" : "min-h-[110px] max-h-[30%] shrink-0"}`}>
             {cart.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-[var(--muted)] py-12">
                 <div className="grid size-12 place-items-center rounded-2xl bg-[var(--paper-2)] mb-3">
@@ -1016,7 +1016,7 @@ export default function PointOfSalePage() {
           </div>
 
           {/* Checkout Drawer Section */}
-          <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain border-t hairline bg-[var(--paper-2)] p-4 sm:p-5 [scrollbar-width:thin] ${salePanelExpanded ? "lg:border-t-0" : ""}`}>
+          <div className={`min-h-0 flex-1 overflow-y-auto overscroll-contain border-t hairline bg-[var(--paper-2)] p-4 sm:p-5 [scrollbar-width:thin] ${salePanelExpanded ? "pb-[calc(5rem+env(safe-area-inset-bottom))] lg:border-t-0 lg:pb-5" : ""}`}>
             <div className="mx-auto flex w-full max-w-[460px] flex-col gap-3">
               <div className="flex items-start justify-between gap-3 pb-1">
                 <div>
@@ -1314,12 +1314,23 @@ export default function PointOfSalePage() {
                   : <>Record the sale only after you have confirmed the external payment details above.</>}
               </p>
 
+              {/* On phones the cart panel overlays the page-level notification. Keep
+                  checkout errors beside the action so a tap never appears ignored. */}
+              {salePanelExpanded && message && (
+                <div role="status" aria-live="polite" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs font-medium leading-5 text-amber-950">
+                  {message}
+                </div>
+              )}
               {cartStockIssue && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{cartStockIssue}</p>}
+              {!processing && cart.length === 0 && (
+                <p role="status" className="text-xs text-[var(--muted)]">Add at least one product to the cart before sending an M-PESA prompt.</p>
+              )}
               <button
                 type="button"
                 onClick={() => void completeSale()}
                 disabled={processing || cart.length === 0 || Boolean(cartStockIssue)}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-green)] text-xs font-bold uppercase tracking-wider text-soft-cream shadow-md transition-all hover:bg-[var(--brand-green)]/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={paymentMethod === "mpesa" ? "Send M-PESA payment prompt" : "Record manual payment"}
+                className="flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-xl bg-[var(--brand-green)] px-3 py-3 text-xs font-bold uppercase tracking-wider text-soft-cream shadow-md transition-all hover:bg-[var(--brand-green)]/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {processing ? (
                   <span className="inline-flex items-center gap-2">
