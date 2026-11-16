@@ -5,14 +5,31 @@ export const ONLINE_PREFIX = 'dbk64.order.DBK64-';
 export function isNeonOnlineOrderId(id: string): boolean {
   return /^dbk64\.order\.DBK64-[0-9]{10,15}-[a-f0-9]{10}$/.test(id);
 }
+type NeonTimestamp = string | Date;
+
+/** Normalize PostgreSQL TIMESTAMPTZ values before merging with Sanity ISO strings.
+ * Neon clients may return Date instances rather than strings, which otherwise
+ * crash the Orders/Shipments .localeCompare sort at runtime.
+ */
+function isoTimestamp(value: NeonTimestamp, field: string): string {
+  if (!(value instanceof Date) && (typeof value !== 'string' || !value.trim())) {
+    throw new Error(`Invalid Neon online ${field}`);
+  }
+  const instant = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error(`Invalid Neon online ${field}`);
+  }
+  return instant.toISOString();
+}
+
 export type NeonOrderRow = {
   order_id: string; order_number: string; reference: string; store_id: string;
   amount_minor: string | number; payment_status: 'PENDING'|'INIT_FAILED'|'PAID';
   stock_status: 'NOT_ATTEMPTED'|'COMMITTED'|'REVIEW_REQUIRED';
-  provider_transaction_id: string | null; created_at: string; updated_at: string; paid_at: string | null;
+  provider_transaction_id: string | null; created_at: NeonTimestamp; updated_at: NeonTimestamp; paid_at: NeonTimestamp | null;
   snapshot: DBK64CheckoutSnapshot; fulfilment_status: string | null;
-  fulfilment_updated_at: string | null; dispatched_at: string | null;
-  dispatched_by_name: string | null; delivered_at: string | null;
+  fulfilment_updated_at: NeonTimestamp | null; dispatched_at: NeonTimestamp | null;
+  dispatched_by_name: string | null; delivered_at: NeonTimestamp | null;
 };
 function kes(minor: string | number) {
   const text=String(minor);
@@ -38,7 +55,8 @@ export function mapNeonOrder(row:NeonOrderRow):Order {
     id:row.order_id, orderNumber:row.order_number,customerId:'',
     customerName:row.snapshot.customerName,customerEmail:row.snapshot.customerEmail,
     customerPhone:row.snapshot.customerPhone,deliveryLocation:row.snapshot.deliveryLocation || address?.address1 || '',
-    createdAt:row.created_at,updatedAt:row.fulfilment_updated_at||row.updated_at,
+    createdAt:isoTimestamp(row.created_at,'created_at'),
+    updatedAt:isoTimestamp(row.fulfilment_updated_at||row.updated_at,'updated_at'),
     status,paymentStatus:paid?'paid':row.payment_status==='INIT_FAILED'?'failed':'pending',
     subtotal:kes(row.snapshot.subtotalMinor),deliveryFee:kes(row.snapshot.deliveryMinor),total:kes(row.amount_minor),
     amountPaid:paid?kes(row.amount_minor):0,balanceDue:paid?0:kes(row.amount_minor),
@@ -46,8 +64,9 @@ export function mapNeonOrder(row:NeonOrderRow):Order {
     paymentReference:row.reference,paymentProvider:'paystack', providerReceiptNumber:row.provider_transaction_id||undefined,
     paymentChannel:row.snapshot.paymentChannel,salesChannel:'ONLINE',fulfilmentType:'DELIVERY',
     customerNote:paid && !ready ? 'PAYMENT RECEIVED — STOCK REVIEW REQUIRED; DO NOT DISPATCH' : undefined,
-    dispatchedAt:row.dispatched_at||undefined,dispatchedByName:row.dispatched_by_name||undefined,
-    deliveredAt:row.delivered_at||undefined,
+    dispatchedAt:row.dispatched_at?isoTimestamp(row.dispatched_at,'dispatched_at'):undefined,
+    dispatchedByName:row.dispatched_by_name||undefined,
+    deliveredAt:row.delivered_at?isoTimestamp(row.delivered_at,'delivered_at'):undefined,
     lineItems:row.snapshot.lines.map((line,i)=>({
       id:`${row.order_id}-${i}`, productId:line.productId,name:line.name,category:'',
       finish:line.finish,size:line.size,variantId:line.variantId,
@@ -67,7 +86,8 @@ export function mapNeonShipment(row:NeonOrderRow):Shipment|null {
     storeLocationName:order.storeLocationName,createdAt:order.createdAt,
     updatedAt:order.updatedAt||order.createdAt,status,
     itemCount:order.lineItems.length,totalUnits:order.lineItems.reduce((n,l)=>n+l.quantity,0),
-    dispatchedAt:row.dispatched_at||undefined,dispatchedByName:row.dispatched_by_name||undefined,
-    deliveredAt:row.delivered_at||undefined,
+    dispatchedAt:row.dispatched_at?isoTimestamp(row.dispatched_at,'dispatched_at'):undefined,
+    dispatchedByName:row.dispatched_by_name||undefined,
+    deliveredAt:row.delivered_at?isoTimestamp(row.delivered_at,'delivered_at'):undefined,
   };
 }
