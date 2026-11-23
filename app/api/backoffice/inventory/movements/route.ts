@@ -169,13 +169,13 @@ export async function POST(request: Request) {
   const maintenance = await dbk109MaintenanceDecision();
   if (maintenance !== 'OPEN') {
     return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
-      message:dbk109FreezeMessage(maintenance)},
+      message:dbk109FreezeMessage(maintenance).replace(/\b(?:Neon|Sanity)\b/gi, 'the system')},
       {status:503,headers:{'Cache-Control':'private, no-store'}});
   }
 
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
   if (dbk109LegacyInventoryWriteBlocked()) {
-    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+    return NextResponse.json({message:'Inventory updates are temporarily unavailable. No stock was changed.'},{status:503});
   }
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
     if (note.length > 500) return NextResponse.json({ message: "Note must be 500 characters or fewer." }, { status: 400 });
     // Negative receipts are an on-hand-only Neon adjustment, never a Sanity
     // receipt or supplier return. Refuse legacy mode rather than applying a partial write.
-    if (quantity < 0 && !dbk69InventoryEnabled()) return NextResponse.json({ message: "Audited stock reduction requires the Neon inventory backend." }, { status: 503 });
+    if (quantity < 0 && !dbk69InventoryEnabled()) return NextResponse.json({ message: "Stock reduction is temporarily unavailable. No stock was changed." }, { status: 503 });
     if ((action === "PURCHASE" || action === "RECEIVE") && !destinationStoreId) return NextResponse.json({ message: "Select the store/location for this stock." }, { status: 400 });
     if (action === "TRANSFER" && (!sourceStoreId || !destinationStoreId || sourceStoreId === destinationStoreId)) return NextResponse.json({ message: "Select different source and destination stores." }, { status: 400 });
 
@@ -388,13 +388,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: "Inventory changed or the stock record is unavailable. Refresh before retrying." }, { status: 409 });
       }
       if (/DBK_SIGNED_RECEIVE_GATE_OFF|dbk69_apply_stock_reduction.*does not exist/i.test(code)) {
-        return NextResponse.json({ message: "Audited stock reduction is not enabled on this database." }, { status: 503 });
+        return NextResponse.json({ message: "Stock reduction is temporarily unavailable. Please contact support." }, { status: 503 });
       }
       const failure = dbk120InventoryFailure(cause);
-      return NextResponse.json({message:failure.message,code:failure.code},
+      return NextResponse.json({message:failure.message.replace(/\b(?:Neon|Sanity)\b/gi, 'the system'),code:failure.code},
         {status:failure.status,headers:{'Cache-Control':'private, no-store'}});
     }
-    return NextResponse.json({ message: cause instanceof Error ? cause.message : "Unable to update inventory." }, { status: 500 });
+    // Full provider/SQL details are recorded above in server logs only.
+    return NextResponse.json({ message: "Unable to update inventory. No stock change was confirmed. Please retry or contact support." }, { status: 500 });
   }
 }
 
@@ -406,19 +407,19 @@ export async function PATCH(request: Request) {
   const maintenance = await dbk109MaintenanceDecision();
   if (maintenance !== 'OPEN') {
     return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
-      message:dbk109FreezeMessage(maintenance)},
+      message:dbk109FreezeMessage(maintenance).replace(/\b(?:Neon|Sanity)\b/gi, 'the system')},
       {status:503,headers:{'Cache-Control':'private, no-store'}});
   }
 
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
   if (dbk109LegacyInventoryWriteBlocked()) {
-    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+    return NextResponse.json({message:'Inventory updates are temporarily unavailable. No stock was changed.'},{status:503});
   }
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Only Admin and Store Manager can correct stock movements." }, { status: staff.status });
   if (dbk69InventoryEnabled()) {
     if (!dbk125CorrectionsEnabled()) return NextResponse.json({
-      message:'Audited Neon movement correction is not enabled.'},{status:409});
+      message:'Stock movement correction is temporarily unavailable.'},{status:409});
     let input: {movementId?:string;expectedQuantity?:unknown;quantity?:unknown;reason?:string;voidMovement?:boolean};
     try { input=await request.json(); }
     catch {return NextResponse.json({message:'Invalid correction request.'},{status:400});}
@@ -610,17 +611,17 @@ export async function PUT(request: Request) {
   const maintenance = await dbk109MaintenanceDecision();
   if (maintenance !== 'OPEN') {
     return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
-      message:dbk109FreezeMessage(maintenance)},
+      message:dbk109FreezeMessage(maintenance).replace(/\b(?:Neon|Sanity)\b/gi, 'the system')},
       {status:503,headers:{'Cache-Control':'private, no-store'}});
   }
 
   // DBK-102: never fall back to legacy Sanity inventory writes during cutover.
   if (dbk109LegacyInventoryWriteBlocked()) {
-    return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
+    return NextResponse.json({message:'Inventory updates are temporarily unavailable. No stock was changed.'},{status:503});
   }
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({message:"Only Admin and Store Manager can restore movement history.",status:staff.status},{status:staff.status});
-  if (dbk69InventoryEnabled()) return NextResponse.json({message:"Restoration blocked during Neon inventory authority."},{status:409});
+  if (dbk69InventoryEnabled()) return NextResponse.json({message:"Historical movement restoration is temporarily unavailable."},{status:409});
   let body: { movementId?: string };
   try { body = await request.json(); } catch { return NextResponse.json({message:"Invalid restoration request."},{status:400}); }
   const id = typeof body.movementId === "string" ? body.movementId.trim() : "";

@@ -13,6 +13,7 @@ import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 import { availableStock, formatKes, stockStatus } from "@/lib/operations/selectors";
 import type { InventoryItem } from "@/lib/operations/types";
 import { fullInventoryReportRows } from "@/lib/operations/full-inventory-report";
+import { inventoryQuantityFromMagnitude } from "@/lib/inventory/receive-quantity";
 
 type InventoryAction = "PURCHASE" | "RECEIVE" | "TRANSFER";
 type MovementFilters = { q: string; from: string; to: string; type: string };
@@ -49,6 +50,12 @@ type InventoryMovement = {
 
 const UNALLOCATED = "__UNALLOCATED__";
 
+/** Only this user-facing inventory view is sanitized; server diagnostics retain database details. */
+function stockPublicMessage(value: unknown, fallback: string): string {
+  const message = value instanceof Error ? value.message : typeof value === "string" ? value : fallback;
+  return message.replace(/\b(?:Neon|Sanity)\b/gi, "the system");
+}
+
 const actionCopy: Record<InventoryAction, { kicker: string; title: string; help: string; submit: string }> = {
   PURCHASE: {
     kicker: "Procurement",
@@ -58,8 +65,8 @@ const actionCopy: Record<InventoryAction, { kicker: string; title: string; help:
   },
   RECEIVE: {
     kicker: "Goods receipt",
-    title: "Receive purchased stock into a store/location",
-    help: "Enter a positive quantity to receive purchased incoming stock, or a negative quantity to reduce existing on-hand stock at this location. Reductions do not change incoming stock or create supplier returns.",
+    title: "Receive or reduce stock at a store/location",
+    help: "Choose Receive to add purchased incoming units, or Reduce to subtract existing stock. Reductions leave incoming units unchanged.",
     submit: "Receive stock",
   },
   TRANSFER: {
@@ -147,6 +154,9 @@ export default function InventoryManagementPage() {
   const [selectedVariantId, setSelectedVariantId] = useState("");
   const [variantSearch, setVariantSearch] = useState("");
   const [quantity, setQuantity] = useState("1");
+  // Mobile number keyboards may not offer a minus key. Keep the quantity magnitude
+  // positive and make the movement direction an explicit, accessible choice.
+  const [receiveReduction, setReceiveReduction] = useState(false);
   const [sourceStoreId, setSourceStoreId] = useState("");
   const [destinationStoreId, setDestinationStoreId] = useState("");
   const [note, setNote] = useState("");
@@ -176,6 +186,8 @@ export default function InventoryManagementPage() {
     if (!canChangeStock || (nextAction === "TRANSFER" && !canTransferStock)) return;
     pendingMovement.current = null;
     setAction(nextAction);
+    setReceiveReduction(false);
+    setQuantity("1");
     if (productId) {
       setSelectedProductId(productId);
       setMovementProductSearch("");
@@ -209,7 +221,7 @@ export default function InventoryManagementPage() {
       setMovementHasMore(Boolean(payload.hasMore));
       setMovementNextOffset(offset + nextMovements.length);
     } catch (cause) {
-      if (requestNumber === movementRequestNumber.current) setMovementError(cause instanceof Error ? cause.message : "Unable to load stock movements.");
+      if (requestNumber === movementRequestNumber.current) setMovementError(stockPublicMessage(cause, "Unable to load stock movements."));
     } finally {
       if (requestNumber === movementRequestNumber.current) setMovementLoading(false);
     }
@@ -228,7 +240,7 @@ export default function InventoryManagementPage() {
 
   async function restoreArchivedMovement(movement: InventoryMovement) {
     if (!canCorrectStock || !movement.archived || correctingMovement) return;
-    if (!window.confirm("Restore this historical movement to Sanity for a reviewed stock correction? This alone does not alter stock quantities.")) return;
+    if (!window.confirm("Restore this historical movement for a reviewed stock correction? This alone does not alter stock quantities.")) return;
     setCorrectingMovement(true);
     setMovementError(null);
     try {
@@ -242,7 +254,7 @@ export default function InventoryManagementPage() {
       setMessage("Archived movement restored. Find it in the refreshed history, then select Edit / Void.");
       await loadMovements(appliedMovementFilters.current);
     } catch (cause) {
-      setMovementError(cause instanceof Error ? cause.message : "Unable to restore movement");
+      setMovementError(stockPublicMessage(cause, "Unable to restore movement."));
     } finally { setCorrectingMovement(false); }
   }
 
@@ -274,7 +286,7 @@ export default function InventoryManagementPage() {
       await Promise.all([refresh(), loadMovements()]);
       setMessage(voidMovement ? "Movement voided. Stock balances were adjusted and the audit record was retained." : "Stock movement corrected. The original entry and the correction are retained in the audit trail.");
     } catch (cause) {
-      setMovementError(cause instanceof Error ? cause.message : "Unable to correct stock movement.");
+      setMovementError(stockPublicMessage(cause, "Unable to correct stock movement."));
     } finally {
       setCorrectingMovement(false);
     }
@@ -338,17 +350,31 @@ export default function InventoryManagementPage() {
   const requiresVariant = Boolean(selectedProductRaw?.variants?.length);
   const storeOnHandBefore = requiresVariant ? Number(destinationVariantBalance?.onHand || 0) : Number(destinationBalance?.onHand || 0);
   const storeIncomingBefore = requiresVariant ? Number(destinationVariantBalance?.incoming || 0) : Number(destinationBalance?.incoming || 0);
-  const enteredQuantity = Number(quantity);
-  const projectedOnHand = action === "RECEIVE" ? storeOnHandBefore + enteredQuantity : storeOnHandBefore;
-  const projectedIncoming = action === "PURCHASE" ? storeIncomingBefore + enteredQuantity : action === "RECEIVE" && enteredQuantity > 0 ? storeIncomingBefore - enteredQuantity : storeIncomingBefore;
-  const stockReduction = action === "RECEIVE" && enteredQuantity < 0;
-  const invalidReduction = stockReduction && storeOnHandBefore + enteredQuantity < 0;
+  const stockReduction = action === "RECEIVE" && receiveReduction;
+  const signedQuantity = inventoryQuantityFromMagnitude(quantity, stockReduction);
+  const quantityIsValid = signedQuantity !== null;
+  const enteredQuantity = signedQuantity ?? 0;
+  const projectedOnHand = action === "RECEIVE" && quantityIsValid ? storeOnHandBefore + enteredQuantity : storeOnHandBefore;
+  const projectedIncoming = action === "PURCHASE" && quantityIsValid ? storeIncomingBefore + enteredQuantity : action === "RECEIVE" && enteredQuantity > 0 && quantityIsValid ? storeIncomingBefore - enteredQuantity : storeIncomingBefore;
+  const invalidReduction = stockReduction && quantityIsValid && storeOnHandBefore + enteredQuantity < 0;
+  const movementBlocker = !selectedProductId ? "Select a product first."
+    : !quantityIsValid ? "Enter a whole-number quantity greater than zero."
+    : requiresVariant && !selectedVariantId ? "Select a product variant."
+    : !destinationStoreId ? "Select a store or location."
+    : invalidReduction ? "The reduction exceeds the stock available at this location."
+    : stockReduction && note.trim().length < 5 ? "Enter a reason for the reduction (at least 5 characters) to enable Reduce stock."
+    : note.length > 500 ? "The note cannot exceed 500 characters."
+    : action === "TRANSFER" && (!sourceStoreId || sourceStoreId === destinationStoreId) ? "Select a different source store."
+    : null;
   const selectedSourceBalance = selectedProductRaw && sourceStoreId && sourceStoreId !== UNALLOCATED ? balanceFor(selectedProductRaw, sourceStoreId) : undefined;
   const unallocated = Math.max(0, Number(selectedProductRaw?.unallocatedOnHand || 0));
 
   async function submitMovement() {
     if (!canChangeStock || !action || !selectedProductId || (requiresVariant && !selectedVariantId)) return;
-    if (!Number.isSafeInteger(enteredQuantity) || (action === "RECEIVE" ? enteredQuantity === 0 : enteredQuantity <= 0) || invalidReduction || (stockReduction && note.trim().length < 5)) return;
+    if (movementBlocker) {
+      setMessage(movementBlocker);
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -356,7 +382,7 @@ export default function InventoryManagementPage() {
         action,
         productId: selectedProductId,
         variantId: selectedVariantId || undefined,
-        quantity: Number(quantity),
+        quantity: enteredQuantity,
         sourceStoreId: action === "TRANSFER" ? sourceStoreId : undefined,
         destinationStoreId,
         note,
@@ -376,6 +402,7 @@ export default function InventoryManagementPage() {
 
       pendingMovement.current = null;
       setQuantity("1");
+      setReceiveReduction(false);
       setNote("");
       setSelectedProductId("");
       setSelectedVariantId("");
@@ -383,13 +410,13 @@ export default function InventoryManagementPage() {
       setDestinationStoreId("");
       await Promise.all([refresh(), loadMovements()]);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Unable to update inventory.");
+      setMessage(stockPublicMessage(cause, "Unable to update inventory."));
     } finally {
       setSaving(false);
     }
   }
 
-  if (!data) return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error} onRetry={refresh} /></div>;
+  if (!data) return <div className="p-4 sm:p-6 lg:p-8"><LiveDataState loading={loading} error={error ? stockPublicMessage(error, "Unable to load inventory.") : error} onRetry={refresh} /></div>;
 
   const exportColumns = [
     {key:"name",label:"Product"},{key:"sku",label:"SKU"},{key:"category",label:"Category"},{key:"location",label:"Location"},
@@ -451,10 +478,24 @@ export default function InventoryManagementPage() {
               <div className="relative min-w-0"><select id="inventory-variant-select" value={selectedVariantId} onChange={(event)=>setSelectedVariantId(event.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select a variant</option>{visibleVariants.map((variant)=><option key={variant.id} value={variant.id}>{variant.title || [variant.colour,variant.size].filter(Boolean).join(" · ") || variant.sku || "Variant"}</option>)}{selectedVariantId && !visibleVariants.some((variant) => variant.id === selectedVariantId) && selectedProductRaw?.variants?.filter((variant) => variant.id === selectedVariantId).map((variant) => <option key={variant.id} value={variant.id}>{variant.title || variant.sku || "Selected variant"}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]"/></div>
               <p className="text-[10px] font-normal leading-4 text-[var(--muted)]">Record a separate quantity for each variant. Stock is tracked per variant at the selected store.</p>
             </div>}
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity{action === "RECEIVE" ? " (+ receive / − reduce)" : ""}<input type="number" min={action === "RECEIVE" ? undefined : "1"} step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
+            {action === "RECEIVE" && <div className="grid min-w-0 gap-2 lg:col-span-12">
+              <span className="text-xs font-semibold">What do you want to do?</span>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Stock adjustment direction">
+                <button type="button" aria-pressed={!receiveReduction} onClick={() => { setReceiveReduction(false); setMessage(null); }} className={`min-h-12 rounded-xl border px-3 py-2 text-xs font-semibold ${!receiveReduction ? "bg-[var(--brand-green)] !text-soft-cream" : "border-gray-300 bg-white"}`}>+ Receive purchased stock</button>
+                <button type="button" aria-pressed={receiveReduction} onClick={() => { setReceiveReduction(true); setMessage(null); }} className={`min-h-12 rounded-xl border px-3 py-2 text-xs font-semibold ${receiveReduction ? "bg-[var(--brand-green)] !text-soft-cream" : "border-gray-300 bg-white"}`}>− Reduce existing stock</button>
+              </div>
+              <p className="text-[11px] text-[var(--muted)]">On a phone, select <strong>Reduce existing stock</strong>, then enter 32 to subtract 32 units. A minus key is not needed.</p>
+            </div>}
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity of units<input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={quantity} onChange={(e)=>{
+              const next = e.target.value.trim();
+              if (action === "RECEIVE" && next.startsWith("-")) { setReceiveReduction(true); setQuantity(next.slice(1)); }
+              else setQuantity(next);
+            }} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal" aria-describedby={action === "RECEIVE" ? "receive-quantity-help" : undefined}/>
+              {action === "RECEIVE" && <span id="receive-quantity-help" className="text-[11px] font-normal text-[var(--muted)]">{stockReduction ? `Reduction: −${quantity || "0"} units` : `Receipt: +${quantity || "0"} units`}</span>}
+            </label>
             {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={role === "MANAGER" ? storeLocations.filter(store => store._id === assignedStoreId) : storeLocations} disabled={role === "MANAGER"}/>}
             {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} maxLength={500} placeholder={stockReduction ? "Required: reason for stock reduction (5+ characters)" : action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">{stockReduction ? "Reason for reduction (required)" : "Note / reference"}<input value={note} onChange={(e)=>setNote(e.target.value)} maxLength={500} placeholder={stockReduction ? "e.g. Damaged stock correction" : action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/>{stockReduction && <span className="text-[11px] font-normal text-[var(--muted)]">Minimum 5 characters. The reason is saved in stock history.</span>}</label>
           </div>
 
           {(action === "PURCHASE" || action === "RECEIVE") && selectedProductRaw && destinationStoreId && (!requiresVariant || selectedVariantId) && <div className="mt-4 rounded-xl border hairline bg-[var(--paper-2)] p-4 text-xs" role="status" aria-live="polite">
@@ -463,9 +504,9 @@ export default function InventoryManagementPage() {
               <p>On hand: <strong>{storeOnHandBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedOnHand) ? projectedOnHand.toLocaleString("en-KE") : "—"}</strong></p>
               <p>Incoming: <strong>{storeIncomingBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedIncoming) ? projectedIncoming.toLocaleString("en-KE") : "—"}</strong></p>
             </div>
-            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : stockReduction ? "Stock reduction decreases on-hand only. Incoming stays unchanged; the reason is retained in the Neon audit ledger." : "Receiving adds to on-hand stock. Neon verifies purchased incoming units when saving."}</p>
-            {stockReduction && invalidReduction && <p className="mt-2 font-semibold text-red-700">This reduction exceeds the displayed on-hand stock. Neon checks the actual balance before saving.</p>}
-            {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <div className="mt-2 text-red-700"><p className="font-semibold">Displayed incoming: {storeIncomingBefore.toLocaleString("en-KE")} units. Neon confirms the available quantity on save. If insufficient, record the purchase first.</p>{storeIncomingBefore === 0 && canChangeStock && <button type="button" onClick={() => openAction("PURCHASE", selectedProductId)} className="mt-2 rounded-full border border-amber-300 px-3 py-2 text-xs font-semibold text-[var(--ink)]">Record purchase first</button>}</div>}
+            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : stockReduction ? "Stock reduction decreases on-hand only. Incoming stays unchanged; the reason is retained in the system audit history." : "Receiving adds to on-hand stock. The system checks purchased incoming units when saving."}</p>
+            {stockReduction && invalidReduction && <p className="mt-2 font-semibold text-red-700">This reduction exceeds the displayed on-hand stock. The system checks the latest balance before saving.</p>}
+            {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <div className="mt-2 text-red-700"><p className="font-semibold">Only {storeIncomingBefore.toLocaleString("en-KE")} units are awaiting receipt here. To subtract existing stock instead, select <strong>Reduce existing stock</strong> above; otherwise record the purchase first.</p>{storeIncomingBefore === 0 && canChangeStock && <button type="button" onClick={() => openAction("PURCHASE", selectedProductId)} className="mt-2 rounded-full border border-amber-300 px-3 py-2 text-xs font-semibold text-[var(--ink)]">Record purchase first</button>}</div>}
           </div>}
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
@@ -475,7 +516,7 @@ export default function InventoryManagementPage() {
           </div>}
 
           {message && <div role="status" aria-live="polite" className="mt-5 rounded-xl border hairline bg-[var(--paper-2)] px-4 py-3 text-xs font-medium">{message}</div>}
-          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || (action === "RECEIVE" ? enteredQuantity===0 : enteredQuantity<=0) || invalidReduction || (stockReduction && (note.trim().length < 5 || note.length > 500)) || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
+          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><div className="max-w-2xl"><p className="text-[10px] leading-relaxed text-[var(--muted)]">{stockReduction ? "This operation reduces existing stock at the selected store without affecting incoming units. A reason is required for the audit trail." : actionCopy[action].help}</p>{movementBlocker && !saving && <p role="alert" className="mt-2 text-xs font-semibold text-amber-800">{movementBlocker}</p>}</div><button type="button" disabled={saving || Boolean(movementBlocker)} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":stockReduction ? "Reduce stock" : actionCopy[action].submit}</button></div>
         </section>
       )}
 
