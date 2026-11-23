@@ -115,7 +115,7 @@ function StoreSelect({
   wide?: boolean;
 }) {
   return (
-    <label className={`grid min-w-0 gap-2 text-xs font-semibold ${wide ? "lg:col-span-6" : "lg:col-span-4"}`}>
+    <label className={`flex min-w-0 flex-col gap-2 self-start text-xs font-semibold ${wide ? "lg:col-span-6" : "lg:col-span-4"}`}>
       {label}
       <div className="relative min-w-0">
         <select
@@ -488,7 +488,7 @@ export default function InventoryManagementPage() {
               </div>
               <p className="text-[11px] text-[var(--muted)]">On a phone, select <strong>Reduce existing stock</strong>, then enter 32 to subtract 32 units. A minus key is not needed.</p>
             </div>}
-            <label className={`grid min-w-0 gap-2 text-xs font-semibold ${action === "TRANSFER" ? "lg:col-span-4" : "lg:col-span-6"}`}>Quantity of units<input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={quantity} onChange={(e)=>{
+            <label className={`flex min-w-0 flex-col gap-2 self-start text-xs font-semibold ${action === "TRANSFER" ? "lg:col-span-4" : "lg:col-span-6"}`}>Quantity of units<input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={quantity} onChange={(e)=>{
               const next = e.target.value.trim();
               if (action === "RECEIVE" && next.startsWith("-")) { setReceiveReduction(true); setQuantity(next.slice(1)); }
               else setQuantity(next);
