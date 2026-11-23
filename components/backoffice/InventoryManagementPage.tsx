@@ -104,6 +104,7 @@ function StoreSelect({
   locations,
   disabled = false,
   includeUnallocated = false,
+  wide = false,
 }: {
   label: string;
   value: string;
@@ -111,9 +112,10 @@ function StoreSelect({
   locations: StoreLocation[];
   disabled?: boolean;
   includeUnallocated?: boolean;
+  wide?: boolean;
 }) {
   return (
-    <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">
+    <label className={`grid min-w-0 gap-2 text-xs font-semibold ${wide ? "lg:col-span-6" : "lg:col-span-4"}`}>
       {label}
       <div className="relative min-w-0">
         <select
@@ -470,8 +472,8 @@ export default function InventoryManagementPage() {
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-12">
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-4">Product<div className="relative min-w-0"><Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={movementProductSearch} onChange={(event)=>setMovementProductSearch(event.target.value)} placeholder="Search product name or SKU" aria-label="Search stock movement products" className="min-h-11 w-full rounded-xl border hairline bg-white py-2.5 pl-10 pr-4 font-normal" /></div><div className="relative min-w-0"><select value={selectedProductId} onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");setVariantSearch("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">{movementProductOptions.length ? "Select product" : "No matching products"}</option>{movementProductOptions.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></label>
-            {requiresVariant && <div className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-3">
+            <div className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12"><span>Product</span><div className="grid min-w-0 gap-3 sm:grid-cols-2"><div className="relative min-w-0"><Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={movementProductSearch} onChange={(event)=>setMovementProductSearch(event.target.value)} placeholder="Search product name or SKU" aria-label="Search stock movement products" className="min-h-11 w-full rounded-xl border hairline bg-white py-2.5 pl-10 pr-4 font-normal" /></div><div className="relative min-w-0"><select value={selectedProductId} aria-label="Select product for stock movement" onChange={(e)=>{setSelectedProductId(e.target.value);setSelectedVariantId("");setVariantSearch("");}} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">{movementProductOptions.length ? "Select product" : "No matching products"}</option>{movementProductOptions.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.sku}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div></div></div>
+            {requiresVariant && <div className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">
               <label htmlFor="inventory-variant-search">Find variant</label>
               <input id="inventory-variant-search" type="search" value={variantSearch} onChange={(event) => setVariantSearch(event.target.value)} placeholder="Search colour, size or SKU" className="min-h-10 w-full rounded-xl border hairline bg-white px-3 font-normal" />
               <label htmlFor="inventory-variant-select">Variant to {action === "PURCHASE" ? "purchase" : action === "RECEIVE" ? "receive" : "transfer"}</label>
@@ -486,14 +488,14 @@ export default function InventoryManagementPage() {
               </div>
               <p className="text-[11px] text-[var(--muted)]">On a phone, select <strong>Reduce existing stock</strong>, then enter 32 to subtract 32 units. A minus key is not needed.</p>
             </div>}
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity of units<input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={quantity} onChange={(e)=>{
+            <label className={`grid min-w-0 gap-2 text-xs font-semibold ${action === "TRANSFER" ? "lg:col-span-4" : "lg:col-span-6"}`}>Quantity of units<input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={quantity} onChange={(e)=>{
               const next = e.target.value.trim();
               if (action === "RECEIVE" && next.startsWith("-")) { setReceiveReduction(true); setQuantity(next.slice(1)); }
               else setQuantity(next);
             }} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal" aria-describedby={action === "RECEIVE" ? "receive-quantity-help" : undefined}/>
               {action === "RECEIVE" && <span id="receive-quantity-help" className="text-[11px] font-normal text-[var(--muted)]">{stockReduction ? `Reduction: −${quantity || "0"} units` : `Receipt: +${quantity || "0"} units`}</span>}
             </label>
-            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={role === "MANAGER" ? storeLocations.filter(store => store._id === assignedStoreId) : storeLocations} disabled={role === "MANAGER"}/>}
+            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={role === "MANAGER" ? storeLocations.filter(store => store._id === assignedStoreId) : storeLocations} disabled={role === "MANAGER"} wide/>}
             {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">{stockReduction ? "Reason for reduction (required)" : "Note / reference"}<input value={note} onChange={(e)=>setNote(e.target.value)} maxLength={500} placeholder={stockReduction ? "e.g. Damaged stock correction" : action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/>{stockReduction && <span className="text-[11px] font-normal text-[var(--muted)]">Minimum 5 characters. The reason is saved in stock history.</span>}</label>
           </div>
@@ -520,26 +522,47 @@ export default function InventoryManagementPage() {
         </section>
       )}
 
-      <div className={`${action ? "mt-6" : "mt-4"} border-y hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8`}><div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative max-w-sm flex-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search STOCK INVENTORY by product, SKU, category or variant..." aria-label="Search stock inventory products" className="min-h-12 w-full rounded-full border hairline py-3 pl-10 pr-4 text-sm outline-none focus:border-[var(--brand-green)]"/></div>
-        <label className="grid gap-1 text-[10px] font-semibold uppercase text-[var(--muted)]">Stock level
-          <select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as "all" | "low" | "out")} aria-label="Filter inventory by stock level" className="min-h-12 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-normal normal-case text-[var(--ink)]">
-            <option value="all">All stock</option><option value="low">Low stock only</option><option value="out">Out of stock</option>
-          </select>
-        </label>
-        <span className="self-center text-xs text-[var(--muted)]">{filtered.length} / {inventory.length} inventory products</span>
-        <div className="relative min-w-52"><select value={location} disabled={Boolean(assignedStoreId && (role === "MANAGER" || role === "STORE_STAFF"))} onChange={(e)=>setLocation(e.target.value)} className="min-h-12 w-full appearance-none rounded-full border hairline bg-[var(--paper)] py-3 pl-4 pr-11 text-sm disabled:opacity-70"><option value="All">Company total</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.code?` · ${store.code}`:""}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/></div>
-        <details className="relative sm:ml-auto rounded-xl border hairline bg-white text-xs">
-          <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 font-semibold">Export inventory <ChevronDown size={14}/></summary>
-          <div className="relative z-10 grid gap-3 border-t hairline bg-white p-4 sm:min-w-[270px]">
-            <p className="font-semibold">Current filtered view</p>
-            <ExportButtons title="Filtered Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/>
-            <p className="border-t hairline pt-3 font-semibold">Full inventory breakdown</p>
-            <p className="text-[10px] text-[var(--muted)]">Independent of the current search and stock filter.</p>
-            <ExportButtons title="Full Inventory Breakdown" columns={fullInventoryColumns} rows={fullInventoryRows}/>
+      <div className={`${action ? "mt-6" : "mt-4"} border-y hairline bg-[var(--paper)] px-4 py-4 sm:px-6 lg:px-8`}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end">
+          <label className="grid min-w-0 gap-1 text-[10px] font-semibold uppercase text-[var(--muted)] sm:col-span-2 xl:col-span-4">
+            Search inventory
+            <div className="relative min-w-0">
+              <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/>
+              <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search by product, SKU, category or variant" aria-label="Search stock inventory products" className="min-h-12 w-full rounded-xl border hairline bg-white py-3 pl-10 pr-4 text-sm font-normal normal-case text-[var(--ink)] outline-none focus:border-[var(--brand-green)]"/>
+            </div>
+          </label>
+          <label className="grid min-w-0 gap-1 text-[10px] font-semibold uppercase text-[var(--muted)] xl:col-span-2">
+            Stock level
+            <select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as "all" | "low" | "out")} aria-label="Filter inventory by stock level" className="min-h-12 w-full rounded-xl border hairline bg-white px-4 text-xs font-normal normal-case text-[var(--ink)]">
+              <option value="all">All stock</option><option value="low">Low stock only</option><option value="out">Out of stock</option>
+            </select>
+          </label>
+          <div className="grid min-w-0 gap-1 xl:col-span-2">
+            <span className="text-[10px] font-semibold uppercase text-[var(--muted)]">Results</span>
+            <span className="flex min-h-12 items-center text-xs text-[var(--muted)]">{filtered.length} / {inventory.length} inventory products</span>
           </div>
-        </details>
-      </div></div>
+          <label className="grid min-w-0 gap-1 text-[10px] font-semibold uppercase text-[var(--muted)] xl:col-span-2">
+            Location
+            <div className="relative min-w-0">
+              <select value={location} disabled={Boolean(assignedStoreId && (role === "MANAGER" || role === "STORE_STAFF"))} onChange={(e)=>setLocation(e.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-3 pl-4 pr-11 text-sm font-normal normal-case text-[var(--ink)] disabled:opacity-70"><option value="All">Company total</option>{storeLocations.map((store)=><option key={store._id} value={store._id}>{store.name}{store.code?` · ${store.code}`:""}</option>)}</select>
+              <ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"/>
+            </div>
+          </label>
+          <div className="grid min-w-0 gap-1 xl:col-span-2">
+            <span className="text-[10px] font-semibold uppercase text-[var(--muted)]">Export</span>
+            <details className="relative min-w-0 rounded-xl border hairline bg-white text-xs">
+              <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-2 px-4 font-semibold">Export inventory <ChevronDown size={14}/></summary>
+              <div className="relative z-10 grid gap-3 border-t hairline bg-white p-4 sm:min-w-[270px]">
+                <p className="font-semibold">Current filtered view</p>
+                <ExportButtons title="Filtered Inventory" columns={exportColumns} rows={filtered.map((item)=>({name:item.name,sku:item.sku,category:item.category,location:item.location,onHand:item.onHand,reserved:item.reserved,available:availableStock(item),incoming:item.incoming,...(!hideProcurement?{unitCost:item.unitCost}:{}),price:item.retailPrice}))}/>
+                <p className="border-t hairline pt-3 font-semibold">Full inventory breakdown</p>
+                <p className="text-[10px] text-[var(--muted)]">Independent of the current search and stock filter.</p>
+                <ExportButtons title="Full Inventory Breakdown" columns={fullInventoryColumns} rows={fullInventoryRows}/>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
 
       {canManage && <section className="px-4 pt-4 sm:px-6 lg:px-8">
         <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
@@ -571,12 +594,12 @@ export default function InventoryManagementPage() {
           </form>
           {movementError && <p role="alert" className="px-4 py-3 text-xs text-red-700 sm:px-5">{movementError}</p>}
           <div className="max-h-80 overflow-auto">
-            <table className="w-full min-w-[900px] text-left">
+            <table className="w-full min-w-[1120px] text-left">
               <thead><tr className="border-b hairline">{movementHeadings.map((heading) => <th key={heading} scope="col" className="sticky top-0 z-10 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead>
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
                 const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `${Number(movement.quantityChange || 0) < 0 ? "Stock correction" : "Incoming"} → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" || Number(movement.quantityChange || 0) < 0 ? "−" : "+"}{Math.abs(movement.correctedQuantity ?? Number(movement.quantityChange || 0)).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={Number(movement.quantityChange || 0) < 0 || (!movement.archived && !movement._rev && !movement._id.startsWith('dbk69.dbk69-')) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {Number(movement.quantityChange || 0) < 0 ? "Audited reduction" : movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="whitespace-nowrap px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="whitespace-nowrap px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" || Number(movement.quantityChange || 0) < 0 ? "−" : "+"}{Math.abs(movement.correctedQuantity ?? Number(movement.quantityChange || 0)).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={Number(movement.quantityChange || 0) < 0 || (!movement.archived && !movement._rev && !movement._id.startsWith('dbk69.dbk69-')) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {Number(movement.quantityChange || 0) < 0 ? "Audited reduction" : movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}
