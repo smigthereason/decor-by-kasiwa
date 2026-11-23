@@ -5,6 +5,7 @@ import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
 import { dbk61ReadHistory, dbk61SandboxAllowed } from "@/lib/db/dbk61-pos-compat";
 import { dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
 import { dbk68ReadEnabled, dbk68ListHistory } from "@/lib/db/dbk68-daraja-neon";
+import { dbk64ReadPaidSalesHistory } from "@/lib/db/dbk64-sales-history";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,10 @@ export async function GET(request: Request) {
     if (dbk62ReadEnabled()) {
       const neonOrders = await dbk62ReadHistory({ limit:500,channel:channel === "POS" || channel === "ONLINE" ? channel : undefined,
         cashier,query,from,to,storeId });
+      const onlineOrders = channel === 'POS' ? [] : await dbk64ReadPaidSalesHistory({
+        limit: 500, channel: channel === 'ONLINE' ? 'ONLINE' : undefined,
+        cashier, query, from, to, storeId,
+      });
       const darajaOrders = dbk68ReadEnabled() && channel !== "ONLINE" ? await dbk68ListHistory() : [];
       const filteredDaraja = darajaOrders.filter(o =>
         (!storeId || o.storeLocationId===storeId) &&
@@ -49,9 +54,16 @@ export async function GET(request: Request) {
         (!query || [o.orderNumber,o.customerName,o.customerPhone].some(v=>v.toLowerCase().includes(query.toLowerCase()))) &&
         (!from || o.soldAt >= `${from}T00:00:00+03:00`) &&
         (!to || o.soldAt <= `${to}T23:59:59+03:00`));
-      const combined = [...orders,...neonOrders,...filteredDaraja].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
+      // Prefer the authoritative Neon checkout projection when legacy Sanity has the same payment reference.
+      const onlineReferences = new Set(onlineOrders.map(o => o.paymentReference).filter(Boolean));
+      const combined = [
+        ...orders.filter(o => !onlineReferences.has(o.paymentReference)),
+        ...neonOrders.filter(o => !onlineReferences.has(o.paymentReference)),
+        ...filteredDaraja.filter(o => !onlineReferences.has(o.paymentReference)),
+        ...onlineOrders,
+      ].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
         .slice(0,Math.max(1,Math.min(500,Math.floor(Number.isFinite(limit)?limit:150))));
-      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName),...filteredDaraja.map(o=>o.soldByName)])].sort()},
+      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName),...filteredDaraja.map(o=>o.soldByName),...onlineOrders.map(o=>o.soldByName)])].sort()},
         {headers:{"Cache-Control":"private, no-store"}});
     }
     return NextResponse.json({ orders, cashiers });

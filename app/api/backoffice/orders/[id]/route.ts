@@ -1,5 +1,6 @@
 import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
 import { dbk65ChangeOnlineOrder } from "@/lib/db/dbk65-online-fulfilment";
+import { dbk134Enabled } from "@/lib/db/dbk134-online-operations";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -86,6 +87,7 @@ export async function PATCH(
 
   // Neon online orders must never fall through to Sanity patches or shipment creation.
   if (isNeonOnlineOrderId(orderId)) {
+    if(dbk134Enabled()) return NextResponse.json({message:"Use the assigned Fulfilment Workflow for this order"},{status:409});
     if (body.paymentStatus !== undefined || body.storeLocationId !== undefined || body.assignedStore !== undefined || !body.status) {
       return NextResponse.json({ message: "Neon online order accepts a fulfilment status only; payment is provider-controlled." }, { status: 409 });
     }

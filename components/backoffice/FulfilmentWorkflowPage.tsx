@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, LoaderCircle, PackageCheck, RefreshCcw, Search, UserCheck, X } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 
@@ -27,6 +27,22 @@ type Job = {
   storeLocationCode?: string;
   items: Array<{ name: string; category?: string; quantity: number; image?: string }>;
 };
+type OnlineJob = {
+  id: string; orderNumber: string; reference: string; customerName: string;
+  storeLocationId: string; storeLocationName: string; orderDate: string;
+  paymentStatus: string; status: string; stockReady: boolean;
+  total: number; items: Array<{name:string;quantity:number}>;
+  stage:Stage|null;assignedStaffId:string;assignedStaffName:string;
+  channel?:'ONLINE'|'WHATSAPP';
+};
+const onlineTransitions: Record<string, {status:string;label:string}> = {
+  paid: {status: "processing", label: "Start processing"},
+  processing: {status: "ready_for_store", label: "Ready for store"},
+  ready_for_store: {status: "picking", label: "Start packing"},
+  picking: {status: "packed", label: "Mark packed"},
+  packed: {status: "dispatched", label: "Dispatch for delivery"},
+};
+const onlineStatusLabel = (value: string) => value === "picking" ? "Packing" : value.replaceAll("_", " ");
 type Staff = { _id: string; name: string; email: string; role: string; permissions?: string[]; assignedStoreId?: string; assignedStoreName?: string };
 type StoreLocation = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
 type Viewer = { role: string; customerId: string; stages: Stage[]; manager: boolean; assignedStoreId?: string; assignedStoreName?: string; storeLocked?: boolean };
@@ -57,6 +73,14 @@ function kenyaDateKey(value?: string) {
 
 export default function FulfilmentWorkflowPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [onlineJobs, setOnlineJobs] = useState<OnlineJob[]>([]);
+  const [whatsappJobs, setWhatsappJobs] = useState<OnlineJob[]>([]);
+  const [whatsappEnabled,setWhatsappEnabled] = useState(false);
+  const [whatsappWarning,setWhatsappWarning] = useState('');
+  const [whatsappSynced,setWhatsappSynced] = useState(false);
+  const [onlineWarning, setOnlineWarning] = useState("");
+  const [onlineAssignmentsEnabled,setOnlineAssignmentsEnabled]=useState(false);
+  const [onlineSelectedStaff,setOnlineSelectedStaff]=useState<Record<string,string>>({});
   const [staff, setStaff] = useState<Staff[]>([]);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
@@ -70,6 +94,7 @@ export default function FulfilmentWorkflowPage() {
   const [appliedDateRange, setAppliedDateRange] = useState({ from: "", to: "" });
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [storeFilter, setStoreFilter] = useState("");
+  const [channelFilter, setChannelFilter] = useState<"ALL"|"ONLINE"|"POS"|"WHATSAPP">("ALL");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,9 +102,15 @@ export default function FulfilmentWorkflowPage() {
       const params = new URLSearchParams();
       if (storeFilter) params.set("store", storeFilter);
       const response = await fetch(`/api/backoffice/workflow${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
-      const payload = await response.json() as { orders?: Job[]; availableStaff?: Staff[]; storeLocations?: StoreLocation[]; viewer?: Viewer; message?: string };
+      const payload = await response.json() as { orders?: Job[]; onlineOrders?: OnlineJob[]; whatsappOrders?: OnlineJob[]; whatsappEnabled?:boolean; whatsappWarning?:string; onlineWarning?: string; onlineAssignmentsEnabled?:boolean; availableStaff?: Staff[]; storeLocations?: StoreLocation[]; viewer?: Viewer; message?: string };
       if (!response.ok) throw new Error(payload.message || "Unable to load workflow.");
       setJobs(payload.orders || []);
+      setOnlineJobs(payload.onlineOrders || []);
+      setWhatsappJobs(payload.whatsappOrders || []);
+      setWhatsappEnabled(payload.whatsappEnabled === true);
+      setWhatsappWarning(payload.whatsappWarning || '');
+      setOnlineWarning(payload.onlineWarning || "");
+      setOnlineAssignmentsEnabled(payload.onlineAssignmentsEnabled===true);
       setStaff(payload.availableStaff || []);
       setStoreLocations(payload.storeLocations || []);
       setViewer(payload.viewer || null);
@@ -94,6 +125,20 @@ export default function FulfilmentWorkflowPage() {
   }, [storeFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  // Idempotent workflow-number registration, only for already provider-verified
+  // and stock-committed WhatsApp purchases. No payment or stock write occurs.
+  useEffect(() => {
+    if (!whatsappEnabled || !viewer?.manager || whatsappSynced) return;
+    setWhatsappSynced(true);
+    void fetch('/api/backoffice/workflow/whatsapp',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'sync'}),
+    }).then(async response=>{
+      const result=await response.json() as {message?:string};
+      if(!response.ok)throw Error(result.message || 'Unable to load WhatsApp orders');
+      await load();
+    }).catch(error=>setMessage(error instanceof Error?error.message:'WhatsApp orders could not be synchronized'));
+  },[whatsappEnabled,viewer?.manager,whatsappSynced,load]);
 
   function nextStage(job: Job) {
     const index = order.indexOf(job.currentFulfilmentStage);
@@ -178,23 +223,82 @@ export default function FulfilmentWorkflowPage() {
     }
   }
 
+  async function assignOnline(job:OnlineJob) {
+    const staffId=onlineSelectedStaff[job.id];
+    if(!job.stage||!staffId){setMessage('Select an eligible staff member for this stage.');return;}
+    setSaving(`online-assign-${job.id}`);setMessage('');
+    try {
+      const response=await fetch(job.channel==='WHATSAPP'
+        ? '/api/backoffice/workflow/whatsapp' : '/api/backoffice/workflow/online',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'assign',orderId:job.id,stage:job.stage,staffId})
+      });
+      const payload=await response.json() as {message?:string};
+      if(!response.ok)throw Error(payload.message||'Assignment failed');
+      setMessage(`${job.orderNumber}: staff assigned to ${job.stage.toLowerCase()}.`);await load();
+    } catch(error){setMessage(error instanceof Error?error.message:'Staff assignment failed');}
+    finally{setSaving('');}
+  }
+
+  // All stages go through the assignment-guarded Neon transaction; stock and payments are untouched.
+  async function advanceOnline(job: OnlineJob) {
+    const next=job.channel==='WHATSAPP'
+      ? (job.stage==='PRODUCTION' ? {status:'PACKAGING',label:'Complete production'}
+        : job.stage==='PACKAGING' ? {status:'DELIVERY',label:'Complete packing'}
+        : job.stage==='DELIVERY' ? {status:'DONE',label:'Complete delivery'} : undefined)
+      : onlineTransitions[job.status];
+    if (!next || !job.stockReady) return;
+    if ((next.status === "dispatched" || next.status==='DONE') &&
+        !window.confirm(`Confirm the order has actually been handed over or dispatched: ${job.orderNumber}?`)) return;
+    setSaving(`online-${job.id}`);
+    setMessage("");
+    try {
+      const response=await fetch(job.channel==='WHATSAPP'
+        ? '/api/backoffice/workflow/whatsapp' : '/api/backoffice/workflow/online',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'advance',orderId:job.id,stage:job.stage}),
+      });
+      const result = await response.json() as {message?:string};
+      if (!response.ok) throw new Error(result.message || `Unable to move ${job.orderNumber} to ${next.status}`);
+      setMessage(`${job.orderNumber}: ${next.label}`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Online order transition failed.");
+    } finally { setSaving(""); }
+  }
+
   const visibleStages = viewer?.manager ? order : order.filter((stage) => viewer?.stages?.includes(stage));
   const normalizedOrderSearch = orderSearch.trim().toLowerCase();
-  const grouped = useMemo(
-    () => visibleStages.map((stage) => ({
-      stage,
-      jobs: jobs.filter((job) =>
-        job.currentFulfilmentStage === stage &&
-        (!normalizedOrderSearch || job.orderNumber.toLowerCase().includes(normalizedOrderSearch)) &&
-        (!appliedDateRange.from || !appliedDateRange.to || (() => {
-          const key = kenyaDateKey(job.orderDate);
-          return key >= appliedDateRange.from && key <= appliedDateRange.to;
-        })()),
-      ),
-    })),
-    [appliedDateRange.from, appliedDateRange.to, jobs, normalizedOrderSearch, visibleStages.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
+  // One workflow: combine the existing commerce jobs and the paid online jobs
+  // visually by their actual staff stage. Each retains its own guarded writer.
+  const legacyMatchesChannel = (job:Job) => {
+    const channel = String(job.salesChannel || "").toUpperCase();
+    if (channelFilter === "ALL") return true;
+    if (channelFilter === "WHATSAPP") return /WHATSAPP|\bWA\b|WTP/.test(channel);
+    if (channelFilter === "POS") return /POS|IN.STORE|STORE/.test(channel);
+    return /ONLINE|ECOM|WEB|PAYSTACK/.test(channel);
+  };
+  const visibleOnlineJobs = [...onlineJobs,...whatsappJobs].filter((job) =>
+    (channelFilter === "ALL" || channelFilter === (job.channel||'ONLINE')) &&
+    (!normalizedOrderSearch || `${job.orderNumber} ${job.reference} ${job.customerName}`.toLowerCase().includes(normalizedOrderSearch)) &&
+    (!appliedDateRange.from || !appliedDateRange.to || (() => {
+      const key = kenyaDateKey(job.orderDate);
+      return key >= appliedDateRange.from && key <= appliedDateRange.to;
+    })()),
   );
-  const matchedJobs = grouped.reduce((total, group) => total + group.jobs.length, 0);
+  const grouped = visibleStages.map((stage) => ({
+    stage,
+    jobs: jobs.filter((job) =>
+      job.currentFulfilmentStage === stage && legacyMatchesChannel(job) &&
+      (!normalizedOrderSearch || `${job.orderNumber} ${job.customerName}`.toLowerCase().includes(normalizedOrderSearch)) &&
+      (!appliedDateRange.from || !appliedDateRange.to || (() => {
+        const key = kenyaDateKey(job.orderDate);
+        return key >= appliedDateRange.from && key <= appliedDateRange.to;
+      })()),
+    ),
+    onlineJobs: visibleOnlineJobs.filter((job) => job.stage === stage),
+  }));
+  const matchedJobs = grouped.reduce((total, group) => total + group.jobs.length + group.onlineJobs.length, 0);
 
   return (
     <div className="min-h-full bg-[var(--paper-2)] p-4 sm:p-6 lg:p-8">
@@ -204,7 +308,7 @@ export default function FulfilmentWorkflowPage() {
             <p className="kicker text-[var(--muted)]">Operations</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">Fulfilment Workflow</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-              Production, packaging and delivery move forward only after the active team completes its stage and assigns the next available staff member.
+              Website, store and WhatsApp orders share one stage-based workflow. Select a channel to focus on a particular source.
             </p>
           </div>
           <button onClick={() => void load()} className="inline-flex min-h-10 w-fit shrink-0 items-center gap-2 rounded-full border hairline bg-white px-4 py-2 text-xs">
@@ -228,7 +332,7 @@ export default function FulfilmentWorkflowPage() {
 
         <div className="mt-5 rounded-2xl border hairline bg-white p-4 sm:p-5">
           <label htmlFor="fulfilment-order-search" className="text-xs font-semibold">Find and filter orders</label>
-          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Search the active fulfilment queue by order number or limit it to orders paid within a selected date range.</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Search active orders by order number or customer, or filter by channel and date.</p>
           <div className="relative mt-3">
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
             <input
@@ -261,6 +365,15 @@ export default function FulfilmentWorkflowPage() {
                 <ChevronDown size={14} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
               </span>
             </label>
+            <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Sales channel
+              <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value as typeof channelFilter)}
+                className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]">
+                <option value="ALL">All channels</option>
+                <option value="POS">In-store / POS</option>
+                <option value="ONLINE">Online</option>
+                <option value="WHATSAPP">WhatsApp</option>
+              </select>
+            </label>
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={applyDateRange} className="min-h-11 rounded-full bg-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.05em] text-white">Apply dates</button>{(appliedDateRange.from || appliedDateRange.to) && <button type="button" onClick={clearDateRange} className="min-h-11 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear dates</button>}</div>
@@ -274,6 +387,9 @@ export default function FulfilmentWorkflowPage() {
 
         {message && <p className="mt-5 break-words rounded-xl border hairline bg-white p-3 text-xs">{message}</p>}
 
+        {onlineWarning && <p role="alert" className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">{onlineWarning}</p>}
+        {whatsappWarning && <p role="alert" className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">{whatsappWarning}</p>}
+
         {loading ? (
           <div className="mt-8"><LoaderCircle className="animate-spin" /></div>
         ) : grouped.length === 0 ? (
@@ -284,10 +400,10 @@ export default function FulfilmentWorkflowPage() {
               <section key={group.stage} className="min-w-0 rounded-2xl border hairline bg-white p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold"><PackageCheck size={16} className="shrink-0" />{stageLabel(group.stage)}</h2>
-                  <span className="shrink-0 rounded-full bg-[var(--brand-green)]/10 px-2 py-1 text-[10px] font-semibold text-[var(--brand-green)]">{group.jobs.length}</span>
+                  <span className="shrink-0 rounded-full bg-[var(--brand-green)]/10 px-2 py-1 text-[10px] font-semibold text-[var(--brand-green)]">{group.jobs.length + group.onlineJobs.length}</span>
                 </div>
                 <div className="mt-4 space-y-3">
-                  {group.jobs.length === 0 ? (
+                  {group.jobs.length === 0 && group.onlineJobs.length === 0 ? (
                     <p className="rounded-xl bg-[var(--paper)] p-4 text-xs text-[var(--muted)]">No jobs waiting.</p>
                   ) : group.jobs.map((job) => {
                     const next = nextStage(job);
@@ -367,6 +483,36 @@ export default function FulfilmentWorkflowPage() {
                       </article>
                     );
                   })}
+              {group.onlineJobs.map((job) => {
+                const next = job.channel==='WHATSAPP'
+                  ? (job.stage==='PRODUCTION' ? {status:'PACKAGING',label:'Complete production'}
+                    : job.stage==='PACKAGING' ? {status:'DELIVERY',label:'Complete packing'}
+                    : job.stage==='DELIVERY' ? {status:'DONE',label:'Complete delivery'} : undefined)
+                  : onlineTransitions[job.status];
+                return <article key={job.id} className="rounded-xl border hairline bg-[var(--paper)] p-4">
+                  <p className="break-all text-sm font-semibold">{job.orderNumber} <span className="text-[10px] font-normal">· {job.channel==='WHATSAPP'?'WhatsApp':'Online'}</span></p>
+                  <p className="mt-1 break-all text-[10px] text-[var(--muted)]">Payment reference: {job.reference}</p>
+                  <p className="mt-2 text-xs">{job.customerName} · {job.storeLocationName || "Unassigned store"}</p>
+                  <p className="mt-1 text-xs font-semibold">{formatMoney(job.total)} · {onlineStatusLabel(job.status)}</p>
+                  <div className="mt-2 text-xs text-[var(--muted)]">{job.items.map((item, i) => <p key={i}>{item.quantity}× {item.name}</p>)}</div>
+                  {job.stage && <p className="mt-2 text-xs font-semibold">{stageLabel(job.stage)} · {job.assignedStaffName || 'Unassigned'}</p>}
+                  {viewer?.manager && job.stage && (job.channel==='WHATSAPP'?whatsappEnabled:onlineAssignmentsEnabled) && job.stockReady && <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <select aria-label={`Assign ${job.stage.toLowerCase()} staff`} value={onlineSelectedStaff[job.id] || job.assignedStaffId || ''}
+                      onChange={(event)=>setOnlineSelectedStaff(current=>({...current,[job.id]:event.target.value}))}
+                      className="min-h-10 min-w-32 flex-1 rounded-lg border hairline bg-white px-2 text-xs">
+                      <option value="">Select {job.stage.toLowerCase()} staff</option>
+                      {candidates(job.stage || undefined,job.storeLocationId).map(person=><option key={person._id} value={person._id}>{person.name}</option>)}
+                    </select>
+                    <button type="button" disabled={Boolean(saving)} onClick={()=>void assignOnline(job)}
+                      className="min-h-10 rounded-lg border hairline px-3 text-xs font-semibold">Assign staff</button>
+                  </div>}
+                  {!job.stockReady ? (
+                    <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Payment received, but stock needs reconciliation. Do not dispatch.</p>
+                  ) : next && (job.channel==='WHATSAPP'?whatsappEnabled:onlineAssignmentsEnabled) && Boolean(job.assignedStaffId) ? (
+                    <button type="button" disabled={Boolean(saving)} onClick={() => void advanceOnline(job)} className="mt-4 min-h-10 rounded-lg bg-[var(--brand-green)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{saving === `online-${job.id}` ? "Updating…" : next.label}</button>
+                  ) : <p className="mt-3 text-xs text-[var(--muted)]">{next ? "Assign the current stage before processing." : "Dispatched; awaiting delivery confirmation."}</p>}
+                </article>;
+              })}
                 </div>
               </section>
             ))}

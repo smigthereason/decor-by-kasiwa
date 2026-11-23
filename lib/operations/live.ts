@@ -126,7 +126,7 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
     const companyOnHand = effectiveOnHand(row.initialStock, row.variants);
     const balances = row.inventory?.locationBalances || [];
     const scopedBalance = storeLocationId ? findLocationBalance(balances, storeLocationId) : undefined;
-    const scopedVariants = (row.variants || []).map((variant, index) => ({
+    const scopedVariants = (row.variants || []).filter(v => (v as StockVariant & {retired?:boolean}).retired !== true).map((variant, index) => ({
       id: variant._key || `${row._id}-variant-${index}`,
       title: variant.title,
       colour: variant.colour,

@@ -18,6 +18,7 @@ type VariantDraft = {
   sku: string;
   price: string;
   stockQuantity: string;
+  retired?: boolean;
   existingImageAssetRef?: string;
   imageUrl?: string;
   image?: File;
@@ -56,6 +57,7 @@ type EditorProduct = {
     sku?: string;
     price?: number;
     stockQuantity?: number;
+    retired?: boolean;
     imageAssetRef?: string;
     imageUrl?: string;
   }>;
@@ -73,7 +75,9 @@ type EditorProduct = {
   inventory?: { _rev?: string; locationBalances?: Array<{ store?: { _ref?: string }; storeId?: string; onHand?: number; variants?: Array<{ variantId?: string; onHand?: number }> }>; location?: string; defaultStoreId?: string; defaultStoreName?: string; defaultStoreCode?: string; defaultStoreType?: "MAIN" | "BRANCH"; reserved?: number; incoming?: number; reorderPoint?: number; unitCost?: number } | null;
 };
 
-const blankVariant = (): VariantDraft => ({ title: "", colour: "", size: "", sku: "", price: "", stockQuantity: "" });
+// Stable key from the first click: a repeated save is an update, never a new
+// server-generated variant identity for the same user draft.
+const blankVariant = (): VariantDraft => ({ _key: crypto.randomUUID().replace(/-/g, "").slice(0, 12), title: "", colour: "", size: "", sku: "", price: "", stockQuantity: "" });
 
 function toLocalDateTimeInput(value?: string) {
   if (!value) return "";
@@ -126,6 +130,13 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const [message, setMessage] = useState<string | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [showRemovedVariants, setShowRemovedVariants] = useState(false);
+  // If Sanity committed the catalogue but Neon registration failed, a retry
+  // must submit the SAME variant IDs with a fresh Sanity revision.
+  const [retryVariantRegistration, setRetryVariantRegistration] = useState(false);
+  const persistedVariantKeys = new Set((product?.variants || [])
+    .map(variant => variant._key)
+    .filter((key): key is string => Boolean(key)));
   const [existingGallery, setExistingGallery] = useState<ExistingGalleryImage[]>([]);
   const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
   const [visibility, setVisibility] = useState({ available: true, featured: false, newArrival: false, bestSeller: false, onSale: false });
@@ -187,6 +198,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
           sku: variant.sku || "",
           price: typeof variant.price === "number" ? String(variant.price) : "",
           stockQuantity: typeof variant.stockQuantity === "number" ? String(variant.stockQuantity) : "",
+          retired: variant.retired === true,
           existingImageAssetRef: variant.imageAssetRef,
           imageUrl: variant.imageUrl,
         })));
@@ -225,6 +237,48 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     }
   }
 
+  // Saved variants must not be removed via the whole-product PATCH: a stale
+  // product revision would reject an otherwise safe zero-stock retirement.
+  async function updateRegisteredVariantStatus(variantKey: string, retired: boolean) {
+    if (!productId || !canRemoveImages || saving) return;
+    if (!window.confirm(`${retired ? 'Remove this zero-stock variant from sales' : 'Restore this variant to sales'} now? This action saves immediately and reloads the editor. Other unsaved product edits will be discarded; save those first if needed.`)) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/backoffice/products/${encodeURIComponent(productId)}/variant-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantKey, retired }),
+        cache: 'no-store',
+      });
+      const payload = await readApiResponse<{ revision?: string; code?: string; ok?: boolean }>(response);
+      if (!response.ok || !payload.ok) {
+        throw new Error(`${payload.message || 'Unable to change variant status.'}${payload.code ? ` (${payload.code})` : ''}`);
+      }
+      // An absent revision requires a full product reload before any further
+      // whole-product save; never keep a known-stale revision in memory.
+      let revision = payload.revision;
+      if (!revision) {
+        const freshResponse = await fetch(`/api/backoffice/products/${encodeURIComponent(productId)}`, { cache: 'no-store' });
+        const fresh = await readApiResponse<{ product?: EditorProduct }>(freshResponse);
+        revision = freshResponse.ok ? fresh.product?._rev : undefined;
+      }
+      setProduct(current => current ? {
+        ...current, _rev: revision || undefined,
+        variants: (current.variants || []).map(variant => variant._key === variantKey ? { ...variant, retired } : variant),
+      } : current);
+      setVariants(current => current.map(variant => variant._key === variantKey ? { ...variant, retired } : variant));
+      // The product may also have changed in another session. Reload all fields
+      // after the narrow write rather than allowing a stale full-form submit
+      // to overwrite those changes with a freshly minted revision.
+      window.location.reload();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to change variant status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function toggle(group: keyof typeof selected, id: string) {
     setSelected((current) => ({
       ...current,
@@ -238,6 +292,17 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     setSaving(true);
     setMessage(null);
     setPricingError(null);
+    // Neon may already have stock rows, sales or audit records attached to a
+    // registered variant ID. Never submit a draft that silently drops one.
+    if (isEditing && neonInventory) {
+      const requestedKeys = new Set(variants.map(variant => variant._key).filter(Boolean));
+      const missing = [...persistedVariantKeys].filter(key => !requestedKeys.has(key));
+      if (missing.length) {
+        setMessage("A registered variant was removed from this form. Reload to restore it before saving. Existing variant identities cannot be deleted; only unsaved new variants can be removed.");
+        setSaving(false);
+        return;
+      }
+    }
     const form = new FormData(event.currentTarget);
     // DBK-120: the live Neon ledger owns all stock and allocations. The product
     // editor may update variant metadata but must never submit cached quantities.
@@ -285,11 +350,37 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     form.set("posEnabled", String(salesChannels.pos));
     for (const [key, value] of Object.entries(visibility)) form.set(key, String(value));
 
-    form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
-      ...variant,
-      price: variant.price ? Number(variant.price) : null,
-      ...(!managerMode && !neonInventory ? { stockQuantity: _stockQuantity !== "" ? Number(_stockQuantity) : 0 } : {}),
-    }))));
+    // DBK132: avoid unnecessary Neon variant registration.
+    const signature = (v: {
+      _key?: string; title?: string; colour?: string; size?: string;
+      sku?: string; price?: string | number | null; retired?: boolean;
+      existingImageAssetRef?: string; imageAssetRef?: string;
+    }) => JSON.stringify([
+      v._key || "", (v.title || "").trim(),
+      (v.colour || "").trim(), (v.size || "").trim(),
+      (v.sku || "").trim(),
+      v.price === undefined || v.price === null || v.price === ""
+        ? null : Number(v.price),
+      v.existingImageAssetRef || v.imageAssetRef || "", v.retired === true,
+    ]);
+
+    const originals = product?.variants || [];
+    const changed = !isEditing ||
+      variants.length !== originals.length ||
+      variants.some((v, i) =>
+        Boolean(v.image) ||
+        signature(v) !== signature(originals[i] || {})
+      );
+
+    if (changed || retryVariantRegistration) {
+      form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
+        ...variant,
+        price: variant.price ? Number(variant.price) : null,
+        ...(!managerMode && !neonInventory ? { stockQuantity: _stockQuantity !== "" ? Number(_stockQuantity) : 0 } : {}),
+      }))));
+    } else {
+      form.delete("variants");
+    }
     variants.forEach((variant, index) => {
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
     });
@@ -325,11 +416,29 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         body: requestBody,
         headers,
       });
-      const payload = await readApiResponse<{ productId?: string }>(response);
+      const payload = await readApiResponse<{ productId?: string; code?: string }>(response);
       if (!response.ok) {
         if (payload.message?.includes("Compare-at price")) setPricingError(payload.message);
-        throw new Error(payload.message || `Unable to ${isEditing ? "update" : "create"} product.`);
+        if (isEditing && productId && payload.code === "DBK120_NEON_REGISTRATION_PENDING") {
+          // Sanity saved successfully; refresh only its revision while keeping
+          // unsaved UI draft content and immutable variant keys intact.
+          const freshResponse = await fetch(`/api/backoffice/products/${encodeURIComponent(productId)}`,
+            { cache: "no-store" });
+          const fresh = await readApiResponse<{ product?: EditorProduct }>(freshResponse);
+          if (freshResponse.ok && fresh.product?._rev) {
+            setProduct(current => current ? { ...current, _rev: fresh.product!._rev } : current);
+            setRetryVariantRegistration(true);
+            throw new Error("The catalogue saved, but stock registration is incomplete. Variant IDs are preserved. Click Save again to retry registration.");
+          }
+          throw new Error("The catalogue saved but stock registration was not confirmed. Reload the product before retrying.");
+        }
+        const fallback = response.status === 409
+          ? 'Save rejected (409). Product data was not overwritten. Reload to check for another editor or a registered-variant conflict.'
+          : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
+        const specificMessage = payload.message && !/^error\s*409$/i.test(payload.message) ? payload.message : fallback;
+        throw new Error(`${specificMessage}${payload.code ? ` (${payload.code})` : ''}`);
       }
+      setRetryVariantRegistration(false);
       const destinationId = productId || payload.productId;
       if (!destinationId) throw new Error("Product saved but its ID was not returned.");
       router.push(managerMode ? `/store/products/${encodeURIComponent(destinationId)}` : `/admin/products/${encodeURIComponent(destinationId)}`);
@@ -399,9 +508,20 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             </div>
           </Card>
 
-          <Card title="Variants" action={<button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>}>
-            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">Stock quantities are company totals. Saving allocates the unassigned remainder to the inventory location below; stock already at other stores is preserved.</p>
-            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=><div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}</p><button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove variant ${index+1}`}><Trash2 size={14}/></button></div>{variant.imageUrl && !variant.image && <div className="mb-3 flex items-center gap-2"><img src={variant.imageUrl} alt="Current variant" className="h-20 w-20 rounded-lg border hairline object-cover"/>{canRemoveImages && variant._key && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("variant", variant._key)} className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove variant image</button>}</div>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={(managerMode || neonInventory) && key === "stockQuantity"} aria-readonly={(managerMode || neonInventory) && key === "stockQuantity"} onChange={(e)=>{if ((managerMode || neonInventory) && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label>{variant.image && <button type="button" onClick={() => setVariants((current) => current.map((item, i) => i === index ? { ...item, image: undefined } : item))} className="mt-2 inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={12}/>Clear selected variant image</button>}</div>)}</div>}
+          <Card title="Variants" action={<div className="flex items-center gap-2">
+            {variants.some(v=>v.retired) && <button type="button" onClick={()=>setShowRemovedVariants(v=>!v)} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">{showRemovedVariants ? 'Hide removed' : `Show removed (${variants.filter(v=>v.retired).length})`}</button>}
+            <button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>
+          </div>}>
+            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">{isEditing && neonInventory
+              ? "Stock is read-only here. Remove zero-stock variants from sales, or restore them later. Registered identifiers remain for audit history. Variants with stock must be cleared through Inventory first."
+              : "Stock quantities are company totals. Saving allocates the unassigned remainder to the selected inventory location; stock already at other stores is preserved."}</p>
+            {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=>variant.retired && !showRemovedVariants ? null : <div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}{variant.retired ? ' · Removed from sales' : ''}</p>{isEditing && neonInventory && variant._key && persistedVariantKeys.has(variant._key)
+  ? (variant.retired
+    ? <button type="button" disabled={saving} onClick={()=>void updateRegisteredVariantStatus(variant._key!, false)} className="rounded-full border hairline px-3 py-1 text-xs">Restore variant</button>
+    : Number(variant.stockQuantity || 0) > 0 || !canRemoveImages
+      ? <span className="text-[10px] text-[var(--muted)]" title="This variant has stock at a store and cannot be removed from sales yet.">Stocked · retained</span>
+      : <button type="button" disabled={saving} onClick={()=>void updateRegisteredVariantStatus(variant._key!, true)} className="inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={13}/>Remove</button>)
+  : <button type="button" onClick={()=>setVariants((current)=>current.filter((_,i)=>i!==index))} aria-label={`Remove unsaved variant ${index+1}`}><Trash2 size={14}/></button>}</div>{variant.imageUrl && !variant.image && <div className="mb-3 flex items-center gap-2"><img src={variant.imageUrl} alt="Current variant" className="h-20 w-20 rounded-lg border hairline object-cover"/>{canRemoveImages && variant._key && <button type="button" disabled={Boolean(removingImage) || saving} onClick={() => void removeExistingImage("variant", variant._key)} className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-2 text-xs text-red-700 disabled:opacity-50"><Trash2 size={13}/>Remove variant image</button>}</div>}<div className="grid gap-3 sm:grid-cols-3">{(["title","colour","size","sku","price","stockQuantity"] as const).map((key)=><Field key={key} label={key === "stockQuantity" ? "Stock (read-only)" : key[0].toUpperCase()+key.slice(1)}><input type={["price","stockQuantity"].includes(key)?"number":"text"} min={["price","stockQuantity"].includes(key)?0:undefined} value={variant[key]} readOnly={(managerMode || neonInventory) && key === "stockQuantity"} aria-readonly={(managerMode || neonInventory) && key === "stockQuantity"} onChange={(e)=>{if ((managerMode || neonInventory) && key === "stockQuantity") return;setVariants((current)=>current.map((item,i)=>i===index?{...item,[key]:e.target.value}:item));}}/></Field>)}</div><label className="mt-3 block text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--muted)]">{variant.imageUrl ? "Replace variant image" : "Variant image"}<input type="file" accept="image/*" onChange={(e)=>setVariants((current)=>current.map((item,i)=>i===index?{...item,image:e.target.files?.[0]}:item))} className="mt-2 block w-full text-xs normal-case tracking-normal"/></label>{variant.image && <button type="button" onClick={() => setVariants((current) => current.map((item, i) => i === index ? { ...item, image: undefined } : item))} className="mt-2 inline-flex items-center gap-1 text-xs text-red-700"><Trash2 size={12}/>Clear selected variant image</button>}</div>)}</div>}
           </Card>
         </div>
 

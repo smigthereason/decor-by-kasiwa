@@ -33,6 +33,8 @@ function fromCategory(category: Category): Editor {
 export default function CategoryManagerPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const filteredCategories = categories.filter(c => `${c.title} ${c.slug || ""}`.toLowerCase().includes(categoryQuery.toLowerCase().trim()));
   const [editor, setEditor] = useState<Editor>(blank);
   const [image, setImage] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,7 +105,7 @@ export default function CategoryManagerPage() {
             <div><p className="kicker text-[var(--muted)]">Catalogue</p><h1 className="mt-2 text-2xl font-semibold">Categories</h1></div>
             <button onClick={() => choose()} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 py-2 text-xs font-semibold text-white"><Plus size={14}/>New category</button>
           </div>
-          <div className="mt-5 space-y-2 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">{loading ? <LoaderCircle className="animate-spin"/> : categories.map((category) => (
+          <div className="mt-5 space-y-2 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">{loading ? <LoaderCircle className="animate-spin"/> : filteredCategories.map((category) => (
             <button key={category._id} onClick={() => choose(category)} className={`flex w-full min-w-0 items-center gap-3 rounded-xl border p-3 text-left ${selectedId === category._id ? "border-[var(--brand-green)] bg-[var(--brand-green)]/5" : "hairline bg-[var(--paper)]"}`}>
               <div className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-white">{category.imageUrl ? <Image src={category.imageUrl} alt="" fill unoptimized className="object-cover"/> : <div className="grid h-full place-items-center"><FolderTree size={18}/></div>}</div>
               <div className="min-w-0"><p className="truncate text-sm font-semibold">{category.title}</p><p className="mt-1 truncate text-[10px] text-[var(--muted)]">{category.parentTitle ? `Subcategory of ${category.parentTitle}` : "Top-level category"}{category.active === false ? " · Inactive" : ""}</p></div>

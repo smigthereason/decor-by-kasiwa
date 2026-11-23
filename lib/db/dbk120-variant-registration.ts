@@ -14,17 +14,24 @@ export async function dbk120ValidateVariantReadiness(productId: string, variantI
       (Number(row.on_hand)>0 || Number(row.incoming)>0))) {
     throw new Error('Quarantined stock requires reviewed reconciliation before variants can change');
   }
+  const alreadyVariantManaged = balances.some(row => row.variant_id !== '' && row.variant_id !== '__UNALLOCATED_VARIANT__');
   const nonvariant = balances.filter(row => row.variant_id === '');
   if (nonvariant.length) {
     if (nonvariant.some(row => Number(row.on_hand)>0 || Number(row.incoming)>0)) {
       throw new Error('This product has non-variant stock. Move or allocate those units before converting to variants.');
     }
-    const [record] = await getNeonSql()`
-      SELECT count(*)::integer AS used FROM public.dbk51_stock_operations
-      WHERE product_id=${productId} AND variant_id=''
-    `;
-    if (Number(record?.used || 0)>0) {
-      throw new Error('This product has historical stock transactions. Converting its stock identifier requires a reviewed migration.');
+    // Historical non-variant operations prohibit the INITIAL conversion.
+    // They do not prohibit registering an additional zero-stock variant once
+    // real variant keys are already registered and all non-variant balances
+    // are zero. The database function enforces this same rule under a lock.
+    if (!alreadyVariantManaged) {
+      const [record] = await getNeonSql()`
+        SELECT count(*)::integer AS used FROM public.dbk51_stock_operations
+        WHERE product_id=${productId} AND variant_id=''
+      `;
+      if (Number(record?.used || 0)>0) {
+        throw new Error('This product has historical stock transactions. Converting its stock identifier requires a reviewed migration.');
+      }
     }
   }
   return {existingRows:balances.length,conversion:nonvariant.length>0};

@@ -7,6 +7,8 @@ import { dbk62ReadEnabled, dbk62ReadReceipt } from "@/lib/db/dbk62-pos-cutover";
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
 import { dbk68ReadEnabled, dbk68ReadReceipt } from "@/lib/db/dbk68-daraja-neon";
 import { dbk68IsOrderId } from "@/lib/db/dbk68-daraja-core";
+import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
+import { dbk134Receipt,dbk134OnlineOrder } from "@/lib/db/dbk134-online-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,14 @@ export async function GET(request: Request) {
   if (!staff.ok) return NextResponse.json({ message: "Unauthorized." }, { status: staff.status });
   const id = new URL(request.url).searchParams.get("id")?.trim();
   if (!id) return NextResponse.json({ message: "Order ID is required." }, { status: 400 });
+  if(isNeonOnlineOrderId(id)) {
+    try {
+      const order=await dbk134OnlineOrder(id);
+      if((staff.role==='MANAGER'||staff.role==='STORE_STAFF')&&
+         (!staff.storeLocationId||order.storeLocationId!==staff.storeLocationId)) return NextResponse.json({message:'Unauthorized receipt location'},{status:403});
+      return NextResponse.json({receipt:await dbk134Receipt(id)},{headers:{'Cache-Control':'private, no-store'}});
+    } catch(error){return NextResponse.json({message:error instanceof Error?error.message:'Receipt unavailable'},{status:409});}
+  }
   if (isDbk61SyntheticOrderId(id)) {
     if (staff.role !== "ADMIN" || !dbk61SandboxAllowed(request)) {
       return NextResponse.json({ message: "Not found" }, { status: 404 });

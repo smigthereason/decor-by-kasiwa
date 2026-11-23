@@ -87,6 +87,7 @@ type VariantInput = {
   colour?: string;
   size?: string;
   sku?: string;
+  retired?: boolean;
   price?: number | null;
   stockQuantity?: number | null;
   existingImageAssetRef?: string;
@@ -133,7 +134,7 @@ export async function GET(
       shortDescription,
       description,
       colours,
-      "variants": variants[]{_key,title,colour,size,sku,price,stockQuantity,"imageAssetRef":image.asset._ref,"imageUrl":image.asset->url},
+      "variants": variants[]{_key,title,colour,size,sku,retired,price,stockQuantity,"imageAssetRef":image.asset._ref,"imageUrl":image.asset->url},
       materials,
       dimensions,
       careInstructions,
@@ -287,6 +288,12 @@ export async function PATCH(
       const storeEditableFields = new Set([
         "name", "shortDescription", "description", "onHand", "reserved", "incoming", "reorderPoint",
         "unitCost", "ecommerceEnabled", "posEnabled", "retailPrice", "location", "storeLocationId", "available", "bestSeller",
+        // Store Manager may manage catalogue variants and their non-stock metadata.
+        // Neon stock quantities remain write-protected above and in variant registration.
+        "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
+        "rating", "reviewCount", "featured", "newArrival", "onSale", "saleStartAt", "saleEndAt",
+        "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples",
+        "colours", "materials", "dimensions", "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision",
       ]);
       const restrictedField = Object.keys(body).find((key) => !storeEditableFields.has(key));
       if (restrictedField) {
@@ -480,6 +487,7 @@ export async function PATCH(
     }
 
     let dbk120DesiredVariantKeys: string[] | null = null;
+    let neonExistingVariantKeys: string[] = [];
     let managerProductRevision: string | undefined;
     if (body.variants !== undefined) {
       let variants: VariantInput[] = [];
@@ -494,24 +502,53 @@ export async function PATCH(
       const managerVariants = staff.role === "MANAGER";
       const currentVariantStock = new Map<string, number>();
       let neonCurrentVariants = new Map<string, { stockQuantity: number }>();
+      const currentVariantRetired = new Map<string, boolean>();
       if (neonInventory) {
         const current = await serverClient.fetch<{
-          _rev:string; variants?:Array<{_key?:string;stockQuantity?:number}>;
+          _rev:string; variants?:Array<{_key?:string;stockQuantity?:number;retired?:boolean}>;
         } | null>(
-          `*[_type == "product" && _id == $id][0]{_rev,variants[]{_key,stockQuantity}}`,
+          `*[_type == "product" && _id == $id][0]{_rev,variants[]{_key,stockQuantity,retired}}`,
           {id:productId}, {cache:"no-store"},
         );
         if (!current) return NextResponse.json({message:'Product not found.'},{status:404});
         if (!body.productRevision || body.productRevision !== current._rev) {
-          return NextResponse.json({message:'Product changed. Reload before editing variants.'},{status:409});
+          return NextResponse.json({code:'DBK141_PRODUCT_REVISION_STALE',message:'This product changed in another session. Reload it before saving variant changes.'},{status:409,headers:{'Cache-Control':'private, no-store'}});
         }
         const existingKeys = (current.variants || []).map(v=>v._key).filter((k):k is string=>Boolean(k));
+        neonExistingVariantKeys = existingKeys;
+        for (const existingVariant of current.variants || []) {
+          if (existingVariant._key) currentVariantRetired.set(existingVariant._key, existingVariant.retired === true);
+        }
+        // Registered identities remain forever, but an unused zero-stock identity
+        // may be removed from sales without erasing past inventory/sales records.
+        const changingRetirement = variants.filter(v => v._key && existingKeys.includes(v._key) &&
+          v.retired !== undefined && (v.retired === true) !== currentVariantRetired.get(v._key));
+        if (changingRetirement.length && !["ADMIN", "STORE"].includes(staff.role)) {
+          return NextResponse.json({message:'Only Admin or Store Manager may remove or restore a registered variant from sales.'},{status:403});
+        }
+        if (changingRetirement.some(v=>v.retired === true)) {
+          const balances = await dbk69ProductBalances(productId);
+          for (const variant of changingRetirement.filter(v=>v.retired === true)) {
+            if (balances.some(row => row.variant_id === variant._key &&
+              (Number(row.on_hand) !== 0 || Number(row.incoming) !== 0))) {
+              return NextResponse.json({code:'DBK140_VARIANT_HAS_STOCK',
+                message:'This variant still has on-hand or incoming stock. Move or complete that stock before removing it from sales.'},
+                {status:409,headers:{'Cache-Control':'private, no-store'}});
+            }
+          }
+        }
+        if (variants.length > 0 && variants.every(v => v.retired === true ||
+          (v.retired === undefined && currentVariantRetired.get(v._key || '') === true))) {
+          return NextResponse.json({message:'Keep at least one sellable variant. Disable the entire product if all variants are no longer sold.'},{status:409});
+        }
         const requestedKeys = variants.map(v=>v._key || "").filter(Boolean);
         if (new Set(requestedKeys).size !== requestedKeys.length) {
           return NextResponse.json({message:'Variant identifiers must be unique.'},{status:400});
         }
         if (existingKeys.some(k=>!requestedKeys.includes(k))) {
-          return NextResponse.json({message:'Existing variants cannot be removed after Neon cutover; retain them and mark unavailable instead.'},{status:409});
+          return NextResponse.json({code:'DBK120_REGISTERED_VARIANT_REMOVAL',
+            message:'This saved variant has a registered stock identity. Reload the product and retain existing variants; only new unsaved variants can be removed.'},
+            {status:409,headers:{'Cache-Control':'private, no-store'}});
         }
         if (variants.length>100) return NextResponse.json({message:'Maximum 100 variants per product.'},{status:400});
         const existing = new Set(existingKeys);
@@ -550,7 +587,7 @@ export async function PATCH(
         if (variants.some(v => v.stockQuantity !== undefined && v.stockQuantity !== null)) {
           return NextResponse.json({ message: "Managers cannot edit variant stock quantities." }, { status: 403 });
         }
-        if (!(current.variants || []).length && variants.length && Number(current.initialStock || 0) > 0) {
+        if (!neonInventory && !(current.variants || []).length && variants.length && Number(current.initialStock || 0) > 0) {
           return NextResponse.json({ message: "Move or allocate existing stock before changing this product to variants." }, { status: 403 });
         }
         const requestedKeys = new Set(variants.map(v => v._key).filter(Boolean));
@@ -589,6 +626,11 @@ export async function PATCH(
           colour: variant.colour?.trim() || undefined,
           size: variant.size?.trim() || undefined,
           sku: variant.sku?.trim() || undefined,
+          // Never un-retire an existing variant just because an older client
+          // omitted the new field; preserve the stored catalogue status.
+          retired: variant.retired === undefined
+            ? currentVariantRetired.get(variant._key || '') === true
+            : variant.retired === true,
           price: typeof variant.price === "number" && variant.price > 0 ? variant.price : undefined,
           stockQuantity: neonInventory
             ? neonCurrentVariants.get(variant._key || "")?.stockQuantity ?? 0
@@ -600,10 +642,17 @@ export async function PATCH(
       }
       productPatch.variants = variantDocuments;
       if (neonInventory) {
-        if (!variantDocuments.length) {
+        if (!variantDocuments.length && neonExistingVariantKeys.length) {
           return NextResponse.json({message:'Cannot switch a Neon-registered product to a non-variant product. Retain the variant identifiers.'},{status:409});
         }
-        dbk120DesiredVariantKeys = variantDocuments.map(v=>v._key);
+        // Register new keys only; existing metadata edits do not need registration.
+        const registeredRows = await dbk69ProductBalances(productId);
+        const registeredKeys = new Set(registeredRows
+          .map(row => row.variant_id)
+          .filter(key => key && key !== '__UNALLOCATED_VARIANT__'));
+        if (variantDocuments.some(v => !neonExistingVariantKeys.includes(v._key) || !registeredKeys.has(v._key))) {
+          dbk120DesiredVariantKeys = variantDocuments.map(v=>v._key);
+        }
       }
       if (variantDocuments.length > 0 && !managerVariants && !neonInventory) {
         productPatch.initialStock = variantDocuments.reduce(
@@ -739,8 +788,11 @@ export async function PATCH(
       stockInventoryId = inventory?._id;
     }
 
-    if (neonInventory && dbk120DesiredVariantKeys) {
+    // Preserve revision protection for metadata-only variant edits.
+    if (neonInventory && managerProductRevision && body.variants !== undefined) {
       stockProductRevision = managerProductRevision;
+    }
+    if (neonInventory && dbk120DesiredVariantKeys) {
       try {
         await dbk120ValidateVariantReadiness(productId, dbk120DesiredVariantKeys);
       } catch (preflightError) {
@@ -804,8 +856,12 @@ export async function PATCH(
   } catch (error) {
     console.error("Product update failed:", error);
     const detail = error instanceof Error ? error.message : "";
-    if (/revision.*(mismatch|changed|conflict)|conflict.*revision/i.test(detail)) {
-      return NextResponse.json({ message: "Inventory changed while you were editing. Reload the product and retry." }, { status: 409 });
+    const code = error && typeof error === 'object' ? (error as { statusCode?: number; status?: number }) : null;
+    if (code?.statusCode === 409 || code?.status === 409 ||
+        /revision.*(mismatch|changed|conflict)|conflict.*revision/i.test(detail)) {
+      return NextResponse.json({code:'DBK141_PRODUCT_REVISION_STALE',
+        message:'The product was changed by another operation. Your changes were not applied. Reload and retry.'},
+        {status:409,headers:{'Cache-Control':'private, no-store'}});
     }
     const failure = toSanityServiceError(error, "Product update failed.");
     return NextResponse.json({ message: failure.message }, { status: failure.status });

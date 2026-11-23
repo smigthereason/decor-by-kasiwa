@@ -30,6 +30,8 @@ export type RealNeonOrder = {
     discountAuthorizedByName: string;
     receiptNumber: string;
     deliveryLocation: string;
+    fulfilmentType?: 'IN_STORE' | 'DELIVERY';
+    deliveryAddress?: {fullName?:string;phone?:string;address1?:string;city?:string;country?:string};
     productNames: string[];
     lineDetails: Array<{ category?: string; finish?: string; size?: string; unitCost?: number }>;
   };
@@ -78,6 +80,8 @@ export function mapDBK62History(row: RealNeonOrder) {
     amountPaid:kes(row.collected_minor),balanceDue:kes(row.balance_due_minor),
     cashTendered:kes(row.collected_minor),cashChangeDue:kes(row.overpaid_minor),
     deliveryFee:kes(row.delivery_minor),deliveryLocation:display.deliveryLocation,
+    fulfilmentType:display.fulfilmentType === 'DELIVERY' ? 'DELIVERY' as const : 'IN_STORE' as const,
+    deliveryAddress:display.deliveryAddress,
     refundedAmount:refunded,paymentReference:display.internalReference,paymentProvider:'manual',
     providerReceiptNumber:display.paymentReference,storeLocationId:row.store_id,storeLocationName:display.storeName,
     lineItems:row.lines.map((line,i)=>({
@@ -93,7 +97,9 @@ export function mapDBK62Receipt(row: RealNeonOrder) {
   return {
     ...h,_id:h.id,discountType:d.discountType||undefined,discountValue:d.discountValue,
     discountReason:d.discountReason,discountAuthorizedByName:d.discountAuthorizedByName,
-    deliveryAddress:undefined,fulfilmentType:'IN_STORE' as const,overpaidAmount:kes(row.overpaid_minor),
+    deliveryAddress:d.deliveryAddress,
+    fulfilmentType:d.fulfilmentType === 'DELIVERY' ? 'DELIVERY' as const : 'IN_STORE' as const,
+    overpaidAmount:kes(row.overpaid_minor),
     manualPaymentName:d.paymentName,manualPaymentReference:d.paymentReference,
     soldByRole:d.sellerRole,businessName:'Decor by Kasiwa',businessEmail:'',businessPhone:'',
     businessWebsite:'decorbykasiwa.co.ke',

@@ -1,5 +1,6 @@
 import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
 import { dbk65ChangeOnlineOrder } from "@/lib/db/dbk65-online-fulfilment";
+import { dbk134Enabled } from "@/lib/db/dbk134-online-operations";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
@@ -24,13 +25,19 @@ export async function POST(
 
   // Do not create a Sanity shipment for a Neon order; dispatch transitions atomically in Neon.
   if (isNeonOnlineOrderId(orderId)) {
+    if(dbk134Enabled()) return NextResponse.json({message:"Dispatch from assigned Fulfilment Workflow"},{status:409});
     try {
       const result=await dbk65ChangeOnlineOrder({id:orderId,status:'dispatched',role:staff.role,
         actorId:staff.customerId,actorName:staff.customerName,assignedStoreId:staff.storeLocationId});
       if (result.replayed) return NextResponse.json({message:'This order has already been dispatched.'},{status:409});
       return NextResponse.json({...result,message:'Neon online order dispatched.'});
     } catch (error) {
-      return NextResponse.json({message:error instanceof Error ? error.message : 'Neon dispatch unavailable'},{status:409});
+      const reason = error instanceof Error ? error.message : 'Neon dispatch unavailable';
+      const disabled = /fulfilment (cutover|writes) disabled/i.test(reason);
+      return NextResponse.json({
+        code: disabled ? 'DBK65_FULFILMENT_NOT_ENABLED' : 'DBK65_TRANSITION_REJECTED',
+        message: reason,
+      }, {status: disabled ? 503 : 409, headers: {'Cache-Control': 'private, no-store'}});
     }
   }
 

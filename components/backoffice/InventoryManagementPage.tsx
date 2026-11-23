@@ -131,7 +131,10 @@ export default function InventoryManagementPage() {
   const role = session?.user?.role;
   const canManage = role === "ADMIN" || role === "STORE" || role === "MANAGER" || role === "STORE_STAFF";
   const hideProcurement = role === "MANAGER" || role === "STORE_STAFF";
-  const canChangeStock = canManage && role !== "MANAGER";
+  // DBK-124: Managers may purchase/receive at their assigned branch only.
+  // Sales Staff remain read-only; cross-branch transfers stay Admin/Store Manager only.
+  const canChangeStock = role === "ADMIN" || role === "STORE" || role === "MANAGER";
+  const canTransferStock = role === "ADMIN" || role === "STORE";
   const canCorrectStock = role === "ADMIN" || role === "STORE";
   const [search, setSearch] = useState("");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
@@ -170,7 +173,7 @@ export default function InventoryManagementPage() {
   const pendingMovement = useRef<{signature:string;operationId:string}|null>(null);
 
   function openAction(nextAction: InventoryAction, productId?: string) {
-    if (!canChangeStock) return;
+    if (!canChangeStock || (nextAction === "TRANSFER" && !canTransferStock)) return;
     pendingMovement.current = null;
     setAction(nextAction);
     if (productId) {
@@ -181,7 +184,7 @@ export default function InventoryManagementPage() {
     setSelectedVariantId("");
     setVariantSearch("");
     setSourceStoreId("");
-    setDestinationStoreId("");
+    setDestinationStoreId(role === "MANAGER" ? assignedStoreId : "");
     window.requestAnimationFrame(() => actionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
@@ -244,7 +247,7 @@ export default function InventoryManagementPage() {
   }
 
   function beginCorrection(movement: InventoryMovement) {
-    if (!canCorrectStock || !movement._rev) return;
+    if (!canCorrectStock || (!movement._rev && !movement._id.startsWith('dbk69.dbk69-'))) return;
     setEditingMovement(movement);
     setCorrectedQuantity(String(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))));
     setVoidMovement(false);
@@ -254,7 +257,7 @@ export default function InventoryManagementPage() {
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canCorrectStock || !editingMovement?._rev || correctingMovement) return;
+    if (!canCorrectStock || !editingMovement || (!editingMovement._rev && !editingMovement._id.startsWith('dbk69.dbk69-')) || correctingMovement) return;
     if (voidMovement && !window.confirm("Void this movement? The inventory ledger will be adjusted, and the original record will remain in the audit trail. This cannot be undone as a simple edit.")) return;
     setCorrectingMovement(true);
     setMovementError(null);
@@ -262,6 +265,7 @@ export default function InventoryManagementPage() {
       await mutateBackoffice("/api/backoffice/inventory/movements", {
         movementId: editingMovement._id,
         expectedRevision: editingMovement._rev,
+        expectedQuantity: editingMovement.correctedQuantity ?? Math.abs(Number(editingMovement.quantityChange || 0)),
         quantity: voidMovement ? 0 : Number(correctedQuantity),
         voidMovement,
         reason: correctionReason.trim(),
@@ -295,6 +299,7 @@ export default function InventoryManagementPage() {
       setStoreLocations(stores);
       setAssignedStoreId(payload.assignedStoreId || "");
       if ((role === "MANAGER" || role === "STORE_STAFF") && payload.assignedStoreId) setLocation(payload.assignedStoreId);
+      if (role === "MANAGER" && payload.assignedStoreId) setDestinationStoreId(payload.assignedStoreId);
     } catch {
       // Stock list can still render if store configuration is temporarily unavailable.
     }
@@ -420,7 +425,7 @@ export default function InventoryManagementPage() {
           {canChangeStock && <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => openAction("PURCHASE")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-green)] px-4 text-xs font-semibold !text-soft-cream"><PackagePlus size={14}/>Purchase stock</button>
             <button type="button" onClick={() => openAction("RECEIVE")} className="inline-flex min-h-11 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold"><ArrowDownToLine size={14}/>Receive stock</button>
-            <button type="button" onClick={() => openAction("TRANSFER")} className="inline-flex min-h-11 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold"><Send size={14}/>Transfer stock</button>
+            {canTransferStock && <button type="button" onClick={() => openAction("TRANSFER")} className="inline-flex min-h-11 items-center gap-2 rounded-full border hairline bg-[var(--paper)] px-4 text-xs font-semibold"><Send size={14}/>Transfer stock</button>}
           </div>}
         </div>
       </div>
@@ -431,7 +436,7 @@ export default function InventoryManagementPage() {
         <section ref={actionSectionRef} className="scroll-mt-6 mx-4 mt-6 rounded-2xl border hairline bg-[var(--paper)] p-4 sm:mx-6 sm:p-6 lg:mx-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div><p className="kicker text-[var(--muted)]">{actionCopy[action].kicker}</p><h2 className="mt-2 text-xl font-semibold">{actionCopy[action].title}</h2></div>
-            <div className="flex flex-wrap items-center gap-2"><div className="inline-flex flex-wrap rounded-2xl border hairline bg-[var(--paper-2)] p-1 sm:rounded-full">{(["PURCHASE","RECEIVE","TRANSFER"] as InventoryAction[]).map((value)=><button key={value} type="button" onClick={()=>openAction(value)} className={`rounded-full px-4 py-2 text-xs font-semibold ${action===value?"bg-[var(--brand-green)] !text-soft-cream":""}`}>{value === "PURCHASE" ? "Purchase stock" : value === "RECEIVE" ? "Receive stock" : "Transfer stock"}</button>)}</div><button type="button" onClick={()=>setAction(null)} className="px-2 py-2 text-xs underline">Cancel</button></div>
+            <div className="flex flex-wrap items-center gap-2"><div className="inline-flex flex-wrap rounded-2xl border hairline bg-[var(--paper-2)] p-1 sm:rounded-full">{((canTransferStock ? ["PURCHASE","RECEIVE","TRANSFER"] : ["PURCHASE","RECEIVE"]) as InventoryAction[]).map((value)=><button key={value} type="button" onClick={()=>openAction(value)} className={`rounded-full px-4 py-2 text-xs font-semibold ${action===value?"bg-[var(--brand-green)] !text-soft-cream":""}`}>{value === "PURCHASE" ? "Purchase stock" : value === "RECEIVE" ? "Receive stock" : "Transfer stock"}</button>)}</div><button type="button" onClick={()=>setAction(null)} className="px-2 py-2 text-xs underline">Cancel</button></div>
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-12">
@@ -444,7 +449,7 @@ export default function InventoryManagementPage() {
               <p className="text-[10px] font-normal leading-4 text-[var(--muted)]">Record a separate quantity for each variant. Stock is tracked per variant at the selected store.</p>
             </div>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity<input type="number" min="1" step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
-            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations}/>}
+            {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={role === "MANAGER" ? storeLocations.filter(store => store._id === assignedStoreId) : storeLocations} disabled={role === "MANAGER"}/>}
             {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
             <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} placeholder={action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
           </div>
@@ -455,8 +460,8 @@ export default function InventoryManagementPage() {
               <p>On hand: <strong>{storeOnHandBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedOnHand) ? projectedOnHand.toLocaleString("en-KE") : "—"}</strong></p>
               <p>Incoming: <strong>{storeIncomingBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedIncoming) ? projectedIncoming.toLocaleString("en-KE") : "—"}</strong></p>
             </div>
-            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : "Receiving adds to existing on-hand stock; it does not replace the current balance."}</p>
-            {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <p className="mt-2 font-semibold text-red-700">Only {storeIncomingBefore.toLocaleString("en-KE")} incoming unit(s) are available for this {requiresVariant ? "variant" : "product"} at this store.</p>}
+            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : "Receiving adds to on-hand stock. Neon verifies purchased incoming units when saving."}</p>
+            {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <div className="mt-2 text-red-700"><p className="font-semibold">Displayed incoming: {storeIncomingBefore.toLocaleString("en-KE")} units. Neon confirms the available quantity on save. If insufficient, record the purchase first.</p>{storeIncomingBefore === 0 && canChangeStock && <button type="button" onClick={() => openAction("PURCHASE", selectedProductId)} className="mt-2 rounded-full border border-amber-300 px-3 py-2 text-xs font-semibold text-[var(--ink)]">Record purchase first</button>}</div>}
           </div>}
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
@@ -466,7 +471,7 @@ export default function InventoryManagementPage() {
           </div>}
 
           {message && <div role="status" aria-live="polite" className="mt-5 rounded-xl border hairline bg-[var(--paper-2)] px-4 py-3 text-xs font-medium">{message}</div>}
-          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || enteredQuantity<=0 || (action === "RECEIVE" && destinationStoreId && (!requiresVariant || selectedVariantId) && enteredQuantity>storeIncomingBefore) || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
+          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || enteredQuantity<=0 || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
         </section>
       )}
 
@@ -526,7 +531,7 @@ export default function InventoryManagementPage() {
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
                 const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={(!movement.archived && !movement._rev) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={(!movement.archived && !movement._rev && !movement._id.startsWith('dbk69.dbk69-')) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}

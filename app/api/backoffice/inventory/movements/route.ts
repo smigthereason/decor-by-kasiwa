@@ -16,7 +16,7 @@ import {
 } from "@/lib/inventory/location-stock";
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
-import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements } from "@/lib/db/dbk69-inventory-neon";
+import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements, dbk125CorrectMovement, dbk125CorrectionsEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { dbk120InventoryFailure } from "@/lib/db/dbk120-inventory-errors";
 import { dbk83ArchiveReadsEnabled, dbk83ListArchivedMovements, dbk83GetVerifiedRestorableMovement } from "@/lib/db/dbk83-movement-archive";
@@ -179,8 +179,10 @@ export async function POST(request: Request) {
   }
   const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
-  if (staff.role === "MANAGER") {
-    return NextResponse.json({ message: "Managers can view inventory but cannot purchase, receive or transfer stock." }, { status: 403 });
+  // DBK-124: Managers may purchase/receive only for their assigned location.
+  // Do not grant sales staff inventory write access or managers cross-branch transfers.
+  if (staff.role === "STORE_STAFF") {
+    return NextResponse.json({ message: "Sales Staff cannot change stock quantities." }, { status: 403 });
   }
 
   try {
@@ -204,6 +206,7 @@ export async function POST(request: Request) {
 
     if (!productId) return NextResponse.json({ message: "Select a product." }, { status: 400 });
     if (!action || !["PURCHASE", "RECEIVE", "TRANSFER"].includes(action)) return NextResponse.json({ message: "Choose Purchase stock, Receive stock or Transfer stock." }, { status: 400 });
+    if (staff.role === "MANAGER" && action === "TRANSFER") return NextResponse.json({ message: "Managers cannot transfer stock between branches." }, { status: 403 });
     if (!Number.isSafeInteger(quantity) || quantity < 1) return NextResponse.json({ message: "Quantity must be a positive whole number." }, { status: 400 });
     if ((action === "PURCHASE" || action === "RECEIVE") && !destinationStoreId) return NextResponse.json({ message: "Select the store/location for this stock." }, { status: 400 });
     if (action === "TRANSFER" && (!sourceStoreId || !destinationStoreId || sourceStoreId === destinationStoreId)) return NextResponse.json({ message: "Select different source and destination stores." }, { status: 400 });
@@ -236,6 +239,9 @@ export async function POST(request: Request) {
     const variantProduct = hasVariants(product.variants);
     const selectedVariant = variantProduct ? product.variants?.find((variant) => variant._key === variantId) : undefined;
     if (variantProduct && !selectedVariant) return NextResponse.json({ message: "Select a product variant so branch stock stays accurate." }, { status: 400 });
+    if (selectedVariant && (selectedVariant as StockVariant & {retired?:boolean}).retired === true) {
+      return NextResponse.json({message:'This variant was removed from sales. Restore it in Products before purchasing, receiving or transferring stock.'},{status:409});
+    }
 
     if (dbk69InventoryEnabled()) {
       const operationId = typeof body.operationId === 'string' ? body.operationId : '';
@@ -391,11 +397,45 @@ export async function PATCH(request: Request) {
   if (dbk109LegacyInventoryWriteBlocked()) {
     return NextResponse.json({message:'Inventory write cutover is paused; no Sanity stock mutation was attempted.'},{status:503});
   }
-  if (dbk69InventoryEnabled()) {
-    return NextResponse.json({message:'Historical movement corrections are blocked during Neon cutover. Use a reviewed ledger adjustment.'},{status:409});
-  }
   const staff = await getApiStaff(["ADMIN", "STORE"]);
   if (!staff.ok) return NextResponse.json({ message: "Only Admin and Store Manager can correct stock movements." }, { status: staff.status });
+  if (dbk69InventoryEnabled()) {
+    if (!dbk125CorrectionsEnabled()) return NextResponse.json({
+      message:'Audited Neon movement correction is not enabled.'},{status:409});
+    let input: {movementId?:string;expectedQuantity?:unknown;quantity?:unknown;reason?:string;voidMovement?:boolean};
+    try { input=await request.json(); }
+    catch {return NextResponse.json({message:'Invalid correction request.'},{status:400});}
+    const movementId=String(input.movementId||'');
+    const operationId=movementId.startsWith('dbk69.') ? movementId.slice(6) : '';
+    const expectedQuantity=Number(input.expectedQuantity);
+    const quantity=Number(input.quantity);
+    const reason=typeof input.reason==='string' ? input.reason.trim() : '';
+    if (!/^dbk69-[0-9a-f-]{36}$/i.test(operationId) ||
+        !Number.isSafeInteger(expectedQuantity) || expectedQuantity<=0 ||
+        !Number.isSafeInteger(quantity) || quantity<0 || quantity>1000000000 ||
+        (input.voidMovement===true)!==(quantity===0) ||
+        reason.length<5 || reason.length>500) {
+      return NextResponse.json({message:'Invalid movement ID, quantity or correction reason.'},{status:400});
+    }
+    try {
+      const result=await dbk125CorrectMovement({
+        correctionId:`dbk125-${randomUUID()}`,operationId,expectedQuantity,
+        quantity,reason,actorId:staff.customerId,actorName:staff.customerName,
+        role:staff.role as 'ADMIN'|'STORE',
+      });
+      return NextResponse.json(result,{headers:{'Cache-Control':'private, no-store'}});
+    } catch(cause) {
+      const detail=cause instanceof Error ? cause.message : '';
+      console.error('DBK125_NEON_CORRECTION_REJECTED',detail.replace(/[^A-Z0-9_ ]/gi,'').slice(0,110));
+      if (/DBK125_WRITE_GATE_OFF|database host mismatch|database pin missing/i.test(detail))
+        return NextResponse.json({message:'Audited correction is temporarily unavailable.'},{status:503});
+      if (/DBK125_STALE_QUANTITY|DBK125_ALREADY_VOIDED|DBK125_CORRECTION_ID_REUSED/i.test(detail))
+        return NextResponse.json({message:'This movement was already corrected or voided. Refresh the ledger before editing.'},{status:409});
+      if (/DBK125_INSUFFICIENT|DBK125_LEDGER_MISMATCH|DBK125_INVALID_ORIGINAL/i.test(detail))
+        return NextResponse.json({message:'The stock correction is unsafe for the current balances or ledger. No stock was changed.'},{status:409});
+      return NextResponse.json({message:'Unable to correct this movement. No partial stock update was saved.'},{status:409});
+    }
+  }
 
   let input: { movementId?: string; expectedRevision?: string; quantity?: unknown; reason?: string; voidMovement?: boolean };
   try {

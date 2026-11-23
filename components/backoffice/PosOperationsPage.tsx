@@ -18,7 +18,7 @@ type HistoryOrder = {
   salesChannel: "ONLINE" | "POS"; soldByName: string; soldAt: string; paymentStatus: string; paymentChannel: string;
   storeLocationId?: string; storeLocationName?: string;
   subtotal: number; discountAmount: number; deliveryFee: number; deliveryLocation: string; total: number; amountPaid: number; balanceDue: number; cashTendered: number; cashChangeDue: number; refundedAmount: number;
-  paymentReference: string; paymentProvider: string; providerReceiptNumber: string;
+  paymentReference: string; paymentProvider: string; providerReceiptNumber: string; pendingRefundAmount?:number;
   lineItems: Array<{ productId: string; name: string; variantId?: string; quantity: number; unitPrice: number }>;
 };
 type Report = {
@@ -84,6 +84,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [refundOrder, setRefundOrder] = useState<HistoryOrder | null>(null);
+  const onlineRefundKey=useRef<string | null>(null);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refundRestock, setRefundRestock] = useState(false);
@@ -93,6 +94,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [refundManualConfirmed, setRefundManualConfirmed] = useState(false);
   const [refundSaving, setRefundSaving] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
+  const [onlineRefundReconciling,setOnlineRefundReconciling]=useState<string|null>(null);
   const expenseRequestKey = useRef<string | null>(null);
   const expenseInFlight = useRef(false);
   const [expenseSaving, setExpenseSaving] = useState(false);
@@ -314,6 +316,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     if (!manager) return;
     setMessage(null);
     setRefundOrder(order);
+    onlineRefundKey.current=crypto.randomUUID();
     setRefundError(null);
     setRefundAmount(String(Math.max(0, Math.round((Math.min(order.amountPaid, order.total) - order.refundedAmount) * 100) / 100)));
     setRefundReason("");
@@ -327,6 +330,9 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   async function processRefund(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!manager || !refundOrder || refundSaving) return;
+    const online=refundOrder.id.startsWith('dbk64.order.DBK64-');
+    if(online && (role!=='ADMIN' && role!=='STORE')) return setRefundError('Only Admin or Store Owner may request a Paystack refund.');
+    if(online && (refundRestock||refundCancelOutstanding))return setRefundError('Paystack refunds and physical stock returns must be recorded separately.');
     const amount = Number(refundAmount);
     const maximum = Math.max(0, Math.round((Math.min(refundOrder.amountPaid, refundOrder.total) - refundOrder.refundedAmount) * 100) / 100);
     if (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(Math.round(amount * 100)) || Math.abs(Math.round(amount * 100) / 100 - amount) > 0.000001 || amount > maximum) return setRefundError(`Refund amount must be between KES 0 and ${formatMoney(maximum)}.`);
@@ -334,27 +340,51 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
     const items = refundRestock ? refundLines.map((line) => ({ productId: line.productId, variantId: line.variantId, quantity: Number(refundQuantities[line.key] || 0) })).filter((line) => Number.isSafeInteger(line.quantity) && line.quantity > 0) : [];
     if (refundRestock && (items.length === 0 || refundLines.some((line) => { const quantity = Number(refundQuantities[line.key] || 0); return !Number.isSafeInteger(quantity) || quantity < 0 || quantity > line.quantity; }))) return setRefundError("Choose a valid returned quantity for at least one item.");
     if (amount === 0 && items.length === 0 && !refundCancelOutstanding) return setRefundError("Nothing to refund, return or clear.");
+    if(online && (refundOrder.pendingRefundAmount||0)>0)return setRefundError("An online refund is already awaiting provider confirmation. Do not submit another.");
+    if(online && !window.confirm(`Request a real Paystack refund of KES ${amount.toFixed(2)} for ${refundOrder.orderNumber}? This cannot be undone here.`))return;
     const manual = amount > 0 && refundOrder.paymentProvider?.toLowerCase() !== "paystack";
     if (manual && (!refundManualConfirmed || refundManualReference.trim().length < 8)) return setRefundError("Confirm the external refund was actually paid and enter its payment reference.");
     setRefundSaving(true);
     setRefundError(null);
     try {
-      const response = await fetch("/api/backoffice/pos/refunds", {
+      const response = await fetch(online ? "/api/backoffice/orders/online-refunds" : "/api/backoffice/pos/refunds", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: refundOrder.id, receiptNumber: refundOrder.receiptNumber, refundAmount: amount, reason: refundReason.trim(), restock: refundRestock,
+        body: JSON.stringify({ orderId: refundOrder.id, requestId:online?onlineRefundKey.current:undefined, receiptNumber: refundOrder.receiptNumber, refundAmount: amount, reason: refundReason.trim(), restock: refundRestock,
           cancelOutstanding: refundCancelOutstanding, items, manualRefundConfirmed: manual ? refundManualConfirmed : undefined,
           manualRefundReference: manual ? refundManualReference.trim() : undefined }),
       });
-      const payload = await response.json() as { message?: string; returnNumber?: string; receiptNumber?: string; providerStatus?: string };
+      const payload = await response.json() as { message?: string; returnNumber?: string; receiptNumber?: string; providerStatus?: string;status?:string };
       if (!response.ok) throw new Error(payload.message || "Unable to record the return/refund.");
       setRefundOrder(null);
       await load("history");
-      setMessage(`${payload.returnNumber || "Return"} for receipt ${payload.receiptNumber || refundOrder.receiptNumber} recorded. ${payload.providerStatus === "pending_provider" ? "Paystack refund is pending provider confirmation." : "Review the refund record in the audit trail."}`);
+      setMessage(online ? (payload.message || "Paystack refund submitted; provider confirmation pending.") : `${payload.returnNumber || "Return"} for receipt ${payload.receiptNumber || refundOrder.receiptNumber} recorded. ${payload.providerStatus === "pending_provider" ? "Paystack refund is pending provider confirmation." : "Review the refund record in the audit trail."}`);
     } catch (error) {
       setRefundError(error instanceof Error ? error.message : "Unable to record the return/refund.");
     } finally {
       setRefundSaving(false);
     }
+  }
+
+  // Provider-only readback. This never submits a new refund or alters physical stock.
+  async function reconcileOnlineRefund(order:HistoryOrder) {
+    if((role!=='ADMIN'&&role!=='STORE')||onlineRefundReconciling)return;
+    setOnlineRefundReconciling(order.id);setMessage(null);
+    try {
+      const listing=await fetch(`/api/backoffice/orders/online-refunds?orderId=${encodeURIComponent(order.id)}`,{cache:'no-store'});
+      const data=await listing.json() as {refunds?:Array<{request_id:string;status:string}>;message?:string};
+      if(!listing.ok)throw Error(data.message||'Unable to load refund request');
+      const candidate=(data.refunds||[]).find(r=>!['processed','failed'].includes(r.status));
+      if(!candidate)throw Error('No unresolved refund was found for this order.');
+      const response=await fetch('/api/backoffice/orders/online-refunds',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'reconcile',orderId:order.id,requestId:candidate.request_id})
+      });
+      const result=await response.json() as {status?:string;message?:string};
+      if(!response.ok)throw Error(result.message||'Provider status unavailable');
+      await load('history');
+      setMessage(`Paystack refund for ${order.orderNumber}: ${result.status||'review required'}. ${result.message||''} This check did not submit a second refund.`);
+    } catch(error) {setMessage(error instanceof Error?error.message:'Refund status unavailable');}
+    finally{setOnlineRefundReconciling(null);}
   }
 
   async function reconcilePayment(payment: Payment) {
@@ -502,12 +532,12 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
             {orders.map((order) => <article key={order.id} className="rounded-2xl border hairline bg-[var(--paper)] p-4">
               <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Receipt {order.receiptNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span></div>
               <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs"><DataPoint label="Store" value={order.storeLocationName || "Company / online"} /><DataPoint label="Customer" value={`${order.customerName} · ${order.customerPhone}`} /><DataPoint label="Channel" value={`${order.salesChannel} · ${order.paymentChannel || "—"}`} /><DataPoint label="Cashier" value={order.soldByName || "—"} /><DataPoint label="Revenue" value={formatMoney(Math.max(0, order.subtotal - order.discountAmount))} /><DataPoint label="Delivery" value={order.deliveryFee > 0 ? `${formatMoney(order.deliveryFee)} · ${order.deliveryLocation}` : "—"} /><DataPoint label="Money In" value={formatMoney(order.total)} /></div>
-              {order.refundedAmount > 0 && <p className="mt-3 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}
-              <div className="mt-4 flex flex-wrap gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="inline-flex min-h-10 items-center rounded-full border hairline px-4 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex min-h-10 items-center gap-1 rounded-full border hairline px-4 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}</div>
+              {order.refundedAmount > 0 && <p className="mt-3 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}{(order.pendingRefundAmount||0)>0 && <p className="mt-2 text-[10px] text-amber-700">Pending Paystack refund {formatMoney(order.pendingRefundAmount||0)}</p>}
+              <div className="mt-4 flex flex-wrap gap-2">{<Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="inline-flex min-h-10 items-center rounded-full border hairline px-4 text-[9px] font-semibold uppercase">Print receipt</Link>}{manager && ( !order.id.startsWith("dbk64.order.DBK64-") || role==="ADMIN" || role==="STORE") && !(order.pendingRefundAmount && order.pendingRefundAmount>0) && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex min-h-10 items-center gap-1 rounded-full border hairline px-4 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}{(role==="ADMIN"||role==="STORE") && order.id.startsWith("dbk64.order.DBK64-") && (order.pendingRefundAmount||0)>0 && <button type="button" disabled={Boolean(onlineRefundReconciling)} onClick={()=>void reconcileOnlineRefund(order)} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase disabled:opacity-50">{onlineRefundReconciling===order.id?"Checking…":"Check refund status"}</button>}</div>
             </article>)}
             {orders.length === 0 && <p className="rounded-2xl border hairline bg-[var(--paper)] p-8 text-center text-sm text-[var(--muted)]">No sales match the selected filters.</p>}
           </div>
-          <div className="hidden overflow-hidden rounded-2xl border hairline bg-[var(--paper)] md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs"><thead className="bg-[var(--paper-2)] text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]"><tr><th className="p-4">Sale</th><th className="p-4">Store</th><th className="p-4">Customer</th><th className="p-4">Channel</th><th className="p-4">Cashier</th><th className="p-4">Revenue</th><th className="p-4">Delivery</th><th className="p-4">Money In</th><th className="p-4">Status</th><th className="p-4">Actions</th></tr></thead><tbody className="divide-y hairline">{orders.map((order) => <tr key={order.id}><td className="p-4"><p className="font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Receipt {order.receiptNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></td><td className="p-4">{order.storeLocationName || "Company / online"}</td><td className="p-4"><p className="font-medium">{order.customerName}</p><p className="text-[10px] text-[var(--muted)]">{order.customerPhone}</p></td><td className="p-4">{order.salesChannel}<br/><span className="text-[10px] text-[var(--muted)]">{order.paymentChannel || "—"}</span></td><td className="p-4">{order.soldByName}</td><td className="p-4 font-semibold">{formatMoney(Math.max(0,order.subtotal-order.discountAmount))}</td><td className="p-4">{order.deliveryFee > 0 ? <><p>{formatMoney(order.deliveryFee)}</p><p className="text-[10px] text-[var(--muted)]">{order.deliveryLocation}</p></> : "—"}</td><td className="p-4 font-semibold">{formatMoney(order.total)}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span>{order.refundedAmount > 0 && <p className="mt-2 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}</td><td className="p-4"><div className="flex gap-2"><Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">Print receipt</Link>{manager && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}</div></td></tr>)}{orders.length === 0 && <tr><td colSpan={10} className="p-10 text-center text-[var(--muted)]">No sales match the selected filters.</td></tr>}</tbody></table></div></div>
+          <div className="hidden overflow-hidden rounded-2xl border hairline bg-[var(--paper)] md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1080px] text-left text-xs"><thead className="bg-[var(--paper-2)] text-[10px] uppercase tracking-[0.06em] text-[var(--muted)]"><tr><th className="p-4">Sale</th><th className="p-4">Store</th><th className="p-4">Customer</th><th className="p-4">Channel</th><th className="p-4">Cashier</th><th className="p-4">Revenue</th><th className="p-4">Delivery</th><th className="p-4">Money In</th><th className="p-4">Status</th><th className="p-4">Actions</th></tr></thead><tbody className="divide-y hairline">{orders.map((order) => <tr key={order.id}><td className="p-4"><p className="font-semibold">{order.orderNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">Receipt {order.receiptNumber}</p><p className="mt-1 text-[10px] text-[var(--muted)]">{order.soldAt ? new Date(order.soldAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : ""}</p></td><td className="p-4">{order.storeLocationName || "Company / online"}</td><td className="p-4"><p className="font-medium">{order.customerName}</p><p className="text-[10px] text-[var(--muted)]">{order.customerPhone}</p></td><td className="p-4">{order.salesChannel}<br/><span className="text-[10px] text-[var(--muted)]">{order.paymentChannel || "—"}</span></td><td className="p-4">{order.soldByName}</td><td className="p-4 font-semibold">{formatMoney(Math.max(0,order.subtotal-order.discountAmount))}</td><td className="p-4">{order.deliveryFee > 0 ? <><p>{formatMoney(order.deliveryFee)}</p><p className="text-[10px] text-[var(--muted)]">{order.deliveryLocation}</p></> : "—"}</td><td className="p-4 font-semibold">{formatMoney(order.total)}</td><td className="p-4"><span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase ${statusClass(order.paymentStatus)}`}>{order.paymentStatus.replaceAll("_", " ")}</span>{order.refundedAmount > 0 && <p className="mt-2 text-[10px] text-blue-700">Refunded {formatMoney(order.refundedAmount)}</p>}{(order.pendingRefundAmount||0)>0 && <p className="mt-2 text-[10px] text-amber-700">Refund pending {formatMoney(order.pendingRefundAmount||0)}</p>}</td><td className="p-4"><div className="flex gap-2">{<Link href={`${basePath}/pos/receipt/${encodeURIComponent(order.id)}`} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">Print receipt</Link>}{manager && (!order.id.startsWith("dbk64.order.DBK64-") || role==="ADMIN" || role==="STORE") && !(order.pendingRefundAmount && order.pendingRefundAmount>0) && order.amountPaid - order.refundedAmount > 0 && <button type="button" onClick={() => openRefund(order)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><RotateCcw size={11}/> Return / Refund</button>}{(role==="ADMIN"||role==="STORE") && order.id.startsWith("dbk64.order.DBK64-") && (order.pendingRefundAmount||0)>0 && <button type="button" disabled={Boolean(onlineRefundReconciling)} onClick={()=>void reconcileOnlineRefund(order)} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase disabled:opacity-50">{onlineRefundReconciling===order.id?"Checking…":"Check refund status"}</button>}</div></td></tr>)}{orders.length === 0 && <tr><td colSpan={10} className="p-10 text-center text-[var(--muted)]">No sales match the selected filters.</td></tr>}</tbody></table></div></div>
         </div>}
 
         {tab === "reports" && report && <div className="space-y-6">
@@ -590,13 +620,14 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
           <form onSubmit={(event)=>void processRefund(event)} className="mt-5 grid gap-4">
             <label className="grid gap-1 text-xs font-semibold">Refund amount (KES)<input type="number" min="0" step="0.01" max={Math.max(0,Math.round((Math.min(refundOrder.amountPaid,refundOrder.total)-refundOrder.refundedAmount)*100)/100)} value={refundAmount} onChange={(event)=>setRefundAmount(event.target.value)} required className="min-h-11 rounded-lg border hairline bg-white px-3 font-normal" /></label>
             <label className="grid gap-1 text-xs font-semibold">Reason<textarea value={refundReason} onChange={(event)=>setRefundReason(event.target.value)} required rows={2} placeholder="Reason and condition of returned items" className="rounded-lg border hairline bg-white p-3 font-normal" /></label>
-            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundRestock} onChange={(event)=>setRefundRestock(event.target.checked)} className="mt-1"/><span>Return physical items to stock (select quantities below). Do not enable for lost, damaged or unreturned items.</span></label>
-            {refundRestock && <div className="grid gap-2 rounded-xl border hairline p-3"><p className="text-xs font-semibold">Quantities physically received for receipt {refundOrder.receiptNumber}</p><p className="text-[11px] text-[var(--muted)]">Only actual returned items increase stock. Prior returns for this receipt are also checked before saving; a goodwill refund can be recorded without restocking.</p>{refundLines.map((line)=><label key={line.key} className="flex items-center justify-between gap-3 text-xs"><span>{line.name} {line.variantId ? `(${line.variantId})` : ""} · sold {line.quantity}</span><input type="number" min="0" max={line.quantity} step="1" value={refundQuantities[line.key] || "0"} onChange={(event)=>setRefundQuantities((current)=>({...current,[line.key]:event.target.value}))} className="w-20 rounded-lg border hairline bg-white p-2 text-right" /></label>)}</div>}
-            {refundOrder.balanceDue > 0 && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundCancelOutstanding} onChange={(event)=>setRefundCancelOutstanding(event.target.checked)} className="mt-1"/><span>Cancel remaining unpaid balance ({formatMoney(refundOrder.balanceDue)})</span></label>}
+            {!refundOrder.id.startsWith("dbk64.order.DBK64-") && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundRestock} onChange={(event)=>setRefundRestock(event.target.checked)} className="mt-1"/><span>Return physical items to stock (select quantities below). Do not enable for lost, damaged or unreturned items.</span></label>}
+            {refundRestock && !refundOrder.id.startsWith("dbk64.order.DBK64-") && <div className="grid gap-2 rounded-xl border hairline p-3"><p className="text-xs font-semibold">Quantities physically received for receipt {refundOrder.receiptNumber}</p><p className="text-[11px] text-[var(--muted)]">Only actual returned items increase stock. Prior returns for this receipt are also checked before saving; a goodwill refund can be recorded without restocking.</p>{refundLines.map((line)=><label key={line.key} className="flex items-center justify-between gap-3 text-xs"><span>{line.name} {line.variantId ? `(${line.variantId})` : ""} · sold {line.quantity}</span><input type="number" min="0" max={line.quantity} step="1" value={refundQuantities[line.key] || "0"} onChange={(event)=>setRefundQuantities((current)=>({...current,[line.key]:event.target.value}))} className="w-20 rounded-lg border hairline bg-white p-2 text-right" /></label>)}</div>}
+            {refundOrder.balanceDue > 0 && !refundOrder.id.startsWith("dbk64.order.DBK64-") && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={refundCancelOutstanding} onChange={(event)=>setRefundCancelOutstanding(event.target.checked)} className="mt-1"/><span>Cancel remaining unpaid balance ({formatMoney(refundOrder.balanceDue)})</span></label>}
+            {refundOrder.id.startsWith("dbk64.order.DBK64-") && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">This initiates a real Paystack refund for the customer. The provider may take time to process it. Stock will NOT be restored automatically; record inspected physical returns separately in Inventory.</p>}
             {Number(refundAmount) > 0 && refundOrder.paymentProvider?.toLowerCase() !== "paystack" && <div className="grid gap-3 rounded-xl border border-amber-400 bg-amber-50 p-3 text-xs text-amber-950"><p><strong>Manual refund confirmation required.</strong> This app will NOT send money through M-PESA, a bank or cash automatically. First complete the actual refund outside this system, then record its proof here.</p><label className="grid gap-1 font-semibold">External refund reference / receipt<input value={refundManualReference} onChange={(event)=>setRefundManualReference(event.target.value)} placeholder="M-PESA reversal / bank / cash voucher reference" className="min-h-10 rounded-lg border border-amber-300 bg-white px-3 font-normal" /></label><label className="flex gap-2"><input type="checkbox" checked={refundManualConfirmed} onChange={(event)=>setRefundManualConfirmed(event.target.checked)} /><span>I confirm the customer has actually received the refund externally.</span></label></div>}
             {Number(refundAmount) > 0 && refundOrder.paymentProvider?.toLowerCase() === "paystack" && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-950">Paystack: submitting requests a provider refund. If submission fails or times out, check the provider dashboard before retrying; a provider refund could already have started. Pending means not yet confirmed.</p>}
             {refundError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-800">{refundError}</p>}
-            <div className="flex justify-end gap-3 border-t hairline pt-4"><button type="button" onClick={()=>setRefundOrder(null)} disabled={refundSaving} className="min-h-10 rounded-full border hairline px-4 text-xs">Cancel</button><button type="submit" disabled={refundSaving} className="min-h-10 rounded-full bg-[var(--brand-green)] px-5 text-xs font-semibold !text-soft-cream disabled:opacity-50">{refundSaving ? "Recording…" : "Confirm return / refund"}</button></div>
+            <div className="flex justify-end gap-3 border-t hairline pt-4"><button type="button" onClick={()=>setRefundOrder(null)} disabled={refundSaving} className="min-h-10 rounded-full border hairline px-4 text-xs">Cancel</button><button type="submit" disabled={refundSaving} className="min-h-10 rounded-full bg-[var(--brand-green)] px-5 text-xs font-semibold !text-soft-cream disabled:opacity-50">{refundSaving ? "Submitting…" : refundOrder.id.startsWith("dbk64.order.DBK64-") ? "Request Paystack refund" : "Confirm return / refund"}</button></div>
           </form>
         </section>
       </div>}

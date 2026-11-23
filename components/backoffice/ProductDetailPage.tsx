@@ -202,6 +202,11 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
                     <Pencil size={14} /> Edit product
                   </button>
                 )}
+                {mode === "store" && session?.user?.role === "STORE" && (
+                  <Link href={`/store/products/${encodeURIComponent(liveProductId)}/edit`} className="inline-flex items-center gap-2 rounded-full border hairline px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] hover:border-[var(--brand-green)]">
+                    <Pencil size={14}/> Edit variants
+                  </Link>
+                )}
                 {mode === "admin" && (
                   <button type="button" disabled={deleting} onClick={() => void deleteProduct()} className="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-red-700 transition hover:bg-red-50 disabled:opacity-50">
                     <Trash2 size={14} /> {deleting ? "Deleting…" : "Delete product"}

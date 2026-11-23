@@ -73,6 +73,7 @@ export type PosHistoryOrder = {
   deliveryFee: number;
   deliveryLocation: string;
   refundedAmount: number;
+  pendingRefundAmount?: number;
   paymentReference: string;
   paymentProvider: string;
   providerReceiptNumber: string;

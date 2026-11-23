@@ -53,6 +53,17 @@ export type DBK64CheckoutSnapshot = {
 };
 
 
+/** DBK135: concurrency-safe, database-owned public order number; requires the verified annual seed. */
+export async function dbk135NextOnlineOrderNumber(): Promise<string> {
+  const sql = getSql('create');
+  const rows = await sql`SELECT public.dbk135_next_online_order_number() AS order_number`;
+  const value = rows[0]?.order_number;
+  if (typeof value !== 'string' || !/^DBK-COM-[0-9]{4,}-[0-9]{4}$/.test(value)) {
+    throw new Error('Online order numbering is unavailable; checkout was not started');
+  }
+  return value;
+}
+
 export async function dbk64CreatePending(snapshot: DBK64CheckoutSnapshot) {
   const sql = getSql();
   if (!dbk64ValidReference(snapshot.reference) ||

@@ -5,6 +5,7 @@ import {
   verifyPaystackWebhookSignature,
 } from "@/lib/paystack/server";
 import { verifyPosMpesaSale } from "@/lib/pos/server";
+import { dbk134ApplyRefundWebhook } from "@/lib/db/dbk134-paystack-refunds";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ type PaystackWebhookEvent = {
   event?: string;
   data?: {
     reference?: string;
+    id?: string | number; amount?: number | string; status?: string; refund_reference?:string|null;transaction_reference?:string; transaction?: { reference?: string; id?: number | string };
   };
 };
 
@@ -37,6 +39,12 @@ export async function POST(request: Request) {
     );
   }
 
+  if(event.event?.startsWith('refund.')) {
+    try {await dbk134ApplyRefundWebhook(event.event,event.data||{});
+      return NextResponse.json({received:true,processed:true});
+    } catch(error) {console.error('DBK134 refund webhook reconciliation failed',error);
+      return NextResponse.json({received:true,processed:false},{status:500});}
+  }
   if (event.event !== "charge.success") {
     return NextResponse.json({ received: true });
   }

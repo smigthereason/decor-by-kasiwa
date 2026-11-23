@@ -11,6 +11,7 @@ import StatusPill from "@/components/backoffice/StatusPill";
 import { mutateBackoffice, useLiveOperations } from "@/lib/operations/client";
 import type { OrderStatus, PaymentStatus } from "@/lib/operations/types";
 import { formatDateTime, formatKes } from "@/lib/operations/selectors";
+import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
 
 type Mode = "admin" | "store";
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
@@ -65,8 +66,15 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
   const isPosSale = order.salesChannel === "POS";
   const canAssignStore = viewerRole === "ADMIN" || viewerRole === "STORE";
   const dispatched = !isPosSale && (Boolean(order.dispatchedAt) || ["dispatched", "delivered"].includes(order.status));
-  const canDispatch = !isPosSale && order.paymentStatus === "paid" && !dispatched && order.status !== "cancelled";
-  const availableStatuses = mode === "admin" ? adminStatuses : storeStatuses;
+  const neonOrder = isNeonOnlineOrderId(order.id);
+  const canDispatch = !isPosSale && order.paymentStatus === "paid" && !dispatched &&
+    order.status !== "cancelled" && (!neonOrder || order.status === 'packed');
+  const nextNeonStatus: Partial<Record<OrderStatus, OrderStatus>> = {
+    paid: 'processing', processing: 'ready_for_store', ready_for_store: 'picking', picking: 'packed',
+  };
+  const availableStatuses = neonOrder
+    ? [order.status, nextNeonStatus[order.status]].filter((v): v is OrderStatus => Boolean(v))
+    : mode === "admin" ? adminStatuses : storeStatuses;
 
   async function update(values: { status?: OrderStatus; paymentStatus?: PaymentStatus; storeLocationId?: string }) {
     if (saving) return;
@@ -186,7 +194,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </div>
             )}
 
-            {!isPosSale && !dispatched && (
+            {!isPosSale && !neonOrder && !dispatched && (
               <>
                 <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Fulfilment store / location</label>
                 <div className="relative mt-2 w-full">
@@ -222,7 +230,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </>
             )}
 
-            {mode === "admin" && !isPosSale && !dispatched && (
+            {mode === "admin" && !isPosSale && !neonOrder && !dispatched && (
               <>
                 <label className="mt-4 block text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">Payment status</label>
                 <div className="relative mt-2 w-full">
@@ -239,7 +247,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </>
             )}
 
-            {!isPosSale && !dispatched ? (
+            {!isPosSale && !neonOrder && !dispatched ? (
               <button
                 type="button"
                 disabled={saving || !canDispatch}
@@ -248,7 +256,7 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               >
                 <Send size={14} /> {saving ? "Working…" : "Dispatch for delivery"}
               </button>
-            ) : !isPosSale ? (
+            ) : !isPosSale && !neonOrder ? (
               <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4 text-green-900">
                 <p className="flex items-center gap-2 text-xs font-semibold"><ShieldCheck size={15} /> Dispatched once</p>
                 <p className="mt-2 text-[10px] leading-5">
@@ -258,6 +266,11 @@ export default function ManagerOrderDetailPage({ mode }: { mode: Mode }) {
               </div>
             ) : null}
 
+            {neonOrder && <div className="mt-4 rounded-lg border hairline bg-[var(--paper-2)] p-4 text-xs">
+              <p className="font-semibold">Paid online order — {order.orderNumber}</p>
+              <p className="mt-2">Use the assigned Fulfilment Workflow for processing, packing and dispatch. Do not create a second sale or move stock again.</p>
+              <Link href={`/${mode}/workflow`} className="mt-3 inline-flex min-h-10 items-center rounded-full bg-[var(--brand-green)] px-4 font-semibold text-white">Open Fulfilment Workflow</Link>
+            </div>}
             {!isPosSale && !canDispatch && !dispatched && order.paymentStatus !== "paid" && (
               <p className="mt-3 flex items-center gap-2 text-[10px] text-[var(--muted)]"><Check size={12} /> Dispatch becomes available after payment is confirmed.</p>
             )}

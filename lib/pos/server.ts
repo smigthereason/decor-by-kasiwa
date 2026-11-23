@@ -426,6 +426,7 @@ async function buildLines(cart: PosCartLine[], seller: PosSeller, options: { sto
         );
 
     if (line.variantId && !variant) throw new Error(`${product.name || "Product"} variant is no longer available.`);
+    if (variant?.retired === true) throw new Error(`${product.name || "Product"} variant has been removed from sales. Refresh the POS catalogue.`);
     if (variantProduct && !variant) throw new Error(`Select a valid ${product.name || "product"} variant before adding it to the sale.`);
 
     // Once inventory ownership is cut over, Sanity on-hand numbers are stale.
@@ -2276,13 +2277,12 @@ export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSel
   if (duplicate) throw new Error("That payment reference already exists in legacy sales. Check before recording it again.");
   if (!seller.storeLocationId) throw new Error("Select a verified store before recording the sale.");
   const delivery = deliveryPayable(input);
-  if (delivery.fulfilmentType !== "IN_STORE" || delivery.deliveryFee !== 0) {
-    throw new Error("DBK-62 cutover only supports in-store manual POS sales; delivery is not yet migrated.");
-  }
+  // DBK-127: manual delivery is priced and committed by DBK-56 in the same
+  // atomic payment + stock transaction; never mutate stock separately.
   const {lines} = await buildLines(input.cart,seller,{stockAuthority:"neon"});
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal,input.discount,seller);
-  const total = Math.max(0,subtotal-discount.discountAmount);
+  const total = Math.max(0,subtotal-discount.discountAmount + delivery.deliveryFee);
   const breakdown = manualPaymentBreakdown(total,requestedPayment);
   if (breakdown.total <= 0) throw new Error("Manual sale total must be positive.");
   if (breakdown.balanceDue > 0 && input.manualPartialPaymentConfirmed !== true) {
@@ -2298,7 +2298,8 @@ export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSel
     cashierConfirmed:true as const,
     overpaymentApproved:false,
     order:{orderId,orderNumber,channel:"POS" as const,storeId:seller.storeLocationId,sellerId:seller.id,
-      currency:"KES" as const, discountMinor:toCents(discount.discountAmount,"discount"),deliveryMinor:0,
+      currency:"KES" as const, discountMinor:toCents(discount.discountAmount,"discount"),
+      deliveryMinor:toCents(delivery.deliveryFee,"delivery"),
       items:lines.map(l=>({productId:l.productId,...(l.variantId?{variantId:l.variantId}:{}),
         storeId:seller.storeLocationId!,quantity:l.quantity,unitPriceMinor:toCents(l.unitPrice,"unit price")}))},
     payment:{orderId,provider:"manual" as const,providerReference:externalReference,
@@ -2313,6 +2314,8 @@ export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSel
     discountType:discount.discountType||"",discountValue:discount.discountValue||0,
     discountReason:discount.discountReason||"",discountAuthorizedByName:discount.discountAmount>0?seller.name:"",
     receiptNumber:`RCT-${orderNumber}`,deliveryLocation:delivery.deliveryLocation,
+    fulfilmentType:delivery.fulfilmentType,
+    ...(delivery.deliveryAddress ? {deliveryAddress:delivery.deliveryAddress} : {}),
     productNames:lines.map(l=>l.name),
     lineDetails:lines.map(l=>({category:l.category,finish:l.finish||"",size:l.size||"",unitCost:l.unitCost})),
   };

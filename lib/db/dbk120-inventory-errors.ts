@@ -1,6 +1,7 @@
 /** Public error responses only; internal details are logged with the operation ID. */
 export function dbk120InventoryFailure(cause: unknown): {status:number;message:string;code:string} {
   const error = cause instanceof Error ? cause.message : String(cause);
+  if (/This Manager is not assigned to a store\/location|Managers can only (purchase|receive|transfer) stock for their assigned store/i.test(error)) return {status:403,code:"STORE_ASSIGNMENT_REQUIRED",message:error};
   if (/insufficient purchased\/incoming stock/i.test(error)) return {status:409,code:'INSUFFICIENT_INCOMING',message:'There are not enough purchased units awaiting receipt at this store. Record a purchase first, then receive the available incoming units.'};
   if (/insufficient stock at source location/i.test(error)) return {status:409,code:'INSUFFICIENT_STOCK',message:'The selected store does not have enough available stock for this transfer.'};
   if (/product\/variant is absent from seeded stock/i.test(error)) return {status:409,code:'NEON_VARIANT_MISSING',message:'The product or variant has no Neon stock registration. Save the variant in Products, reload Inventory and retry with the same operation ID.'};

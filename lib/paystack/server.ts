@@ -20,7 +20,7 @@ import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
 import {
   dbk64OnlineRequested, dbk64CreatePending, dbk64MarkInitFailed,
-  dbk64GetPending, dbk64RecordVerifiedPayment,
+  dbk135NextOnlineOrderNumber, dbk64GetPending, dbk64RecordVerifiedPayment,
   type DBK64CheckoutSnapshot,
 } from "@/lib/db/dbk64-online-neon";
 import { dbk64ValidReference, dbk64MoneyMinor, dbk64VerifiedOrder } from "@/lib/db/dbk64-online-core";
@@ -403,6 +403,9 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
     if (variantProduct && !variant) {
       throw new Error(`${product.name || "A product"} selected variant is no longer available.`);
     }
+    if (variant && variant.retired === true) {
+      throw new Error(`${product.name || "A product"} variant has been removed from online sales. Refresh your bag.`);
+    }
 
     if (variantProduct && variant) {
       const availableVariantStock = Number(variant.stockQuantity);
@@ -521,9 +524,10 @@ export async function initializePaystackCheckout({
   const orderId = neonCheckout
     ? `dbk64.order.${reference}`
     : `commerceOrder.paystack.${documentReference}`;
-  // Neon checkout must not mutate the Sanity order-number counter.
+  // New online numbers are allocated atomically in the checkout database.
+  // The existing Sanity counter and historical paid order numbers are not modified.
   const orderNumber = neonCheckout
-    ? `DBK-COM-${Date.now()}-${randomBytes(4).toString("hex")}`
+    ? await dbk135NextOnlineOrderNumber()
     : await createShortOrderNumber("COM", reference);
   const now = new Date().toISOString();
   const paymentChannel = paymentChannelFor(paymentMethod);

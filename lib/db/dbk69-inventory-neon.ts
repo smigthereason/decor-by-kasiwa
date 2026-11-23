@@ -3,7 +3,7 @@ import { getNeonSql } from '@/lib/db/neon';
 import type { Dbk69Balance } from './dbk69-inventory-core';
 
 export const dbk69InventoryEnabled = () => process.env.DBK_INVENTORY_BACKEND === 'neon';
-function requirePinnedInventoryDatabase() {
+export function requirePinnedInventoryDatabase() {
   const expected = process.env.DBK69_EXPECTED_NEON_HOST;
   const configured = process.env.DATABASE_URL;
   if (!expected || !configured) throw new Error('DBK-69 database pin missing');
@@ -94,13 +94,63 @@ export async function dbk69ApplyAdminOperation(input: Dbk69AdminOperation) {
   return rows[0].result as Record<string,unknown>;
 }
 
+// DBK-125: Separate immutable audit ledger; never rewrite DBK-51/69 original operations.
+// Disabled by default until migration and staged stock reconciliation pass.
+export function dbk125CorrectionsEnabled() {
+  return dbk69InventoryEnabled() && process.env.DBK125_NEON_CORRECTIONS_ENABLED === 'YES';
+}
+
+export async function dbk125CorrectMovement(input: {
+  operationId:string;correctionId:string;expectedQuantity:number;
+  quantity:number;reason:string;actorId:string;actorName:string;role:'ADMIN'|'STORE';
+}) {
+  if (!dbk125CorrectionsEnabled() || process.env.DBK69_INVENTORY_ADMIN !== 'enabled') {
+    throw new Error('DBK125_WRITE_GATE_OFF');
+  }
+  if (!/^dbk69-[0-9a-f-]{36}$/i.test(input.operationId) ||
+      !/^dbk125-[0-9a-f-]{36}$/i.test(input.correctionId) ||
+      !Number.isSafeInteger(input.expectedQuantity) || input.expectedQuantity<=0 ||
+      !Number.isSafeInteger(input.quantity) || input.quantity<0 || input.quantity>1000000000 ||
+      input.expectedQuantity===input.quantity ||
+      input.reason.trim().length<5 || input.reason.trim().length>500 ||
+      !input.actorId || !input.actorName || !['ADMIN','STORE'].includes(input.role)) {
+    throw new Error('DBK125_INVALID_CORRECTION');
+  }
+  requirePinnedInventoryDatabase();
+  const rows=await getNeonSql()`SELECT public.dbk125_correct_inventory(
+    ${input.correctionId},${input.operationId},${input.expectedQuantity}::bigint,
+    ${input.quantity}::bigint,${input.reason.trim()},${input.actorId},${input.actorName},${input.role}
+  ) AS result`;
+  if (!rows[0]?.result) throw new Error('DBK125_NO_RESULT');
+  return rows[0].result as Record<string,unknown>;
+}
+
 export type Dbk69MovementFilter = {q:string;from:string;to:string;type:string;scope:string;limit:number};
 export async function dbk69ListMovements(filters: Dbk69MovementFilter) {
   if (!dbk69InventoryEnabled()) throw new Error('Neon inventory read switch disabled');
   requirePinnedInventoryDatabase();
   const {q,from,to,type,scope,limit} = filters;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10051) throw new Error('Invalid movement page limit');
-  const rows = await getNeonSql()`
+  // Keep history readable before DBK-125 migration and authorization gate are enabled.
+  const rows = dbk125CorrectionsEnabled() ? await getNeonSql()`
+    SELECT m.operation_id,m.request_payload,m.metadata,m.result_payload,m.quantity,
+      m.movement_type,m.created_at,
+      c.new_quantity AS corrected_quantity,c.created_at AS corrected_at,
+      c.actor_name AS corrected_by,c.reason AS correction_reason,c.correction_kind
+    FROM public.dbk69_inventory_movements m
+    LEFT JOIN LATERAL (
+      SELECT new_quantity,created_at,actor_name,reason,correction_kind
+      FROM public.dbk125_movement_corrections
+      WHERE original_operation_id=m.operation_id
+      ORDER BY sequence_number DESC LIMIT 1
+    ) c ON TRUE
+    WHERE (${type}='' OR m.movement_type=CASE WHEN ${type}='RECEIPT' THEN 'RECEIVE' ELSE ${type} END)
+      AND (${scope}='' OR m.request_payload->>'sourceStoreId'=${scope} OR m.request_payload->>'destinationStoreId'=${scope})
+      AND (${q}='' OR LOWER(coalesce(m.metadata->>'productName','') || ' ' || coalesce(m.metadata->>'actorName','') || ' ' || coalesce(m.metadata->>'note','')) LIKE '%' || LOWER(${q}) || '%')
+      AND (NULLIF(${from},'') IS NULL OR m.created_at >= NULLIF(${from},'')::timestamptz)
+      AND (NULLIF(${to},'') IS NULL OR m.created_at < NULLIF(${to},'')::timestamptz)
+    ORDER BY m.created_at DESC,m.operation_id DESC LIMIT ${limit}
+  ` : await getNeonSql()`
     SELECT operation_id,request_payload,metadata,result_payload,quantity,movement_type,created_at
     FROM public.dbk69_inventory_movements
     WHERE (${type}='' OR movement_type=CASE WHEN ${type}='RECEIPT' THEN 'RECEIVE' ELSE ${type} END)
@@ -122,10 +172,15 @@ export async function dbk69ListMovements(filters: Dbk69MovementFilter) {
       productName:String(m.productName || ''),variantId:String(p.variantId || ''),
       variantLabel:String(m.variantLabel || ''),
       quantityChange:row.movement_type==='TRANSFER' ? -qty : qty,
+      correctedQuantity:row.corrected_quantity == null ? undefined : Number(row.corrected_quantity),
+      correctedAt:row.corrected_at == null ? undefined : new Date(String(row.corrected_at)).toISOString(),
+      correctedBy:row.corrected_by == null ? undefined : String(row.corrected_by),
+      correctionReason:row.correction_reason == null ? undefined : String(row.correction_reason),
+      voidedAt:row.correction_kind==='VOID' ? new Date(String(row.corrected_at)).toISOString() : undefined,
       stockAfter:Number(result.stockAfter || 0),incomingAfter:Number(result.incomingAfter || 0),
       sourceLocation:String(m.sourceName || ''),destination:String(m.destinationName || ''),
       sourceStoreId:String(p.sourceStoreId || ''),destinationStoreId:String(p.destinationStoreId || ''),
-      unitCost:Number(m.unitCost || 0),movementValue:Number(m.unitCost || 0)*qty,
+      unitCost:Number(m.unitCost || 0),movementValue:Number(m.unitCost || 0)*(row.corrected_quantity == null ? qty : Number(row.corrected_quantity)),
       actorName:String(m.actorName || ''),note:String(m.note || ''),createdAt:new Date(String(row.created_at)).toISOString(),
       // No _rev: legacy Sanity movement correction is deliberately unavailable on Neon.
     };

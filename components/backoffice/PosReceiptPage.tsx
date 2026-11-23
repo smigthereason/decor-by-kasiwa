@@ -9,6 +9,8 @@ import { dbk68IsOrderId } from "@/lib/db/dbk68-daraja-core";
 import { dbk68ReadEnabled, dbk68ReadReceipt } from "@/lib/db/dbk68-daraja-neon";
 import { isDbk62RealOrderId } from "@/lib/db/dbk62-pos-mapper";
 import { dbk62ReadEnabled, dbk62ReadReceipt } from "@/lib/db/dbk62-pos-cutover";
+import { isNeonOnlineOrderId } from "@/lib/db/dbk65-online-fulfilment-core";
+import { dbk134Receipt } from "@/lib/db/dbk134-online-operations";
 
 function paymentLabel(provider?: string, channel?: string) {
   if (provider === "daraja") return "Safaricom M-PESA";
@@ -36,6 +38,16 @@ function discountDescription(type?: "percent" | "fixed", value?: number, reason?
 type Receipt = NonNullable<Awaited<ReturnType<typeof getPosReceipt>>>;
 
 async function getReceiptForPage(orderId: string): Promise<Receipt | null> {
+  if (isNeonOnlineOrderId(orderId)) {
+    const staff=await getApiStaff(["ADMIN","STORE","MANAGER","STORE_STAFF"]);
+    if(!staff.ok)return null;
+    const record=await dbk134Receipt(orderId);
+    if(staff.role==="MANAGER"||staff.role==="STORE_STAFF") {
+      const order=await (await import("@/lib/db/dbk134-online-operations")).dbk134OnlineOrder(orderId);
+      if(!staff.storeLocationId||staff.storeLocationId!==order.storeLocationId) return null;
+    }
+    return record as unknown as Receipt;
+  }
   if (dbk68IsOrderId(orderId) || isDbk62RealOrderId(orderId)) {
     const staff = await getApiStaff(["ADMIN", "STORE", "MANAGER", "STORE_STAFF"]);
     if (!staff.ok) return null;
@@ -149,7 +161,7 @@ export default async function PosReceiptPage({ orderId, basePath }: { orderId: s
             priority
           />
           <p className="mt-1 text-xs font-semibold">0117553747</p>
-          <h1 className="receipt-title mt-2 text-xl font-semibold tracking-[-0.04em]">POS Receipt</h1>
+          <h1 className="receipt-title mt-2 text-xl font-semibold tracking-[-0.04em]">{isNeonOnlineOrderId(orderId) ? "Online Payment Receipt" : "POS Receipt"}</h1>
           <p className="mt-1 text-xs font-semibold">{receipt.receiptNumber || `RCT-${receipt.orderNumber}`}</p>
           <div className="receipt-muted mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[9px] text-[var(--muted)]">
             {receipt.businessPhone && <span>{receipt.businessPhone}</span>}
