@@ -12,6 +12,7 @@ import {KASIWA_GREETING,KASIWA_RETURN_GREETING,KASIWA_FALLBACK} from './dbk122-k
  * staging browse-flow, cart-store, processor, or staging database helpers. */
 export type SaleItem={id:string;name:string;slug:string;price:number;stockQuantity:number|null;variants:boolean};
 const phone=/^254(?:7|1)\d{8}$/;
+const bsuid=/^[A-Z]{2}\.[0-9]{6,32}$/;
 const money=(n:number)=>`KES ${n.toLocaleString('en-KE',{maximumFractionDigits:2})}`;
 const safe=(s:string)=>s.replace(/[\r\n*`]/g,' ').trim().slice(0,90);
 const reply=(text:string)=>({reply:text});
@@ -65,7 +66,8 @@ async function cart(waId:string,products:SaleItem[]){
   return {lines,invalid,totalMinor:lines.reduce((s,x)=>s+x.subtotalMinor,0)};
 }
 export async function handleProductionChat(waId:string,rawText:string):Promise<{reply:string}>{
-  if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES'||!phone.test(waId))
+  const bsuidOnly=bsuid.test(waId);
+  if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES'||!(phone.test(waId)||bsuidOnly))
     throw new Error('PRODUCTION_CHAT_GATE_OFF');
   const text=rawText.trim().slice(0,500),db=sql();
   let cmd=text.replace(/\s+/g,' ').toUpperCase();
@@ -77,6 +79,11 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
   if(['I WILL PICK UP','I WILL COLLECT','CONFIRM PICKUP','I CONFIRM PICKUP'].includes(cmd))cmd='PICKUP';
   if(['BUY THESE ITEMS','I WANT TO BUY THESE','I WANT TO PURCHASE THESE ITEMS',
       'PLACE MY ORDER','PROCEED TO CHECKOUT','I WANT TO CHECK OUT'].includes(cmd))cmd='CHECKOUT';
+  // A BSUID is not a verified M-PESA phone number. Never let these sessions
+  // read/create payment orders, confirm pickup or initiate an STK push.
+  if(bsuidOnly&&['CHECKOUT','CHECK OUT','PICKUP','PAY','PAYMENT STATUS','MY ORDERS',
+    'CANCEL CHECKOUT'].includes(cmd))
+    return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
   if(/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)){
     await db`UPDATE public.dbk36_wa_conversations SET mode='human',updated_at=now() WHERE wa_id=${waId}`;
     return reply('Your request has been flagged for a Decor By Kasiwa team member. Please wait for a staff response.');
@@ -173,7 +180,13 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<{
         ON CONFLICT(wa_id) DO UPDATE SET
         last_viewed_product_id=excluded.last_viewed_product_id,updated_at=now()`;
     }
-    return reply(suggestion.message);
+    // Do not direct a BSUID-only customer into the payment flow.
+    return reply(bsuidOnly?suggestion.message
+      .replace('Then CART > CHECKOUT > PICKUP > PAY.',
+        'Reply CART to review items, then STAFF to arrange verified checkout.')
+      .replace('Prices and availability are verified again before payment.',
+        'A staff member can confirm price and availability before checkout.'):
+      suggestion.message);
   }
   return reply(KASIWA_FALLBACK);
 }

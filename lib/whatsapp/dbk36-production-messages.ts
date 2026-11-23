@@ -3,6 +3,8 @@ import {createHmac} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import {handleProductionChat} from './dbk36-production-chat';
 const phone=/^254(?:7|1)\d{8}$/;
+// Only explicit user-scoped WhatsApp IDs. Not a substitute for a verified phone.
+const bsuid=/^[A-Z]{2}\.[0-9]{6,32}$/;
 const db=()=>neon(process.env.DATABASE_URL!);
 const worker='https://dbk36-whatsapp-production.victor-dmaina.workers.dev';
 /** Only called by the HMAC-verified Worker after the Worker itself verifies Meta. */
@@ -20,7 +22,7 @@ export async function recordProductionWhatsAppInbound(raw:unknown){
     if(!value||value.metadata?.phone_number_id!==target)continue;
     for(const m of (value.messages||[]).slice(0,15)){
       const wa=String(m.from||''),messageId=String(m.id||'');
-      if(!phone.test(wa)||!/^wamid\.[\w:=+/.-]{8,200}$/.test(messageId))continue;
+      if(!(phone.test(wa)||bsuid.test(wa))||!/^wamid\.[\w:=+/.-]{8,200}$/.test(messageId))continue;
       const txt=String(m.text?.body||m.interactive?.button_reply?.title||m.interactive?.list_reply?.title||'').trim().slice(0,500);
       if(!txt)continue;
       await sql`INSERT INTO public.dbk36_wa_conversations(wa_id,last_inbound_at)

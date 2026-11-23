@@ -49,11 +49,20 @@ function ycloudEventToMeta(event,env){
   const m=event.whatsappInboundMessage;
   if(!m||m.type!=='text')return null;
   const normalPhone=x=>String(x||'').replace(/[^0-9]/g,'');
-  const sender=normalPhone(m.from),dest=normalPhone(m.to);
-  if(!/^254(?:7|1)\d{8}$/.test(sender)||dest!=='254117553747')return null;
+  // Phone numbers and Business-Scoped User IDs (BSUIDs) are *different*
+  // identities. Never turn the numeric portion of a BSUID into a phone number.
+  const phoneSender=normalPhone(m.from);
+  const bsuid=String(m.fromUserId||'');
+  const phoneValid=/^254(?:7|1)\d{8}$/.test(phoneSender);
+  const bsuidValid=/^[A-Z]{2}\.[0-9]{6,32}$/.test(bsuid);
+  const sender=phoneValid?phoneSender:(!m.from&&bsuidValid?bsuid:'');
+  const dest=normalPhone(m.to);
+  if(!sender||dest!=='254117553747')return null;
   if(String(m.wabaId||'')!==env.DBK36_YCLOUD_EXPECTED_WABA_ID)return null;
   const permitted=String(env.DBK36_YCLOUD_TEST_NUMBERS||'').split(',').map(normalPhone).filter(Boolean);
-  if(env.DBK36_YCLOUD_PUBLIC_BOT!=='YES'&&!permitted.includes(sender))return null;
+  const bsuidPermitted=String(env.DBK36_YCLOUD_TEST_BSUIDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+  if(env.DBK36_YCLOUD_PUBLIC_BOT!=='YES'&&
+    !(phoneValid?permitted.includes(sender):bsuidPermitted.includes(sender)))return null;
   const messageId=String(m.wamid||'');
   const text=String(m.text?.body||'').trim().slice(0,500);
   if(!/^wamid\.[\w:=+/.-]{8,200}$/.test(messageId)||!text)return null;
@@ -96,14 +105,26 @@ export default {
       if(!await crypto.subtle.verify('HMAC',key,bytes,new TextEncoder().encode(`${ts}.${raw}`)))return error(401);
       let data;
       try{data=JSON.parse(raw);}catch{return error(400);}
-      if(!/^254(?:7|1)\d{8}$/.test(data.to||'')||typeof data.text!=='string'||
+      const outboundPhone=/^254(?:7|1)\d{8}$/.test(data.to||'');
+      const outboundBsuid=/^[A-Z]{2}\.[0-9]{6,32}$/.test(data.to||'');
+      if((!outboundPhone&&!outboundBsuid)||typeof data.text!=='string'||
          !data.text.trim()||data.text.length>3500)return error(400);
       if(env.DBK36_PRODUCTION_YCLOUD_ENABLED==='YES'){
+        // DBK36_RESTRICTED_OUTBOUND_GUARD: no BSUID is authorized by
+        // phone-number allowlist membership. Explicit BSUID opt-in required.
+        if(env.DBK36_YCLOUD_PUBLIC_BOT!=='YES'){
+          const allowed=String(env.DBK36_YCLOUD_TEST_NUMBERS||'').split(',')
+            .map(x=>x.replace(/[^0-9]/g,'')).filter(Boolean);
+          const bsuidAllowed=String(env.DBK36_YCLOUD_TEST_BSUIDS||'')
+            .split(',').map(x=>x.trim()).filter(Boolean);
+          if(!(outboundPhone?allowed.includes(data.to):bsuidAllowed.includes(data.to)))return error(403);
+        }
         const key=env.DBK36_YCLOUD_API_KEY||'';
         if(key.length<24||env.DBK36_YCLOUD_SENDER_NUMBER!=='+254117553747')return error(503);
         const y=await fetch('https://api.ycloud.com/v2/whatsapp/messages',{
           method:'POST',headers:{'X-API-Key':key,'Content-Type':'application/json'},
-          body:JSON.stringify({from:env.DBK36_YCLOUD_SENDER_NUMBER,to:'+'+data.to,
+          body:JSON.stringify({from:env.DBK36_YCLOUD_SENDER_NUMBER,
+            ...(outboundBsuid?{recipient:data.to}:{to:'+'+data.to}),
             type:'text',text:{body:data.text,preview_url:false}}),
           redirect:'manual',
         });
@@ -112,6 +133,8 @@ export default {
         const ack=await y.json().catch(()=>null);
         return ack?.id?Response.json({sent:true},{headers:cache}):error(502);
       }
+      // Meta's legacy send path does not accept our YCloud BSUID routing.
+      if(!outboundPhone)return error(400);
       const phoneId=env.WHATSAPP_PHONE_NUMBER_ID||'',token=env.WHATSAPP_ACCESS_TOKEN||'';
       const graph=env.WHATSAPP_GRAPH_VERSION||'v23.0';
       if(!/^\d{8,25}$/.test(phoneId)||token.length<30||!/^v\d{2}\.\d{1,2}$/.test(graph))return error(503);
@@ -134,13 +157,50 @@ export default {
       const raw=await req.text();
       if(raw.length>45000)return error(413);
       const secret=env.DBK36_YCLOUD_WEBHOOK_SECRET||'';
-      if(!await ycloudSigned(raw,req.headers.get('ycloud-signature')||'',secret))return error(401);
+      const authenticated=await ycloudSigned(raw,req.headers.get('ycloud-signature')||'',secret);
+      console.log('DBK36_YCLOUD_AUTH',authenticated?'valid':'invalid');
+      if(!authenticated)return error(401);
       if(env.DBK36_PRODUCTION_YCLOUD_ENABLED!=='YES')return Response.json({received:true,bot:false},{headers:cache});
       let parsed;try{parsed=JSON.parse(raw);}catch{return error(400);}
       const converted=ycloudEventToMeta(parsed,env);
+      // DBK36_YCLOUD_DIAG: temporary; no message text, identifiers or phone numbers.
+      if(parsed?.type==='whatsapp.inbound_message.received'){
+        const m=parsed.whatsappInboundMessage||{};
+        const phone=x=>String(x||'').replace(/[^0-9]/g,'');
+        const sender=phone(m.from);
+        const bsuid=String(m.fromUserId||'');
+        const allowed=String(env.DBK36_YCLOUD_TEST_NUMBERS||'')
+          .split(',').map(phone).filter(Boolean);
+        const bsuidAllowed=String(env.DBK36_YCLOUD_TEST_BSUIDS||'')
+          .split(',').map(x=>x.trim()).filter(Boolean);
+        console.log('DBK36_YCLOUD_DIAG',JSON.stringify({
+          textType:m.type==='text',
+          textPresent:Boolean(String(m.text?.body||'').trim()),
+          senderFormatValid:/^254(?:7|1)\d{8}$/.test(sender),
+          testNumberAllowed:allowed.includes(sender),
+          bsuidFormatValid:/^[A-Z]{2}\.[0-9]{6,32}$/.test(bsuid),
+          testBsuidAllowed:bsuidAllowed.includes(bsuid),
+          destinationMatches:phone(m.to)==='254117553747',
+          wabaMatches:String(m.wabaId||'')===env.DBK36_YCLOUD_EXPECTED_WABA_ID,
+          wamidPresent:Boolean(m.wamid),
+          wamidValid:/^wamid\.[\w:=+/.-]{8,200}$/.test(String(m.wamid||'')),
+          alternateIdPresent:Boolean(m.id),
+          phoneIdConfigured:/^\d{8,25}$/.test(env.DBK36_YCLOUD_META_PHONE_NUMBER_ID||''),
+          converted:Boolean(converted)
+        }));
+      }
       if(!converted)return Response.json({received:true,queued:false},{headers:cache});
-      try{return await relay(JSON.stringify(converted),'/api/whatsapp/production-webhook',env);}
-      catch{return error(503);}
+      try{
+        const response=await relay(JSON.stringify(converted),'/api/whatsapp/production-webhook',env);
+        console.log('DBK36_YCLOUD_RELAY',JSON.stringify({
+          status:response.status,ok:response.ok
+        }));
+        return response;
+      }
+      catch{
+        console.log('DBK36_YCLOUD_RELAY_ERROR');
+        return error(503);
+      }
     }
     if(url.pathname==='/api/whatsapp/webhook'){
       if(env.DBK36_PRODUCTION_META_ENABLED!=='YES')return error();
