@@ -182,10 +182,34 @@ export async function dbk68ReadReceipt(id:string) {
 }
 export async function dbk68ListHistory() {
   const sql=sqlFor('read');
-  const rows=await sql`SELECT * FROM public.dbk68_daraja_orders ORDER BY created_at DESC LIMIT 501`;
-  // Return an error, not a misleading, silently truncated payment history.
-  if (rows.length > 500) {
-    throw new Error('DBK-76 M-Pesa history exceeds 500 records; pagination required before financial cutover');
+  // Keyset pagination makes the entire Daraja ledger available without the
+  // DBK-76 hard-coded 500-row ceiling. The (created_at, reference) ordering is
+  // stable even if multiple sales share the same timestamp.
+  const batchSize=200;
+  const maxRows=10000;
+  type CursorRow=DBK68Order & { dbk68_cursor_created_at: string };
+  const rows:CursorRow[]=[];
+  let cursorCreatedAt:string|null=null;
+  let cursorReference:string|null=null;
+  while (true) {
+    const page=(cursorCreatedAt===null
+      ? await sql`SELECT *, created_at::text AS dbk68_cursor_created_at
+          FROM public.dbk68_daraja_orders
+          ORDER BY created_at DESC, reference DESC LIMIT ${batchSize}`
+      : await sql`SELECT *, created_at::text AS dbk68_cursor_created_at
+          FROM public.dbk68_daraja_orders
+          WHERE (created_at, reference) < (${cursorCreatedAt}::timestamptz, ${cursorReference}::text)
+          ORDER BY created_at DESC, reference DESC LIMIT ${batchSize}`
+    ) as unknown as CursorRow[];
+    if (page.length===0) break;
+    if (rows.length+page.length>maxRows) {
+      throw new Error('DBK-76 M-Pesa history exceeds 10000 records; migrate the reporting endpoint to filtered pagination');
+    }
+    rows.push(...page);
+    if (page.length<batchSize) break;
+    const last=page[page.length-1];
+    cursorCreatedAt=last.dbk68_cursor_created_at;
+    cursorReference=last.reference;
   }
   return (rows as unknown as DBK68Order[]).map(o=>{
     const s=dbk68Summary(o);
@@ -197,6 +221,7 @@ export async function dbk68ListHistory() {
       balanceDue:s.balanceDue,deliveryFee:0,deliveryLocation:'',refundedAmount:0,
       paymentReference:s.reference,paymentProvider:'daraja',
       providerReceiptNumber:o.receipt_number||'',storeLocationId:o.store_id,
-      storeLocationName:'',lineItems:s.lineItems};
+      storeLocationName:'',failureReason:o.result_description||'',
+      inventoryReviewRequired:s.inventoryReviewRequired,lineItems:s.lineItems};
   });
 }
