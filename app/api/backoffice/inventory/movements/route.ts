@@ -16,7 +16,7 @@ import {
 } from "@/lib/inventory/location-stock";
 import { effectiveOnHand, hasVariants, variantLabel, variantStockTotal, type StockVariant } from "@/lib/inventory/stock";
 import { serverClient } from "@/sanity/lib/serverClient";
-import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements, dbk125CorrectMovement, dbk125CorrectionsEnabled } from "@/lib/db/dbk69-inventory-neon";
+import { dbk69ApplyAdminOperation, dbk69InventoryEnabled, dbk69ListMovements, dbk69IsSignedStockReduction, dbk125CorrectMovement, dbk125CorrectionsEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { dbk120InventoryFailure } from "@/lib/db/dbk120-inventory-errors";
 import { dbk83ArchiveReadsEnabled, dbk83ListArchivedMovements, dbk83GetVerifiedRestorableMovement } from "@/lib/db/dbk83-movement-archive";
@@ -199,7 +199,7 @@ export async function POST(request: Request) {
     const action = body.action;
     const productId = typeof body.productId === "string" ? body.productId.trim() : "";
     const variantId = typeof body.variantId === "string" ? body.variantId.trim() : "";
-    const quantity = Number(body.quantity);
+    const quantity = typeof body.quantity === "number" ? body.quantity : NaN;
     const sourceStoreId = typeof body.sourceStoreId === "string" ? body.sourceStoreId.trim() : "";
     const destinationStoreId = typeof body.destinationStoreId === "string" ? body.destinationStoreId.trim() : "";
     const note = typeof body.note === "string" ? body.note.trim() : "";
@@ -207,7 +207,14 @@ export async function POST(request: Request) {
     if (!productId) return NextResponse.json({ message: "Select a product." }, { status: 400 });
     if (!action || !["PURCHASE", "RECEIVE", "TRANSFER"].includes(action)) return NextResponse.json({ message: "Choose Purchase stock, Receive stock or Transfer stock." }, { status: 400 });
     if (staff.role === "MANAGER" && action === "TRANSFER") return NextResponse.json({ message: "Managers cannot transfer stock between branches." }, { status: 403 });
-    if (!Number.isSafeInteger(quantity) || quantity < 1) return NextResponse.json({ message: "Quantity must be a positive whole number." }, { status: 400 });
+    if (!Number.isSafeInteger(quantity) || quantity === 0 || Math.abs(quantity) > 1000000000 || (quantity < 0 && action !== "RECEIVE")) {
+      return NextResponse.json({ message: "Quantity must be a non-zero whole number. Negative quantities are permitted only for Receive Stock." }, { status: 400 });
+    }
+    if (quantity < 0 && note.length < 5) return NextResponse.json({ message: "Enter a reason for reducing stock (at least 5 characters)." }, { status: 400 });
+    if (note.length > 500) return NextResponse.json({ message: "Note must be 500 characters or fewer." }, { status: 400 });
+    // Negative receipts are an on-hand-only Neon adjustment, never a Sanity
+    // receipt or supplier return. Refuse legacy mode rather than applying a partial write.
+    if (quantity < 0 && !dbk69InventoryEnabled()) return NextResponse.json({ message: "Audited stock reduction requires the Neon inventory backend." }, { status: 503 });
     if ((action === "PURCHASE" || action === "RECEIVE") && !destinationStoreId) return NextResponse.json({ message: "Select the store/location for this stock." }, { status: 400 });
     if (action === "TRANSFER" && (!sourceStoreId || !destinationStoreId || sourceStoreId === destinationStoreId)) return NextResponse.json({ message: "Select different source and destination stores." }, { status: 400 });
 
@@ -373,6 +380,16 @@ export async function POST(request: Request) {
   } catch (cause) {
     console.error("DBK120 inventory movement failed:", cause);
     if (dbk69InventoryEnabled()) {
+      const code = cause instanceof Error ? cause.message : "";
+      if (/DBK_SIGNED_RECEIVE_INSUFFICIENT/.test(code)) {
+        return NextResponse.json({ message: "Insufficient on-hand stock for this reduction. Refresh inventory and try again." }, { status: 409 });
+      }
+      if (/DBK_SIGNED_RECEIVE_BALANCE_MISSING|DBK_SIGNED_RECEIVE_LEDGER_ID_CONFLICT|DBK_SIGNED_RECEIVE_ID_REUSED/.test(code)) {
+        return NextResponse.json({ message: "Inventory changed or the stock record is unavailable. Refresh before retrying." }, { status: 409 });
+      }
+      if (/DBK_SIGNED_RECEIVE_GATE_OFF|dbk69_apply_stock_reduction.*does not exist/i.test(code)) {
+        return NextResponse.json({ message: "Audited stock reduction is not enabled on this database." }, { status: 503 });
+      }
       const failure = dbk120InventoryFailure(cause);
       return NextResponse.json({message:failure.message,code:failure.code},
         {status:failure.status,headers:{'Cache-Control':'private, no-store'}});
@@ -418,6 +435,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({message:'Invalid movement ID, quantity or correction reason.'},{status:400});
     }
     try {
+      // Signed receipts represent on-hand adjustments, NOT purchased incoming
+      // stock; the legacy DBK-125 correction algorithm assumes positive receipts.
+      if (await dbk69IsSignedStockReduction(operationId)) {
+        return NextResponse.json({message:'Signed stock reductions cannot be edited or voided through the purchase/receipt correction workflow. Record a new audited adjustment instead.'},{status:409});
+      }
       const result=await dbk125CorrectMovement({
         correctionId:`dbk125-${randomUUID()}`,operationId,expectedQuantity,
         quantity,reason,actorId:staff.customerId,actorName:staff.customerName,

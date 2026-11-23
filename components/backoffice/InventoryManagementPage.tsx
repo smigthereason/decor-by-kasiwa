@@ -59,7 +59,7 @@ const actionCopy: Record<InventoryAction, { kicker: string; title: string; help:
   RECEIVE: {
     kicker: "Goods receipt",
     title: "Receive purchased stock into a store/location",
-    help: "Receive Stock moves previously purchased incoming units into the selected store/location and increases sellable on-hand stock there.",
+    help: "Enter a positive quantity to receive purchased incoming stock, or a negative quantity to reduce existing on-hand stock at this location. Reductions do not change incoming stock or create supplier returns.",
     submit: "Receive stock",
   },
   TRANSFER: {
@@ -247,7 +247,7 @@ export default function InventoryManagementPage() {
   }
 
   function beginCorrection(movement: InventoryMovement) {
-    if (!canCorrectStock || (!movement._rev && !movement._id.startsWith('dbk69.dbk69-'))) return;
+    if (!canCorrectStock || Number(movement.quantityChange || 0) < 0 || (!movement._rev && !movement._id.startsWith('dbk69.dbk69-'))) return;
     setEditingMovement(movement);
     setCorrectedQuantity(String(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))));
     setVoidMovement(false);
@@ -257,7 +257,7 @@ export default function InventoryManagementPage() {
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canCorrectStock || !editingMovement || (!editingMovement._rev && !editingMovement._id.startsWith('dbk69.dbk69-')) || correctingMovement) return;
+    if (!canCorrectStock || !editingMovement || Number(editingMovement.quantityChange || 0) < 0 || (!editingMovement._rev && !editingMovement._id.startsWith('dbk69.dbk69-')) || correctingMovement) return;
     if (voidMovement && !window.confirm("Void this movement? The inventory ledger will be adjusted, and the original record will remain in the audit trail. This cannot be undone as a simple edit.")) return;
     setCorrectingMovement(true);
     setMovementError(null);
@@ -340,12 +340,15 @@ export default function InventoryManagementPage() {
   const storeIncomingBefore = requiresVariant ? Number(destinationVariantBalance?.incoming || 0) : Number(destinationBalance?.incoming || 0);
   const enteredQuantity = Number(quantity);
   const projectedOnHand = action === "RECEIVE" ? storeOnHandBefore + enteredQuantity : storeOnHandBefore;
-  const projectedIncoming = action === "PURCHASE" ? storeIncomingBefore + enteredQuantity : action === "RECEIVE" ? storeIncomingBefore - enteredQuantity : storeIncomingBefore;
+  const projectedIncoming = action === "PURCHASE" ? storeIncomingBefore + enteredQuantity : action === "RECEIVE" && enteredQuantity > 0 ? storeIncomingBefore - enteredQuantity : storeIncomingBefore;
+  const stockReduction = action === "RECEIVE" && enteredQuantity < 0;
+  const invalidReduction = stockReduction && storeOnHandBefore + enteredQuantity < 0;
   const selectedSourceBalance = selectedProductRaw && sourceStoreId && sourceStoreId !== UNALLOCATED ? balanceFor(selectedProductRaw, sourceStoreId) : undefined;
   const unallocated = Math.max(0, Number(selectedProductRaw?.unallocatedOnHand || 0));
 
   async function submitMovement() {
     if (!canChangeStock || !action || !selectedProductId || (requiresVariant && !selectedVariantId)) return;
+    if (!Number.isSafeInteger(enteredQuantity) || (action === "RECEIVE" ? enteredQuantity === 0 : enteredQuantity <= 0) || invalidReduction || (stockReduction && note.trim().length < 5)) return;
     setSaving(true);
     setMessage(null);
     try {
@@ -368,7 +371,7 @@ export default function InventoryManagementPage() {
       }, "POST")) as { stockAfter?: number; incomingAfter?: number; locationOnHand?: number; locationIncoming?: number };
 
       if (action === "PURCHASE") setMessage(`Purchase recorded. Store incoming stock: ${payload.locationIncoming ?? "updated"}.`);
-      else if (action === "RECEIVE") setMessage(`Stock received. Store on hand: ${payload.locationOnHand ?? "updated"}; incoming: ${payload.locationIncoming ?? "updated"}.`);
+      else if (action === "RECEIVE") setMessage(stockReduction ? `Stock reduced (audited). Store on hand: ${payload.locationOnHand ?? "updated"}; incoming unchanged: ${payload.locationIncoming ?? "updated"}.` : `Stock received. Store on hand: ${payload.locationOnHand ?? "updated"}; incoming: ${payload.locationIncoming ?? "updated"}.`);
       else setMessage(`Stock transferred. Destination on hand: ${payload.locationOnHand ?? "updated"}.`);
 
       pendingMovement.current = null;
@@ -448,10 +451,10 @@ export default function InventoryManagementPage() {
               <div className="relative min-w-0"><select id="inventory-variant-select" value={selectedVariantId} onChange={(event)=>setSelectedVariantId(event.target.value)} className="min-h-12 w-full appearance-none rounded-xl border hairline bg-white py-2.5 pl-4 pr-11 font-normal"><option value="">Select a variant</option>{visibleVariants.map((variant)=><option key={variant.id} value={variant.id}>{variant.title || [variant.colour,variant.size].filter(Boolean).join(" · ") || variant.sku || "Variant"}</option>)}{selectedVariantId && !visibleVariants.some((variant) => variant.id === selectedVariantId) && selectedProductRaw?.variants?.filter((variant) => variant.id === selectedVariantId).map((variant) => <option key={variant.id} value={variant.id}>{variant.title || variant.sku || "Selected variant"}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[var(--muted)]"/></div>
               <p className="text-[10px] font-normal leading-4 text-[var(--muted)]">Record a separate quantity for each variant. Stock is tracked per variant at the selected store.</p>
             </div>}
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity<input type="number" min="1" step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-2">Quantity{action === "RECEIVE" ? " (+ receive / − reduce)" : ""}<input type="number" min={action === "RECEIVE" ? undefined : "1"} step="1" value={quantity} onChange={(e)=>setQuantity(e.target.value)} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
             {(action === "PURCHASE" || action === "RECEIVE") && <StoreSelect label="Store / location" value={destinationStoreId} onChange={setDestinationStoreId} locations={role === "MANAGER" ? storeLocations.filter(store => store._id === assignedStoreId) : storeLocations} disabled={role === "MANAGER"}/>}
             {action === "TRANSFER" && <><StoreSelect label="Source store" value={sourceStoreId} onChange={setSourceStoreId} locations={storeLocations} includeUnallocated={(role === "ADMIN" || role === "STORE") && unallocated > 0}/><StoreSelect label="Destination store" value={destinationStoreId} onChange={setDestinationStoreId} locations={storeLocations.filter((store)=>store._id!==sourceStoreId)}/></>}
-            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} placeholder={action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
+            <label className="grid min-w-0 gap-2 text-xs font-semibold lg:col-span-12">Note / reference<input value={note} onChange={(e)=>setNote(e.target.value)} maxLength={500} placeholder={stockReduction ? "Required: reason for stock reduction (5+ characters)" : action === "PURCHASE" ? "Supplier, invoice or PO reference" : "Optional reference"} className="min-h-12 w-full rounded-xl border hairline bg-white px-4 py-2.5 font-normal"/></label>
           </div>
 
           {(action === "PURCHASE" || action === "RECEIVE") && selectedProductRaw && destinationStoreId && (!requiresVariant || selectedVariantId) && <div className="mt-4 rounded-xl border hairline bg-[var(--paper-2)] p-4 text-xs" role="status" aria-live="polite">
@@ -460,18 +463,19 @@ export default function InventoryManagementPage() {
               <p>On hand: <strong>{storeOnHandBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedOnHand) ? projectedOnHand.toLocaleString("en-KE") : "—"}</strong></p>
               <p>Incoming: <strong>{storeIncomingBefore.toLocaleString("en-KE")} → {Number.isFinite(projectedIncoming) ? projectedIncoming.toLocaleString("en-KE") : "—"}</strong></p>
             </div>
-            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : "Receiving adds to on-hand stock. Neon verifies purchased incoming units when saving."}</p>
+            <p className="mt-2 text-[var(--muted)]">{action === "PURCHASE" ? "Purchases increase incoming only. Receiving later moves units from incoming to on-hand." : stockReduction ? "Stock reduction decreases on-hand only. Incoming stays unchanged; the reason is retained in the Neon audit ledger." : "Receiving adds to on-hand stock. Neon verifies purchased incoming units when saving."}</p>
+            {stockReduction && invalidReduction && <p className="mt-2 font-semibold text-red-700">This reduction exceeds the displayed on-hand stock. Neon checks the actual balance before saving.</p>}
             {action === "RECEIVE" && enteredQuantity > storeIncomingBefore && <div className="mt-2 text-red-700"><p className="font-semibold">Displayed incoming: {storeIncomingBefore.toLocaleString("en-KE")} units. Neon confirms the available quantity on save. If insufficient, record the purchase first.</p>{storeIncomingBefore === 0 && canChangeStock && <button type="button" onClick={() => openAction("PURCHASE", selectedProductId)} className="mt-2 rounded-full border border-amber-300 px-3 py-2 text-xs font-semibold text-[var(--ink)]">Record purchase first</button>}</div>}
           </div>}
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected source on hand</p><p className="mt-1 font-semibold">{sourceStoreId === UNALLOCATED ? unallocated : Math.max(0, Number(selectedSourceBalance?.onHand || 0))}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected variant</p><p className="mt-1 font-semibold">{selectedVariant ? `${selectedVariant.stockQuantity} on hand` : "—"}</p></div>
-            {!hideProcurement && <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Movement value</p><p className="mt-1 font-semibold">{formatKes(Math.max(0, Number(quantity || 0)) * selectedProductRaw.unitCost)}</p></div>}
+            {!hideProcurement && <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Movement value</p><p className="mt-1 font-semibold">{formatKes(Number(quantity || 0) * selectedProductRaw.unitCost)}</p></div>}
           </div>}
 
           {message && <div role="status" aria-live="polite" className="mt-5 rounded-xl border hairline bg-[var(--paper-2)] px-4 py-3 text-xs font-medium">{message}</div>}
-          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || enteredQuantity<=0 || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
+          <div className="mt-5 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-2xl text-[10px] leading-relaxed text-[var(--muted)]">{actionCopy[action].help}</p><button type="button" disabled={saving || !selectedProductId || !Number.isSafeInteger(enteredQuantity) || (action === "RECEIVE" ? enteredQuantity===0 : enteredQuantity<=0) || invalidReduction || (stockReduction && (note.trim().length < 5 || note.length > 500)) || (requiresVariant&&!selectedVariantId) || !destinationStoreId || (action === "TRANSFER" && (!sourceStoreId || sourceStoreId===destinationStoreId))} onClick={()=>void submitMovement()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-xs font-semibold !text-soft-cream disabled:cursor-not-allowed disabled:opacity-50">{action === "PURCHASE" ? <PackagePlus size={14}/> : action === "RECEIVE" ? <ArrowDownToLine size={14}/> : <Send size={14}/>} {saving?"Saving…":actionCopy[action].submit}</button></div>
         </section>
       )}
 
@@ -530,8 +534,8 @@ export default function InventoryManagementPage() {
               <thead><tr className="border-b hairline">{movementHeadings.map((heading) => <th key={heading} scope="col" className="sticky top-0 z-10 bg-[var(--paper)] px-4 py-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)] shadow-[0_1px_0_var(--muted)]">{heading}</th>)}</tr></thead>
               <tbody>{movements.map((movement) => {
                 const label = movement.movementType === "PURCHASE" ? "Purchase stock" : movement.movementType === "RECEIPT" ? "Receive stock" : "Transfer stock";
-                const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `Incoming → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
-                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" ? "−" : "+"}{(movement.correctedQuantity ?? Math.abs(Number(movement.quantityChange || 0))).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={(!movement.archived && !movement._rev && !movement._id.startsWith('dbk69.dbk69-')) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
+                const route = movement.movementType === "PURCHASE" ? `Supplier → ${movement.destination || "Store"}` : movement.movementType === "RECEIPT" ? `${Number(movement.quantityChange || 0) < 0 ? "Stock correction" : "Incoming"} → ${movement.destination || "Store"}` : `${movement.sourceLocation || "Store"} → ${movement.destination || "Store"}`;
+                return <tr key={movement._id} className="border-b hairline last:border-0"><td className="px-4 py-3 text-xs">{movement.createdAt ? new Date(movement.createdAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"}</td><td className="px-4 py-3 text-xs font-semibold">{label}</td><td className="px-4 py-3 text-xs">{movement.productName || "Product"}{movement.variantLabel ? <><br/><span className="text-[10px] text-[var(--muted)]">{movement.variantLabel}</span></> : null}</td><td className="px-4 py-3 text-xs font-semibold tabular-nums">{movement.movementType === "TRANSFER" || Number(movement.quantityChange || 0) < 0 ? "−" : "+"}{Math.abs(movement.correctedQuantity ?? Number(movement.quantityChange || 0)).toLocaleString("en-KE")}{movement.correctedAt && <span className="mt-1 block text-[9px] text-amber-700">{movement.voidedAt ? "Voided" : "Corrected"}</span>}</td><td className="px-4 py-3 text-xs text-[var(--muted)]">{route}</td>{!hideProcurement && <td className="px-4 py-3 text-xs">{formatKes(Number(movement.movementValue || 0))}</td>}<td className="px-4 py-3 text-xs">{movement.actorName || "—"}</td><td className="px-4 py-3 text-[10px] text-[var(--muted)]"><span className="font-semibold text-[var(--ink)]">{movement.movementNumber || "—"}</span>{movement.note ? <><br/>{movement.note}</> : null}{movement.correctionReason ? <><br/><span className="text-amber-700">Correction by {movement.correctedBy || "staff"}: {movement.correctionReason}</span></> : null}</td>{canCorrectStock && <td className="px-4 py-3 text-xs"><button type="button" disabled={Number(movement.quantityChange || 0) < 0 || (!movement.archived && !movement._rev && !movement._id.startsWith('dbk69.dbk69-')) || correctingMovement || Boolean(movement.voidedAt) || movement.correctedQuantity === 0} onClick={() => movement.archived ? void restoreArchivedMovement(movement) : beginCorrection(movement)} className="inline-flex items-center gap-1 rounded-full border hairline px-3 py-2 font-semibold disabled:opacity-50"><Pencil size={12}/> {Number(movement.quantityChange || 0) < 0 ? "Audited reduction" : movement.voidedAt || movement.correctedQuantity === 0 ? "Voided" : movement.archived ? "Restore to edit" : "Edit / Void"}</button></td>}</tr>;
               })}</tbody>
             </table>
             {!movementLoading && !movementError && movements.length === 0 && <p className="p-8 text-center text-xs text-[var(--muted)]">No stock movements match the selected filters.</p>}

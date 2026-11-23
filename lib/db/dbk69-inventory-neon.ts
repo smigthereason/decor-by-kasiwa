@@ -61,7 +61,9 @@ export async function dbk69ApplyAdminOperation(input: Dbk69AdminOperation) {
     throw new Error('Neon inventory administration has not been approved');
   }
   if (!/^dbk69-[0-9a-f-]{36}$/i.test(input.operationId) ||
-      !Number.isSafeInteger(input.quantity) || input.quantity <= 0 || input.quantity > 1000000000 ||
+      !Number.isSafeInteger(input.quantity) || input.quantity === 0 || Math.abs(input.quantity) > 1000000000 ||
+      (input.quantity < 0 && input.type !== 'RECEIVE') ||
+      (input.quantity < 0 && (input.note || '').trim().length < 5) ||
       !input.productId || !input.destinationStoreId ||
       !['PURCHASE','RECEIVE','TRANSFER'].includes(input.type) ||
       !Number.isFinite(input.unitCost) || input.unitCost < 0 ||
@@ -76,22 +78,39 @@ export async function dbk69ApplyAdminOperation(input: Dbk69AdminOperation) {
     productId:input.productId,
     variantId:input.variantId || '',
     quantity:input.quantity,
+    ...(input.quantity < 0 ? {adjustmentKind:'ON_HAND_REDUCTION'} : {}),
     ...(input.type === 'TRANSFER' ? {sourceStoreId:input.sourceStoreId} : {}),
     destinationStoreId:input.destinationStoreId,
   };
   const meta = {
     actorId:input.actorId,actorName:input.actorName,
     productName:input.productName,variantLabel:input.variantLabel || '',
-    sourceName:input.sourceName || '',destinationName:input.destinationName,
+    sourceName:input.quantity < 0 ? 'Stock adjustment' : (input.sourceName || ''),destinationName:input.destinationName,
     unitCost:Number(input.unitCost.toFixed(2)),note:input.note || '',
   };
-  const rows = await getNeonSql()`
+  const rows = input.quantity < 0 ? await getNeonSql()`
+    SELECT public.dbk69_apply_stock_reduction(
+      ${input.operationId},${JSON.stringify(payload)}::jsonb,${JSON.stringify(meta)}::jsonb
+    ) AS result
+  ` : await getNeonSql()`
     SELECT public.dbk69_apply_inventory(
       ${input.operationId},${JSON.stringify(payload)}::jsonb,${JSON.stringify(meta)}::jsonb
     ) AS result
   `;
   if (!rows[0]?.result) throw new Error('Neon inventory operation did not return a result');
   return rows[0].result as Record<string,unknown>;
+}
+
+/** Protect audited signed reductions from DBK-125's positive-receipt correction path. */
+export async function dbk69IsSignedStockReduction(operationId:string): Promise<boolean> {
+  requirePinnedInventoryDatabase();
+  const rows = await getNeonSql()`
+    SELECT EXISTS (
+      SELECT 1 FROM public.dbk69_inventory_movements
+      WHERE operation_id=${operationId} AND movement_type='RECEIVE' AND quantity<0
+    ) AS signed_reduction
+  `;
+  return rows[0]?.signed_reduction === true;
 }
 
 // DBK-125: Separate immutable audit ledger; never rewrite DBK-51/69 original operations.
