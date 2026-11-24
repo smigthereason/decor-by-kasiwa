@@ -6,6 +6,8 @@ import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
+import { dbk142RegisterZeroStockProduct } from "@/lib/db/dbk142-new-product";
+import { dbk142ZeroStockKeys } from "@/lib/db/dbk142-new-product-core";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { generateProductSku } from "@/sanity/lib/sku";
@@ -107,10 +109,11 @@ export async function GET() {
     serverClient.fetch<StoreLocationOption[]>(`*[_type == "storeLocation" && active != false] | order(name asc){_id,name,code,locationType}`, {}, { cache: "no-store" }),
   ]);
 
-  return NextResponse.json({ categories, collections, spaces, styles, products, storeLocations });
+  return NextResponse.json({ categories, collections, spaces, styles, products, storeLocations, stockAuthority: dbk69InventoryEnabled() ? "neon" : "sanity" });
 }
 
 export async function POST(request: Request) {
+  let pendingProductId: string | null = null;
   const maintenance = await dbk109MaintenanceDecision();
   if (maintenance !== 'OPEN') {
     return NextResponse.json({code:'DBK109_CUTOVER_FREEZE',retryable:false,
@@ -120,13 +123,21 @@ export async function POST(request: Request) {
 
   const staff = await getApiStaff(["ADMIN", "MANAGER"]);
   if (!staff.ok) return NextResponse.json({ message: "Access denied." }, { status: staff.status });
-  if (dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) {
-    return NextResponse.json({message:'New products require an atomic Neon inventory seed. Product creation is paused during stock cutover.'},{status:409});
+  // Fail closed if legacy inventory is blocked but the live inventory backend is not available.
+  if (!dbk69InventoryEnabled() && dbk109LegacyInventoryWriteBlocked()) {
+    return NextResponse.json({code:'DBK142_INVENTORY_UNAVAILABLE',
+      message:'Product creation is temporarily unavailable while inventory is being prepared.'},
+      {status:503,headers:{'Cache-Control':'private, no-store'}});
   }
 
   try {
     const form = await request.formData();
     const manager = staff.role === "MANAGER";
+    const neonCreation = dbk69InventoryEnabled();
+    const createRequestId = clean(form.get("createRequestId"));
+    if (neonCreation && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(createRequestId)) {
+      return NextResponse.json({message:'Product form expired. Refresh and try again.'},{status:400});
+    }
     if (manager && !staff.storeLocationId) {
       return NextResponse.json({ message: "Manager must be assigned to a store before creating products." }, { status: 403 });
     }
@@ -174,13 +185,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Select the Main inventory location for this product." }, { status: 400 });
     }
 
-    const productId = `product.${randomUUID().replaceAll("-", "")}`;
-    const slug = await uniqueSlug(name);
-    const sku = generateProductSku(name, productId);
+    // A browser retry resumes the same product rather than generating another catalogue identity.
+    const productId = `product.${(neonCreation ? createRequestId : randomUUID()).replaceAll("-", "")}`;
+    const inventoryId = inventoryDocumentId(productId);
+    // Check whether a previous request already saved this draft before any asset uploads.
+    const existing = neonCreation ? await serverClient.fetch<{
+      product: {_id:string;_rev:string;_type:string;name:string;price:number;wholesalePrice?:number;
+        wholesaleMinQuantity?:number;primaryCategory?:string;dbk142CreateRequestId?:string;
+        variantKeys?:string[];available?:boolean;slug?:string;sku?:string} | null;
+      inventory: {_id:string;_rev:string;storeId?:string} | null;
+    }>(`{
+      "product": *[_id == $productId][0]{_id,_rev,_type,name,price,wholesalePrice,wholesaleMinQuantity,
+        "primaryCategory":primaryCategory._ref,dbk142CreateRequestId,"variantKeys":variants[]._key,
+        available,"slug":slug.current,sku},
+      "inventory": *[_id == $inventoryId][0]{_id,_rev,"storeId":defaultStore._ref}
+    }`, {productId,inventoryId}, {cache:'no-store'}) : {product:null,inventory:null};
+    if (existing.product || existing.inventory) {
+      if (!existing.product || !existing.inventory || existing.product._type !== 'product' ||
+          existing.product.dbk142CreateRequestId !== createRequestId ||
+          existing.product.name !== name || Number(existing.product.price) !== price ||
+          Number(existing.product.wholesalePrice || 0) !== wholesalePrice ||
+          Number(existing.product.wholesaleMinQuantity || 0) !== wholesaleMinQuantity ||
+          existing.product.primaryCategory !== primaryCategory ||
+          existing.inventory.storeId !== storeLocation?._id) {
+        return NextResponse.json({code:'DBK142_CREATE_REQUEST_CONFLICT',
+          message:'This product form was already used for a different product. Open a fresh form to continue.'},
+          {status:409,headers:{'Cache-Control':'private, no-store'}});
+      }
+    }
+    const slug = existing.product?.slug || await uniqueSlug(name);
+    const sku = existing.product?.sku || generateProductSku(name, productId);
     const now = new Date().toISOString();
-    const heroImage = await uploadImage(form.get("heroImage") instanceof File ? form.get("heroImage") as File : null);
+    const heroImage = existing.product ? undefined : await uploadImage(form.get("heroImage") instanceof File ? form.get("heroImage") as File : null);
     const galleryFiles = form.getAll("galleryImages").filter((entry): entry is File => entry instanceof File && entry.size > 0);
-    const gallery = (await Promise.all(galleryFiles.map((file) => uploadImage(file))))
+    const gallery = (await Promise.all((existing.product ? [] : galleryFiles).map((file) => uploadImage(file))))
       .filter((image): image is NonNullable<typeof image> => Boolean(image))
       .map((image) => ({ ...image, _key: randomUUID().slice(0, 12) }));
 
@@ -196,7 +234,7 @@ export async function POST(request: Request) {
     const variantDocuments = [];
     for (let index = 0; index < variants.length; index += 1) {
       const variant = variants[index];
-      const image = await uploadImage(form.get(`variantImage-${index}`) instanceof File ? form.get(`variantImage-${index}`) as File : null);
+      const image = existing.product ? undefined : await uploadImage(form.get(`variantImage-${index}`) instanceof File ? form.get(`variantImage-${index}`) as File : null);
       if (manager && variant.stockQuantity !== undefined && variant.stockQuantity !== null) {
         return NextResponse.json({ message: "Managers cannot set variant stock quantities." }, { status: 403 });
       }
@@ -220,6 +258,17 @@ export async function POST(request: Request) {
     const initialStock = manager ? 0 : variantDocuments.length > 0
       ? variantStockTotal
       : Math.max(0, numberValue(form.get("initialStock")));
+    // All new inventory-authoritative products must begin at ZERO physical stock.
+    // Stock is added afterwards using the audited Purchase/Receive workflow.
+    if (neonCreation && (initialStock !== 0 || numberValue(form.get("incoming")) !== 0 ||
+        variantDocuments.some(v => Number(v.stockQuantity || 0) !== 0))) {
+      return NextResponse.json({code:'DBK142_STOCK_MUST_START_AT_ZERO',
+        message:'New products start with zero stock. Create the product first, then add stock through Inventory.'},
+        {status:400});
+    }
+    if (neonCreation && !storeLocation) {
+      return NextResponse.json({message:'Choose an inventory location before creating the product.'},{status:400});
+    }
     const procurementCost = manager ? 0 : Math.max(0, numberValue(form.get("procurementCost")));
     const ecommerceEnabled = booleanValue(form.get("ecommerceEnabled"), true);
     const posEnabled = booleanValue(form.get("posEnabled"), true);
@@ -281,50 +330,126 @@ export async function POST(request: Request) {
       ...(salePrice > 0 ? { salePrice } : {}),
       ...(saleStartAt ? { saleStartAt } : {}),
       ...(saleEndAt ? { saleEndAt } : {}),
-      available: booleanValue(form.get("available"), true),
+      // Keep the catalogue item unavailable until its zero-stock registration is confirmed.
+      available: neonCreation ? false : booleanValue(form.get("available"), true),
+      ...(neonCreation ? { dbk142CreateRequestId: createRequestId } : {}),
     };
 
+    if (neonCreation) {
+      // Never reinterpret an existing draft as having different variants on retry.
+      if (existing.product && (existing.product.variantKeys || []).length !== variantDocuments.length) {
+        return NextResponse.json({code:'DBK142_CREATE_REQUEST_CONFLICT',
+          message:'The product draft has changed. Open the saved item rather than recreating it.'},
+          {status:409,headers:{'Cache-Control':'private, no-store'}});
+      }
+      if (!existing.product) {
+        // A single catalogue transaction creates the product and its metadata inventory record.
+        // Both are hidden from shoppers until physical stock identities exist in Neon.
+        const transaction = serverClient.transaction();
+        transaction.create(productDocument);
+        transaction.create({
+          _id: inventoryId,
+          _type: 'inventoryRecord',
+          product: { _type:'reference',_ref:productId },
+          location: storeLocation!.name,
+          defaultStore: { _type:'reference',_ref:storeLocation!._id },
+          locationBalances: [{
+            _key:`store-${storeLocation!._id.replace(/[^a-zA-Z0-9]/g, '').slice(0,24)}`,
+            store:{_type:'reference',_ref:storeLocation!._id},
+            storeId:storeLocation!._id,storeName:storeLocation!.name,storeCode:storeLocation!.code,
+            onHand:0,incoming:0,
+            ...(variantDocuments.length ? {variants:variantDocuments.map(v=>({
+              _key:`variant-${String(v._key).replace(/[^a-zA-Z0-9]/g, '').slice(0,24)}`,
+              variantId:v._key,variantLabel:v.title || [v.colour,v.size].filter(Boolean).join(' / '),
+              onHand:0,incoming:0,
+            }))} : {}),
+          }],
+          reserved:0,incoming:0,reorderPoint:Math.max(0,numberValue(form.get('reorderPoint'),5)),
+          unitCost:procurementCost,createdAt:now,updatedAt:now,
+        });
+        await transaction.commit();
+      }
+      pendingProductId = productId;
+      const saved = await serverClient.fetch<{
+        product: {_id:string;_rev:string;variantKeys?:string[];available?:boolean;slug?:string;sku?:string} | null;
+        inventory: {_id:string;_rev:string} | null;
+      }>(`{
+        "product": *[_id == $productId][0]{_id,_rev,"variantKeys":variants[]._key,available,"slug":slug.current,sku},
+        "inventory": *[_id == $inventoryId][0]{_id,_rev}
+      }`, {productId,inventoryId}, {cache:'no-store'});
+      if (!saved.product?._rev || !saved.inventory?._rev) {
+        throw new Error('Catalogue creation not fully persisted; retry needed');
+      }
+      const variantKeys = dbk142ZeroStockKeys({
+        storeLocationId:storeLocation!._id,
+        variantIds:saved.product.variantKeys || [],
+        initialStock:0,incoming:0,variantStock:[],
+      });
+      await dbk142RegisterZeroStockProduct({
+        productId, locationId:storeLocation!._id,variantIds:variantKeys,
+        productRevision:saved.product._rev,inventoryRevision:saved.inventory._rev,
+      });
+      // Reveal the product only after verifying that every stock identity exists.
+      if (booleanValue(form.get('available'),true) && !saved.product.available) {
+        await serverClient.patch(productId).ifRevisionId(saved.product._rev).set({available:true}).commit();
+      }
+      pendingProductId = null;
+      revalidatePath('/');
+      revalidatePath('/shop');
+      return NextResponse.json({ok:true,productId,slug:saved.product.slug,sku:saved.product.sku},
+        {status:existing.product ? 200 : 201});
+    }
+
+    // Legacy creation path is retained only when the old inventory backend remains authoritative.
     const transaction = serverClient.transaction();
     transaction.create(productDocument);
-    transaction.create({
-      _id: inventoryDocumentId(productId),
-      _type: "inventoryRecord",
-      product: { _type: "reference", _ref: productId },
-      location: storeLocation?.name || "Unassigned",
-      ...(storeLocation ? {
-        defaultStore: { _type: "reference", _ref: storeLocation._id },
-        locationBalances: [{
-          _key: `store-${storeLocation._id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
-          store: { _type: "reference", _ref: storeLocation._id },
-          storeId: storeLocation._id,
-          storeName: storeLocation.name,
-          storeCode: storeLocation.code,
-          onHand: initialStock,
-          incoming: Math.max(0, numberValue(form.get("incoming"))),
-          ...(variantDocuments.length ? { variants: variantDocuments.map((variant) => ({
-            _key: `variant-${String(variant._key).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
-            variantId: variant._key,
-            variantLabel: variant.title || [variant.colour, variant.size].filter(Boolean).join(" / "),
-            onHand: Math.max(0, Number(variant.stockQuantity || 0)),
-            incoming: 0,
-          })) } : {}),
-        }],
-      } : {}),
-      reserved: 0,
-      incoming: Math.max(0, numberValue(form.get("incoming"))),
-      reorderPoint: Math.max(0, numberValue(form.get("reorderPoint"), 5)),
-      unitCost: procurementCost,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await transaction.commit();
-    revalidatePath("/");
-    revalidatePath("/shop");
+      transaction.create({
+        _id: inventoryDocumentId(productId),
+        _type: "inventoryRecord",
+        product: { _type: "reference", _ref: productId },
+        location: storeLocation?.name || "Unassigned",
+        ...(storeLocation ? {
+          defaultStore: { _type: "reference", _ref: storeLocation._id },
+          locationBalances: [{
+            _key: `store-${storeLocation._id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
+            store: { _type: "reference", _ref: storeLocation._id },
+            storeId: storeLocation._id,
+            storeName: storeLocation.name,
+            storeCode: storeLocation.code,
+            onHand: initialStock,
+            incoming: Math.max(0, numberValue(form.get("incoming"))),
+            ...(variantDocuments.length ? { variants: variantDocuments.map((variant) => ({
+              _key: `variant-${String(variant._key).replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`,
+              variantId: variant._key,
+              variantLabel: variant.title || [variant.colour, variant.size].filter(Boolean).join(" / "),
+              onHand: Math.max(0, Number(variant.stockQuantity || 0)),
+              incoming: 0,
+            })) } : {}),
+          }],
+        } : {}),
+        reserved: 0,
+        incoming: Math.max(0, numberValue(form.get("incoming"))),
+        reorderPoint: Math.max(0, numberValue(form.get("reorderPoint"), 5)),
+        unitCost: procurementCost,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await transaction.commit();
+      revalidatePath("/");
+      revalidatePath("/shop");
 
-    return NextResponse.json({ ok: true, productId, slug, sku }, { status: 201 });
+      return NextResponse.json({ ok: true, productId, slug, sku }, { status: 201 });
   } catch (cause) {
-    console.error("Product creation failed:", cause);
+    console.error("Product creation failed:", {productId:pendingProductId, cause});
+    if (pendingProductId) {
+      return NextResponse.json({code:'DBK142_STOCK_REGISTRATION_PENDING',productId:pendingProductId,
+        message:'Product details were saved, but inventory setup could not finish. Click Create Product again to resume the same item; do not start another copy.'},
+        {status:503,headers:{'Cache-Control':'private, no-store'}});
+    }
     const failure = toSanityServiceError(cause, "Product creation failed.");
-    return NextResponse.json({ message: failure.message }, { status: failure.status });
+    return NextResponse.json({message:failure.status === 402
+        ? 'The product catalogue cannot accept new entries right now. Contact the administrator.'
+        : 'Product could not be created. Please retry or contact the administrator if this continues.'},
+      {status:failure.status,headers:{'Cache-Control':'private, no-store'}});
   }
 }

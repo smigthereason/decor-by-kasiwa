@@ -8,7 +8,7 @@ import { ArrowLeft, ChevronDown, ImagePlus, LoaderCircle, Plus, Save, Trash2 } f
 
 type Option = { _id: string; title: string; slug?: string };
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
-type OptionsPayload = { categories: Option[]; collections: Option[]; spaces: Option[]; styles: Option[]; products: Option[]; storeLocations: StoreLocationOption[] };
+type OptionsPayload = { categories: Option[]; collections: Option[]; spaces: Option[]; styles: Option[]; products: Option[]; storeLocations: StoreLocationOption[]; stockAuthority?: "neon" | "sanity" };
 type ExistingGalleryImage = { _key: string; assetRef: string; url?: string };
 type VariantDraft = {
   _key?: string;
@@ -127,6 +127,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const [loadingProduct, setLoadingProduct] = useState(isEditing);
   const [neonInventory, setNeonInventory] = useState(false);
   const [saving, setSaving] = useState(false);
+  const createRequestIdRef = useRef<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
@@ -159,6 +160,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         const payload = await readApiResponse<OptionsPayload>(response);
         if (!response.ok) throw new Error(payload.message || "Unable to load product options.");
         setOptions(payload);
+        if (!isEditing) setNeonInventory(payload.stockAuthority === 'neon');
       })
       .catch((cause) => setMessage(cause instanceof Error ? cause.message : "Unable to load product options."))
       .finally(() => setLoadingOptions(false));
@@ -209,7 +211,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
   async function removeExistingImage(kind: "hero" | "gallery" | "variant", key?: string) {
     if (!canRemoveImages || !productId || !product?._rev || removingImage) return;
-    if (!window.confirm("Remove this image from the product? This does not delete the original asset from Sanity.")) return;
+    if (!window.confirm("Remove this image from the product? This does not delete the original uploaded file.")) return;
     const target = `${kind}:${key || ""}`;
     setRemovingImage(target);
     setMessage(null);
@@ -304,6 +306,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
       }
     }
     const form = new FormData(event.currentTarget);
+    if (!isEditing) {
+      if (!createRequestIdRef.current) createRequestIdRef.current = crypto.randomUUID();
+      form.set('createRequestId', createRequestIdRef.current);
+    }
     // DBK-120: the live Neon ledger owns all stock and allocations. The product
     // editor may update variant metadata but must never submit cached quantities.
     if (isEditing && neonInventory) {
@@ -419,6 +425,9 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
       const payload = await readApiResponse<{ productId?: string; code?: string }>(response);
       if (!response.ok) {
         if (payload.message?.includes("Compare-at price")) setPricingError(payload.message);
+        if (!isEditing && payload.code === 'DBK142_STOCK_REGISTRATION_PENDING') {
+          throw new Error(payload.message || 'Product setup is incomplete. Click Create Product again to resume.');
+        }
         if (isEditing && productId && payload.code === "DBK120_NEON_REGISTRATION_PENDING") {
           // Sanity saved successfully; refresh only its revision while keeping
           // unsaved UI draft content and immutable variant keys intact.
@@ -433,7 +442,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
           throw new Error("The catalogue saved but stock registration was not confirmed. Reload the product before retrying.");
         }
         const fallback = response.status === 409
-          ? 'Save rejected (409). Product data was not overwritten. Reload to check for another editor or a registered-variant conflict.'
+          ? (isEditing ? 'Another change conflicts with this product. Reload and try again.' : 'A product conflict was detected. Check existing products before retrying.')
           : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
         const specificMessage = payload.message && !/^error\s*409$/i.test(payload.message) ? payload.message : fallback;
         throw new Error(`${specificMessage}${payload.code ? ` (${payload.code})` : ''}`);
@@ -468,7 +477,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         <Link href={managerMode ? "/store/products" : (isEditing && productId ? `/admin/products/${encodeURIComponent(productId)}` : "/admin/products")} className="group inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><ArrowLeft size={13} className="transition-transform group-hover:-translate-x-1"/>{managerMode ? "Back to products" : (isEditing ? "Back to product" : "Back to products")}</Link>
         <p className="kicker mt-5 text-[var(--muted)]">Product catalogue</p>
         <h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">{isEditing ? `Edit ${product?.name || "product"}` : "Add a new product"}</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">{managerMode ? "Managers can edit catalogue details and prices. Stock quantities are read-only and production cost is hidden." : (isEditing ? "Every catalogue section available during product creation can be updated here." : "Create the same core catalogue information used by Sanity without leaving the Decor by Kasiwa Admin Office. The product is saved directly to the live Sanity catalogue.")}</p>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">{managerMode ? "Managers can edit catalogue details and prices. Stock quantities are read-only and production cost is hidden." : (isEditing ? "Every catalogue section available during product creation can be updated here." : "Create a product directly in the Decor By Kasiwa catalogue. New products start with zero stock; add inventory after saving.")}</p>
       </header>
 
       <form onSubmit={submit} className="mx-auto grid max-w-[1500px] gap-5 p-4 sm:p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
@@ -512,8 +521,8 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             {variants.some(v=>v.retired) && <button type="button" onClick={()=>setShowRemovedVariants(v=>!v)} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">{showRemovedVariants ? 'Hide removed' : `Show removed (${variants.filter(v=>v.retired).length})`}</button>}
             <button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>
           </div>}>
-            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">{isEditing && neonInventory
-              ? "Stock is read-only here. Remove zero-stock variants from sales, or restore them later. Registered identifiers remain for audit history. Variants with stock must be cleared through Inventory first."
+            <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">{neonInventory
+              ? "Stock is managed through Inventory. New products and variants start with zero stock. Saved variant identifiers are retained to protect stock and sales history."
               : "Stock quantities are company totals. Saving allocates the unassigned remainder to the selected inventory location; stock already at other stores is preserved."}</p>
             {variants.length === 0 ? <p className="text-sm text-[var(--muted)]">No variants. The product will use its main price and stock.</p> : <div className="space-y-3">{variants.map((variant,index)=>variant.retired && !showRemovedVariants ? null : <div key={variant._key || index} className="rounded-xl border hairline bg-[var(--paper-2)] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold">Variant {index+1}{variant.retired ? ' · Removed from sales' : ''}</p>{isEditing && neonInventory && variant._key && persistedVariantKeys.has(variant._key)
   ? (variant.retired
@@ -537,7 +546,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
                   <input key="variant-total" type="number" min="0" value={variantStockTotal} readOnly aria-readonly="true" />
                 </Field>
               ) : (
-                <Field label="Initial stock" hint="Company total; unallocated units will be assigned to the selected store on save">
+                <Field label="Initial stock" hint={neonInventory ? 'New products start at zero; use Inventory to add stock.' : 'Company total; unallocated units will be assigned to the selected store on save'}>
                   <input key="initial-stock" name={managerMode ? undefined : "initialStock"} type="number" min="0" readOnly={managerMode || neonInventory} aria-readonly={managerMode || neonInventory} defaultValue={product?.initialStock ?? 0} />
                 </Field>
               )}
