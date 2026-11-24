@@ -7,7 +7,6 @@ import { NextResponse } from "next/server";
 import { getApiStaff } from "@/lib/auth/api-authorization";
 import { dbk69InventoryEnabled } from "@/lib/db/dbk69-inventory-neon";
 import { dbk142RegisterZeroStockProduct } from "@/lib/db/dbk142-new-product";
-import { dbk142ZeroStockKeys } from "@/lib/db/dbk142-new-product-core";
 import { dbk109LegacyInventoryWriteBlocked } from "@/lib/db/dbk109-cutover-authority";
 import { toSanityServiceError } from "@/lib/sanity-error";
 import { generateProductSku } from "@/sanity/lib/sku";
@@ -385,13 +384,12 @@ export async function POST(request: Request) {
       if (!saved.product?._rev || !saved.inventory?._rev) {
         throw new Error('Catalogue creation not fully persisted; retry needed');
       }
-      const variantKeys = dbk142ZeroStockKeys({
-        storeLocationId:storeLocation!._id,
-        variantIds:saved.product.variantKeys || [],
-        initialStock:0,incoming:0,variantStock:[],
-      });
+      // DBK144: The registration helper validates and normalizes variant IDs.
+      // A non-variant product is represented in stock by the empty key ('').
+      // Do not normalize here as well: feeding [''] back into that validator
+      // rejects a legitimate non-variant product and leaves a partial draft.
       await dbk142RegisterZeroStockProduct({
-        productId, locationId:storeLocation!._id,variantIds:variantKeys,
+        productId, locationId:storeLocation!._id,variantIds:saved.product.variantKeys || [],
         productRevision:saved.product._rev,inventoryRevision:saved.inventory._rev,
       });
       // Reveal the product only after verifying that every stock identity exists.
