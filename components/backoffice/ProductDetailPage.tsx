@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, Boxes, Check, ImagePlus, MapPin, Pencil, Archive, X } from "lucide-react";
 
 import LiveDataState from "@/components/backoffice/LiveDataState";
 import ProductCreatePage from "@/components/backoffice/ProductCreatePage";
@@ -25,7 +25,7 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
   const product = data?.products.find((item) => item.id === productId);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<InventoryItem | null>(null);
   const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
@@ -78,22 +78,25 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
     setEditing(false);
   }
 
-  async function deleteProduct() {
-    if (mode !== "admin" || deleting) return;
-    const confirmed = window.confirm(`Delete ${product?.name || "this product"}? This permanently removes products that are not already referenced by orders or curated content.`);
-    if (!confirmed) return;
+  async function archiveProduct() {
+    if (mode !== "admin" || archiving) return;
+    if (!window.confirm(`Remove ${product?.name || "this product"} from sale? It will no longer be offered on the website or POS. Existing stock, orders and history will be preserved. You can restore sales channels by editing the product later.`)) return;
 
-    setDeleting(true);
+    setArchiving(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/backoffice/products/${encodeURIComponent(liveProductId)}`, { method: "DELETE" });
+      const response = await fetch(`/api/backoffice/products/${encodeURIComponent(liveProductId)}/archive`, {
+        method: "POST",
+      });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof result?.message === "string" ? result.message : "Product deletion failed.");
-      router.push("/admin/products");
+      if (!response.ok) throw new Error(typeof result?.message === "string" ? result.message : "Unable to remove the product from sale.");
+      await refresh();
+      setMessage("Product removed from online and POS sales. Existing inventory and order history were preserved.");
       router.refresh();
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Product deletion failed.");
-      setDeleting(false);
+      setMessage(cause instanceof Error ? cause.message : "Unable to remove the product from sale.");
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -208,8 +211,8 @@ export default function ProductDetailPage({ mode }: { mode: Mode }) {
                   </Link>
                 )}
                 {mode === "admin" && (
-                  <button type="button" disabled={deleting} onClick={() => void deleteProduct()} className="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-red-700 transition hover:bg-red-50 disabled:opacity-50">
-                    <Trash2 size={14} /> {deleting ? "Deleting…" : "Delete product"}
+                  <button type="button" disabled={archiving} onClick={() => void archiveProduct()} className="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-red-700 transition hover:bg-red-50 disabled:opacity-50">
+                    <Archive size={14} /> {archiving ? "Removing…" : "Remove from sale"}
                   </button>
                 )}
               </>
