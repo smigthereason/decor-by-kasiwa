@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ImagePlus, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { dbk143ProductCreatePreflight } from "@/lib/products/dbk143-product-create-validation";
 
 type Option = { _id: string; title: string; slug?: string };
 type StoreLocationOption = { _id: string; name: string; code?: string; locationType?: "MAIN" | "BRANCH" };
@@ -331,6 +332,21 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
       event.currentTarget.querySelector<HTMLInputElement>('[name="compareAtPrice"]')?.focus();
       return;
     }
+    // DBK143: validate related fields together before sending a product create request.
+    // Never guess a wholesale threshold: the business must choose when the price applies.
+    const createIssue = !isEditing ? dbk143ProductCreatePreflight({
+      retailPrice,
+      wholesalePrice: String(form.get("wholesalePrice") || ""),
+      wholesaleMinQuantity: String(form.get("wholesaleMinQuantity") || ""),
+      storeLocationId: String(form.get("storeLocationId") || ""),
+      requiresInventoryLocation: !managerMode && neonInventory,
+    }) : null;
+    if (createIssue) {
+      setMessage(createIssue.message);
+      setSaving(false);
+      event.currentTarget.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${createIssue.field}"]`)?.focus();
+      return;
+    }
     form.set("categories", JSON.stringify(selected.categories));
     form.set("collections", JSON.stringify(selected.collections));
     form.set("spaces", JSON.stringify(selected.spaces));
@@ -443,9 +459,13 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         }
         const fallback = response.status === 409
           ? (isEditing ? 'Another change conflicts with this product. Reload and try again.' : 'A product conflict was detected. Check existing products before retrying.')
-          : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
-        const specificMessage = payload.message && !/^error\s*409$/i.test(payload.message) ? payload.message : fallback;
-        throw new Error(`${specificMessage}${payload.code ? ` (${payload.code})` : ''}`);
+          : response.status === 400
+            ? 'The product could not be saved. Check the wholesale minimum quantity, primary category and inventory location, then try again.'
+            : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
+        const generic = !payload.message || /^(?:error\s*40[09]|bad request|request failed)$/i.test(payload.message.trim());
+        // Diagnostic codes remain in the browser console, not the customer-facing message.
+        console.warn('[Product save rejected]', {status:response.status, code:payload.code || 'UNSPECIFIED'});
+        throw new Error(generic ? fallback : payload.message);
       }
       setRetryVariantRegistration(false);
       const destinationId = productId || payload.productId;
@@ -491,7 +511,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
                 {pricingError && <p role="alert" className="mt-2 text-xs font-medium text-red-700">{pricingError}</p>}
               </div>
               <Field label="Wholesale price (KES)" hint="Optional discounted unit price"><input name="wholesalePrice" type="number" min="1" step="0.01" defaultValue={product?.wholesalePrice ?? ""} /></Field>
-              <Field label="Wholesale quantity" hint="Minimum units, e.g. 5"><input name="wholesaleMinQuantity" type="number" min="2" step="1" defaultValue={product?.wholesaleMinQuantity ?? ""} /></Field>
+              <Field label="Wholesale minimum quantity" hint="Required when wholesale price is set. Choose 2 or more units."><input name="wholesaleMinQuantity" type="number" min="2" step="1" defaultValue={product?.wholesaleMinQuantity ?? ""} /></Field>
               <p className="sm:col-span-2 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">When both wholesale fields are set, quantities below the threshold use the retail price. At the threshold and above, the wholesale unit price applies automatically in cart, checkout and POS.</p>
               <Field label="Primary category *" className="sm:col-span-2"><select name="primaryCategory" required disabled={loadingOptions} defaultValue={product?.primaryCategory || ""}><option value="">Select category</option>{options.categories.map((item)=><option key={item._id} value={item._id}>{item.title}</option>)}</select></Field>
               <Field label="Short description" className="sm:col-span-2"><textarea name="shortDescription" rows={3} defaultValue={product?.shortDescription || ""}/></Field>
@@ -553,10 +573,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
               <Field label="Incoming"><input name={managerMode ? undefined : "incoming"} type="number" min="0" readOnly={managerMode || neonInventory} aria-readonly={managerMode || neonInventory} defaultValue={inventory?.incoming ?? 0} /></Field>
               <Field label="Reorder level"><input name={managerMode ? undefined : "reorderPoint"} type="number" min="0" readOnly={managerMode} aria-readonly={managerMode} defaultValue={inventory?.reorderPoint ?? 5} /></Field>
               {!managerMode && <Field label="Cost of Production / Initial Cost (KES)" hint="Used as procurement cost / COGS in profit & loss"><input name="procurementCost" type="number" min="0" step="0.01" defaultValue={product?.procurementCost ?? inventory?.unitCost ?? 0} /></Field>}
-              <Field label="Inventory location" hint="Default assignment; stock balances are still tracked per location" className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
+              <Field label={!isEditing && neonInventory ? "Inventory location *" : "Inventory location"} hint={!isEditing && neonInventory ? "Required for new products. Starting stock is zero; add stock through Inventory after saving." : "Default assignment; stock balances are still tracked per location"} className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
                 <div className="relative">
-                  <select name="storeLocationId" defaultValue={inventory?.defaultStoreId || ""} disabled={managerMode} className="min-h-11 w-full appearance-none rounded-lg border bg-[var(--paper)] pl-4 pr-11 text-sm">
-                    <option value="">Unassigned (default)</option>
+                  <select name="storeLocationId" defaultValue={inventory?.defaultStoreId || ""} disabled={managerMode} required={!isEditing && !managerMode && neonInventory} className="min-h-11 w-full appearance-none rounded-lg border bg-[var(--paper)] pl-4 pr-11 text-sm">
+                    <option value="">{!isEditing && neonInventory ? "Select an inventory location" : "Unassigned (default)"}</option>
                     {options.storeLocations.map((location) => <option key={location._id} value={location._id}>{location.name}{location.locationType ? ` · ${location.locationType === "MAIN" ? "Main" : "Branch"}` : ""}{location.code ? ` · ${location.code}` : ""}</option>)}
                   </select>
                   {managerMode && isEditing && <input type="hidden" name="storeLocationId" value={inventory?.defaultStoreId || ""} />}

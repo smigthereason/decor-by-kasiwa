@@ -26,6 +26,12 @@ type VariantInput = {
   stockQuantity?: number | null;
 };
 
+// Safe, non-sensitive rejection logging so Vercel logs identify the failed rule.
+function productCreateInvalid(code: string, message: string) {
+  console.warn('[DBK product create validation]', {code});
+  return NextResponse.json({code, message}, {status:400,headers:{'Cache-Control':'private, no-store'}});
+}
+
 function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -136,7 +142,7 @@ export async function POST(request: Request) {
     const neonCreation = dbk69InventoryEnabled();
     const createRequestId = clean(form.get("createRequestId"));
     if (neonCreation && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(createRequestId)) {
-      return NextResponse.json({message:'Product form expired. Refresh and try again.'},{status:400});
+      return productCreateInvalid('DBK143_EXPIRED_FORM', 'Product form expired. Refresh and try again.');
     }
     if (manager && !staff.storeLocationId) {
       return NextResponse.json({ message: "Manager must be assigned to a store before creating products." }, { status: 403 });
@@ -152,14 +158,14 @@ export async function POST(request: Request) {
     const wholesaleMinQuantity = wholesaleQuantityText ? Math.floor(numberValue(form.get("wholesaleMinQuantity"))) : 0;
     const primaryCategory = clean(form.get("primaryCategory"));
 
-    if (!name) return NextResponse.json({ message: "Product name is required." }, { status: 400 });
-    if (!(price > 0)) return NextResponse.json({ message: "Retail price must be greater than zero." }, { status: 400 });
+    if (!name) return productCreateInvalid('DBK143_NAME_REQUIRED', 'Product name is required.');
+    if (!(price > 0)) return productCreateInvalid('DBK143_RETAIL_PRICE', 'Retail price must be greater than zero.');
     if (wholesalePriceText || wholesaleQuantityText) {
-      if (!(wholesalePrice > 0)) return NextResponse.json({ message: "Wholesale price must be greater than zero." }, { status: 400 });
-      if (wholesalePrice >= price) return NextResponse.json({ message: "Wholesale price must be lower than the retail price." }, { status: 400 });
-      if (wholesaleMinQuantity < 2) return NextResponse.json({ message: "Wholesale quantity threshold must be at least 2." }, { status: 400 });
+      if (!(wholesalePrice > 0)) return productCreateInvalid('DBK143_WHOLESALE_PRICE', 'Wholesale price must be greater than zero.');
+      if (wholesalePrice >= price) return productCreateInvalid('DBK143_WHOLESALE_PRICE_ORDER', 'Wholesale price must be lower than the retail price.');
+      if (wholesaleMinQuantity < 2) return productCreateInvalid('DBK143_WHOLESALE_MINIMUM', 'Wholesale minimum quantity is required and must be at least 2.');
     }
-    if (!primaryCategory) return NextResponse.json({ message: "Primary category is required." }, { status: 400 });
+    if (!primaryCategory) return productCreateInvalid('DBK143_PRIMARY_CATEGORY', 'Primary category is required.');
 
     if (manager && form.has("storeLocationId") && clean(form.get("storeLocationId")) && clean(form.get("storeLocationId")) !== staff.storeLocationId) {
       return NextResponse.json({ message: "Managers can only create products at their assigned store." }, { status: 403 });
@@ -172,7 +178,7 @@ export async function POST(request: Request) {
           { cache: "no-store" },
         )
       : null;
-    if (storeLocationId && !selectedLocation) return NextResponse.json({ message: "Select an active inventory location." }, { status: 400 });
+    if (storeLocationId && !selectedLocation) return productCreateInvalid('DBK143_INVALID_LOCATION', 'Select an active inventory location.');
     const mainLocations = !storeLocationId
       ? await serverClient.fetch<StoreLocationOption[]>(
           `*[_type == "storeLocation" && active != false && locationType == "MAIN"]{_id,name,code,locationType}`,
@@ -182,7 +188,7 @@ export async function POST(request: Request) {
     // Multiple MAIN stores are valid, so require an explicit choice then.
     const storeLocation = selectedLocation || (mainLocations.length === 1 ? mainLocations[0] : null);
     if (!storeLocation && mainLocations.length > 1) {
-      return NextResponse.json({ message: "Select the Main inventory location for this product." }, { status: 400 });
+      return productCreateInvalid('DBK143_MAIN_LOCATION_REQUIRED', 'Select the Main inventory location for this product.');
     }
 
     // A browser retry resumes the same product rather than generating another catalogue identity.
@@ -228,7 +234,7 @@ export async function POST(request: Request) {
       variants = raw ? JSON.parse(raw) as VariantInput[] : [];
       if (!Array.isArray(variants)) variants = [];
     } catch {
-      return NextResponse.json({ message: "Product variants are invalid." }, { status: 400 });
+      return productCreateInvalid('DBK143_VARIANTS_INVALID', 'Product variants are invalid.');
     }
 
     const variantDocuments = [];
@@ -262,32 +268,31 @@ export async function POST(request: Request) {
     // Stock is added afterwards using the audited Purchase/Receive workflow.
     if (neonCreation && (initialStock !== 0 || numberValue(form.get("incoming")) !== 0 ||
         variantDocuments.some(v => Number(v.stockQuantity || 0) !== 0))) {
-      return NextResponse.json({code:'DBK142_STOCK_MUST_START_AT_ZERO',
-        message:'New products start with zero stock. Create the product first, then add stock through Inventory.'},
-        {status:400});
+      return productCreateInvalid('DBK142_STOCK_MUST_START_AT_ZERO',
+        'New products start with zero stock. Create the product first, then add stock through Inventory.');
     }
     if (neonCreation && !storeLocation) {
-      return NextResponse.json({message:'Choose an inventory location before creating the product.'},{status:400});
+      return productCreateInvalid('DBK143_LOCATION_REQUIRED', 'Choose an inventory location before creating the product.');
     }
     const procurementCost = manager ? 0 : Math.max(0, numberValue(form.get("procurementCost")));
     const ecommerceEnabled = booleanValue(form.get("ecommerceEnabled"), true);
     const posEnabled = booleanValue(form.get("posEnabled"), true);
     if (!ecommerceEnabled && !posEnabled) {
-      return NextResponse.json({ message: "Select at least one sales channel: E-commerce or POS." }, { status: 400 });
+      return productCreateInvalid('DBK143_CHANNEL_REQUIRED', 'Select at least one sales channel: E-commerce or POS.');
     }
     const compareAtPrice = numberValue(form.get("compareAtPrice"));
     const salePrice = numberValue(form.get("salePrice"));
     const retailPriceForSale = numberValue(form.get("retailPrice")) || numberValue(form.get("price"));
     if (compareAtPrice > 0 && retailPriceForSale > 0 && compareAtPrice <= retailPriceForSale) {
-      return NextResponse.json({ message: "Compare-at price must be higher than the retail price." }, { status: 400 });
+      return productCreateInvalid('DBK143_COMPARE_AT_PRICE', 'Compare-at price must be higher than the retail price.');
     }
     if (salePrice > 0 && retailPriceForSale > 0 && salePrice >= retailPriceForSale) {
-      return NextResponse.json({ message: "Sale price must be lower than the retail price." }, { status: 400 });
+      return productCreateInvalid('DBK143_SALE_PRICE', 'Sale price must be lower than the retail price.');
     }
     const saleStartAt = clean(form.get("saleStartAt"));
     const saleEndAt = clean(form.get("saleEndAt"));
     if (saleStartAt && saleEndAt && new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime()) {
-      return NextResponse.json({ message: "Sale end must be after sale start." }, { status: 400 });
+      return productCreateInvalid('DBK143_SALE_DATES', 'Sale end must be after sale start.');
     }
     const rating = numberValue(form.get("rating"));
     const reviewCount = Math.max(0, Math.floor(numberValue(form.get("reviewCount"))));
