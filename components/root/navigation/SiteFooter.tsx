@@ -203,6 +203,9 @@ export default function SiteFooter() {
         <span>© 2026 Decor by Kasiwa</span>
 
         <div className="flex flex-wrap items-center gap-3">
+          <Link href="/privacy-policy" className="hover:text-white underline-offset-4 hover:underline">Privacy policy</Link>
+          <Link href="/terms-of-service" className="hover:text-white underline-offset-4 hover:underline">Terms of service</Link>
+          <Link href="/data-deletion" className="hover:text-white underline-offset-4 hover:underline">Data deletion</Link>
           <span>Nairobi · Kenya</span>
         </div>
       </div>
