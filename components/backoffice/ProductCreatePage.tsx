@@ -66,6 +66,7 @@ type EditorProduct = {
   dimensions?: string;
   careInstructions?: string;
   initialStock?: number;
+  nonVariantStock?: { onHand: number; incoming: number };
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;
   featured?: boolean;
@@ -292,12 +293,15 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    const catalogueOnly = isEditing && neonInventory && submitter?.getAttribute("data-save-mode") === "catalogue-only";
+    if (catalogueOnly && !window.confirm("Save catalogue changes only? All unsaved variant edits and variant image selections will be discarded. Existing variants and stock are unchanged.")) return;
     setSaving(true);
     setMessage(null);
     setPricingError(null);
     // Neon may already have stock rows, sales or audit records attached to a
     // registered variant ID. Never submit a draft that silently drops one.
-    if (isEditing && neonInventory) {
+    if (isEditing && neonInventory && !catalogueOnly) {
       const requestedKeys = new Set(variants.map(variant => variant._key).filter(Boolean));
       const missing = [...persistedVariantKeys].filter(key => !requestedKeys.has(key));
       if (missing.length) {
@@ -402,7 +406,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         signature(v) !== signature(originals[i] || {})
       );
 
-    if (changed || retryVariantRegistration) {
+    if (!catalogueOnly && (changed || retryVariantRegistration)) {
       form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
         ...variant,
         price: variant.price ? Number(variant.price) : null,
@@ -411,7 +415,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     } else {
       form.delete("variants");
     }
-    variants.forEach((variant, index) => {
+    if (!catalogueOnly) variants.forEach((variant, index) => {
       if (variant.image) form.set(`variantImage-${index}`, variant.image);
     });
 
@@ -466,7 +470,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
           throw new Error("The catalogue saved but stock registration was not confirmed. Reload the product before retrying.");
         }
         const fallback = response.status === 409
-          ? (isEditing ? 'Another change conflicts with this product. Reload and try again.' : 'A product conflict was detected. Check existing products before retrying.')
+          ? (isEditing ? 'Product changes were rejected. If you are adding variants to existing stock, reconcile the stock first. For non-variant edits, use Save catalogue changes only. Otherwise reload and retry.' : 'A product conflict was detected. Check existing products before retrying.')
           : response.status === 400
             ? 'The product could not be saved. Check the wholesale minimum quantity, primary category and inventory location, then try again.'
             : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
@@ -635,8 +639,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"><Field label="Display rating (4.0–4.8)"><input name="rating" type="number" min="4" max="4.8" step="0.1" defaultValue={product?.rating ?? ""} /></Field><Field label="Review count"><input name="reviewCount" type="number" min="0" step="1" defaultValue={product?.reviewCount ?? ""} /></Field></div>
           </Card>
 
+          {isEditing && neonInventory && product?.nonVariantStock && (product.nonVariantStock.onHand > 0 || product.nonVariantStock.incoming > 0) && variants.some(v => !v._key || !persistedVariantKeys.has(v._key)) && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">This product has {product.nonVariantStock.onHand} on-hand and {product.nonVariantStock.incoming} incoming units without variant identities. New variants require reviewed allocation by store before they can be saved. You can save other catalogue changes below without changing variants.</p>}
           {message && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-800">{message}</p>}
           <button type="submit" disabled={saving || loadingOptions} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"><Save size={14}/>{saving ? (isEditing ? "Saving product…" : "Creating product…") : (isEditing ? "Save all product changes" : "Create product")}</button>
+          {isEditing && neonInventory && !retryVariantRegistration && <button type="submit" data-save-mode="catalogue-only" disabled={saving || loadingOptions || !product?._rev} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border hairline px-6 text-xs font-semibold disabled:opacity-50">Save catalogue changes only</button>}
         </div>
       </form>
     </div>

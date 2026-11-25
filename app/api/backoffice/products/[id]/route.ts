@@ -172,6 +172,7 @@ export async function GET(
   }
   // Display up-to-date Neon stock even though catalogue metadata remains in Sanity.
   if (dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) {
+    const stockRows = await dbk69ProductBalances(productId);
     const mapped = dbk69OverlayStock({
       id:productId,onHand:Number(product.initialStock || 0),incoming:Number(product.inventory?.incoming || 0),
       available:product.available,
@@ -179,7 +180,12 @@ export async function GET(
         id:variant._key || '',stockQuantity:Number(variant.stockQuantity || 0),
       })),
       locationBalances:product.inventory?.locationBalances || [],
-    },await dbk69ProductBalances(productId));
+    },stockRows);
+    // Expose only aggregate quantities from the authoritative ledger for the editor.
+    product.nonVariantStock = stockRows.filter(row => row.variant_id === "").reduce(
+      (total, row) => ({ onHand: total.onHand + Number(row.on_hand), incoming: total.incoming + Number(row.incoming) }),
+      { onHand: 0, incoming: 0 },
+    );
     product.initialStock = mapped.onHand;
     // The editor owns the catalogue visibility flag, not stock-derived availability.
     // Saving an out-of-stock product must not silently disable it in the catalogue.
@@ -714,7 +720,10 @@ export async function PATCH(
 
     // Variant metadata saves must be revision-bound too: an in-flight POS sale
     // must not have its newly reduced variant quantities overwritten.
-    let stockProductRevision: string | undefined = typeof managerProductRevision === "string" ? managerProductRevision : undefined;
+    let stockProductRevision: string | undefined = typeof managerProductRevision === "string"
+      ? managerProductRevision
+      : neonInventory && typeof body.productRevision === "string" && body.productRevision.trim()
+        ? body.productRevision : undefined;
     let stockInventoryRevision: string | undefined = neonMetadataInventoryRevision;
     let stockInventoryId: string | undefined = neonMetadataInventoryId;
     // Product quantities are company totals, while POS uses locationBalances. On an
@@ -820,7 +829,9 @@ export async function PATCH(
       } catch (preflightError) {
         console.error('DBK120 variant safety preflight:', preflightError);
         return NextResponse.json({code:'DBK120_VARIANT_STOCK_CONFLICT',
-          message:preflightError instanceof Error ? preflightError.message : 'Variant stock reconciliation required.'},
+          message:preflightError instanceof Error && /non-variant stock|historical stock transactions|Quarantined stock|Existing Neon variant identifiers/.test(preflightError.message)
+            ? preflightError.message + ' Save catalogue changes only if you do not need to change variants now.'
+            : 'Variant stock reconciliation is required before saving variant changes. No product changes were saved.'},
           {status:409,headers:{'Cache-Control':'private, no-store'}});
       }
     }
