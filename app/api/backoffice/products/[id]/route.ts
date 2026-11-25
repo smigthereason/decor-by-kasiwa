@@ -1,5 +1,6 @@
 import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import { dbk109MaintenanceDecision, dbk109FreezeMessage } from '@/lib/db/dbk109-maintenance';
+import { allocationCommitted, allocationPlan, finishAllocation, parsePending, type PendingAllocation } from "@/lib/db/dbk151-allocation";
 import { randomUUID } from "node:crypto";
 
 import { revalidatePath } from "next/cache";
@@ -109,6 +110,8 @@ export async function GET(
     `*[_type == "product" && _id == $productId][0]{
       _id,
       _rev,
+      dbk151Pending,
+      dbk151VariantAllocated,
       name,
       sku,
       "slug": slug.current,
@@ -174,6 +177,7 @@ export async function GET(
   if (dbk69InventoryEnabled() || dbk109LegacyInventoryWriteBlocked()) {
     const stockRows = await dbk69ProductBalances(productId);
     const mapped = dbk69OverlayStock({
+      allowUnclassifiedVariantStock: true,
       id:productId,onHand:Number(product.initialStock || 0),incoming:Number(product.inventory?.incoming || 0),
       available:product.available,
       variants:(product.variants || []).map((variant: { _key?: string; stockQuantity?: number }) => ({
@@ -186,6 +190,12 @@ export async function GET(
       (total, row) => ({ onHand: total.onHand + Number(row.on_hand), incoming: total.incoming + Number(row.incoming) }),
       { onHand: 0, incoming: 0 },
     );
+    product.legacyStockLocations = stockRows.filter(row=>row.variant_id==='').map(row=>({locationId:row.location_id,onHand:Number(row.on_hand),incoming:Number(row.incoming)}));
+    // The marker stores restoration metadata, not credentials. Only the pending
+    // status is returned to the editor, and only Admin may complete it.
+    const pending = parsePending(product.dbk151Pending);
+    product.dbk151AllocationCommitted = pending ? await allocationCommitted(productId,pending.id) : false;
+    product.dbk151Pending = Boolean(pending);
     product.initialStock = mapped.onHand;
     // The editor owns the catalogue visibility flag, not stock-derived availability.
     // Saving an out-of-stock product must not silently disable it in the catalogue.
@@ -246,7 +256,7 @@ export async function PATCH(
         "unitCost", "procurementCost", "ecommerceEnabled", "posEnabled", "retailPrice", "price", "wholesalePrice", "wholesaleMinQuantity", "compareAtPrice", "salePrice",
         "rating", "reviewCount", "location", "storeLocationId", "available", "featured", "newArrival", "bestSeller", "onSale", "saleStartAt", "saleEndAt",
         "primaryCategory", "categories", "collections", "spaces", "styles", "pairings", "merchandisedSamples", "colours", "materials", "dimensions",
-        "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision",
+        "careInstructions", "variants", "galleryExisting", "productRevision", "inventoryRevision", "variantAllocation",
       ]) {
         if (form.has(key)) body[key] = form.get(key);
       }
@@ -255,6 +265,22 @@ export async function PATCH(
     }
 
     const neonInventory = dbk69InventoryEnabled();
+    const allocationRequested = body.variantAllocation !== undefined;
+    if (allocationRequested && (!neonInventory || staff.role !== 'ADMIN')) return NextResponse.json({message:'Only Admin may allocate company variant stock in Neon.'},{status:403});
+    const allocationState = neonInventory ? await serverClient.fetch<{_rev:string;dbk151Pending?:string;dbk151VariantAllocated?:boolean;available?:boolean;posEnabled?:boolean;ecommerceEnabled?:boolean;variants?:Array<{_key:string}>} | null>(
+      `*[_type=="product" && _id==$productId][0]{_rev,dbk151Pending,dbk151VariantAllocated,available,posEnabled,ecommerceEnabled,variants[]{_key}}`,{productId},{cache:'no-store'}) : null;
+    const existingPending = parsePending(allocationState?.dbk151Pending);
+    if (existingPending) {
+      if (!allocationRequested || staff.role!=='ADMIN') return NextResponse.json({message:'Variant allocation is pending. Admin must finish it before other product edits.'},{status:409});
+      if (body.productRevision!==allocationState?._rev || JSON.stringify((allocationState?.variants||[]).map(v=>v._key))!==JSON.stringify(existingPending.keys)) return NextResponse.json({message:'Product changed. Reload the pending allocation before retrying.'},{status:409});
+      try {
+        await finishAllocation(productId,allocationState!._rev,existingPending,body.variantAllocation,staff.customerId);
+      } catch (e) {
+        console.error('DBK151 allocation resume failed',e);
+        return NextResponse.json({code:'DBK151_PENDING',message:'Allocation not finished. Product sales remain paused. '+(e instanceof Error && /Allocate exactly|outstanding|quarantined|registered variant|stock changed|unresolved|migration is not installed/i.test(e.message)?e.message:'Reload and retry allocation; contact support if it persists.')},{status:409});
+      }
+      revalidatePath('/'); revalidatePath('/shop'); return NextResponse.json({ok:true});
+    }
     // DBK-120: variant metadata can be edited, but company stock, incoming
     // and location balances must NEVER be rewritten from the catalogue form.
     if ((neonInventory || dbk109LegacyInventoryWriteBlocked()) && [
@@ -823,7 +849,23 @@ export async function PATCH(
     if (neonInventory && managerProductRevision && body.variants !== undefined) {
       stockProductRevision = managerProductRevision;
     }
-    if (neonInventory && dbk120DesiredVariantKeys) {
+    let pendingAllocation:PendingAllocation|null=null;
+    if (allocationRequested) {
+      const docs=productPatch.variants as Array<{_key:string;retired?:boolean}>|undefined;
+      if (!allocationState || body.productRevision!==allocationState._rev || !docs?.length) return NextResponse.json({message:'Reload product and submit its variants with the allocation.'},{status:409});
+      pendingAllocation={id:'dbk151-'+randomUUID(),keys:docs.map(v=>v._key),sellableKeys:docs.filter(v=>!v.retired).map(v=>v._key),
+        available:typeof productPatch.available==='boolean'?productPatch.available:allocationState.available!==false,
+        posEnabled:typeof productPatch.posEnabled==='boolean'?productPatch.posEnabled:allocationState.posEnabled!==false,
+        ecommerceEnabled:typeof productPatch.ecommerceEnabled==='boolean'?productPatch.ecommerceEnabled:allocationState.ecommerceEnabled!==false};
+      try { await allocationPlan(productId,pendingAllocation,body.variantAllocation); }
+      catch(e){ console.error('DBK151 allocation preflight',e); return NextResponse.json({message:e instanceof Error && /Allocate exactly|whole-unit|allocation|incoming stock|registered variant|Quarantined|outstanding|invalid variant|disabled/i.test(e.message)?e.message:'Allocation preflight failed. No product changes saved.'},{status:409}); }
+      // Stage catalogue metadata before the Neon commit; keep this product off
+      // both sales channels until SQL succeeds, including after a lost response.
+      productPatch.dbk151Pending=JSON.stringify(pendingAllocation);
+      productPatch.available=false; productPatch.posEnabled=false; productPatch.ecommerceEnabled=false;
+      stockProductRevision=allocationState._rev;
+    }
+    if (neonInventory && dbk120DesiredVariantKeys && !pendingAllocation) {
       try {
         await dbk120ValidateVariantReadiness(productId, dbk120DesiredVariantKeys);
       } catch (preflightError) {
@@ -868,6 +910,17 @@ export async function PATCH(
     }
 
     await transaction.commit();
+    if (pendingAllocation) {
+      try {
+        const staged=await serverClient.fetch<{_rev:string;dbk151Pending?:string}|null>(`*[_type=="product" && _id==$productId][0]{_rev,dbk151Pending}`,{productId},{cache:'no-store'});
+        if (!staged || parsePending(staged.dbk151Pending)?.id!==pendingAllocation.id) throw new Error('Staged catalogue not confirmed');
+        await finishAllocation(productId,staged._rev,pendingAllocation,body.variantAllocation,staff.customerId);
+      } catch(e) {
+        console.error('DBK151 allocation incomplete',e);
+        return NextResponse.json({code:'DBK151_PENDING',message:'Variant catalogue staged; this product is paused for sales until allocation finishes. Reload and finish allocation. '+(e instanceof Error && /Allocate exactly|outstanding|stock changed|unresolved/i.test(e.message)?e.message:'')},{status:409});
+      }
+      revalidatePath('/'); revalidatePath('/shop'); return NextResponse.json({ok:true});
+    }
     // Sanity holds only variant names/images/prices. The new Neon keys are
     // registered at zero balance, never copied from stale Sanity quantities.
     // If registration fails, the catalogue is already saved: return an honest

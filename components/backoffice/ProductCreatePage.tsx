@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ImagePlus, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { validateAllocation, type LegacyLocation } from "@/lib/db/dbk151-allocation-core";
 import { dbk143ProductCreatePreflight } from "@/lib/products/dbk143-product-create-validation";
 
 type Option = { _id: string; title: string; slug?: string };
@@ -67,6 +68,8 @@ type EditorProduct = {
   careInstructions?: string;
   initialStock?: number;
   nonVariantStock?: { onHand: number; incoming: number };
+  legacyStockLocations?:LegacyLocation[];
+  dbk151Pending?:boolean; dbk151VariantAllocated?:boolean; dbk151AllocationCommitted?:boolean;
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;
   featured?: boolean;
@@ -133,6 +136,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const [message, setMessage] = useState<string | null>(null);
   const [pricingError, setPricingError] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [allocation,setAllocation]=useState<Record<string,string>>({});
   const [showRemovedVariants, setShowRemovedVariants] = useState(false);
   // If Sanity committed the catalogue but Neon registration failed, a retry
   // must submit the SAME variant IDs with a fresh Sanity revision.
@@ -140,6 +144,10 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
   const persistedVariantKeys = new Set((product?.variants || [])
     .map(variant => variant._key)
     .filter((key): key is string => Boolean(key)));
+  const legacyLocations=product?.legacyStockLocations || [];
+  const allocationVariants=(product?.dbk151Pending ? product.variants || [] : variants).filter(v=>!v.retired && v._key);
+  const needsAllocation=isEditing && neonInventory && (Boolean(product?.dbk151Pending) || (variants.length>0 && legacyLocations.length>0 && (!product?.dbk151VariantAllocated || legacyLocations.some(l=>l.onHand>0||l.incoming>0) || variants.some(v=>!v._key||!persistedVariantKeys.has(v._key)))));
+  const canAllocate=session?.user?.role==='ADMIN';
   const [existingGallery, setExistingGallery] = useState<ExistingGalleryImage[]>([]);
   const [salesChannels, setSalesChannels] = useState({ ecommerce: true, pos: true });
   const [visibility, setVisibility] = useState({ available: true, featured: false, newArrival: false, bestSeller: false, onSale: false });
@@ -299,6 +307,18 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
     setSaving(true);
     setMessage(null);
     setPricingError(null);
+    if(product?.dbk151Pending && productId){
+      try{
+        if(!canAllocate) throw new Error('Only Admin may finish variant allocation.');
+        const plan=product.dbk151AllocationCommitted ? [] : validateAllocation(legacyLocations,(product.variants||[]).map(v=>v._key||''),legacyLocations.filter(l=>l.onHand>0).flatMap(l=>allocationVariants.map(v=>({locationId:l.locationId,variantId:v._key!,quantity:Number(allocation[JSON.stringify([l.locationId,v._key])]||0)}))));
+        if(!window.confirm('Finish the pending allocation? Other unsaved catalogue edits are not applied.')){setSaving(false);return;}
+        const res=await fetch(`/api/backoffice/products/${encodeURIComponent(productId)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({productRevision:product._rev,variantAllocation:JSON.stringify(plan)})});
+        const payload=await readApiResponse<{ok?:boolean}>(res);
+        if(!res.ok) throw new Error(payload.message||'Allocation is pending. Reload and retry.');
+        router.push(`/admin/products/${encodeURIComponent(productId)}`);router.refresh();
+      }catch(e){setMessage(e instanceof Error?e.message:'Allocation could not finish.');setSaving(false);}
+      return;
+    }
     // Neon may already have stock rows, sales or audit records attached to a
     // registered variant ID. Never submit a draft that silently drops one.
     if (isEditing && neonInventory && !catalogueOnly) {
@@ -406,7 +426,16 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         signature(v) !== signature(originals[i] || {})
       );
 
-    if (!catalogueOnly && (changed || retryVariantRegistration)) {
+    if (!catalogueOnly && needsAllocation) {
+      if (!canAllocate) {setMessage('Only Admin may allocate existing company stock to variants.');setSaving(false);return;}
+      try {
+        const rows=legacyLocations.filter(l=>l.onHand>0).flatMap(l=>allocationVariants.map(v=>({locationId:l.locationId,variantId:v._key!,quantity:Number(allocation[JSON.stringify([l.locationId,v._key])] || '0')})));
+        const plan=validateAllocation(legacyLocations,variants.map(v=>v._key||''),rows);
+        if(!window.confirm(product?.dbk151Pending?'Finish the pending variant allocation? Other unsaved catalogue edits are not applied on resume.':'Confirm the physical quantities for every store. This changes stock identities, not the total number of units. Product sales will pause briefly during conversion.')) {setSaving(false);return;}
+        form.set('variantAllocation',JSON.stringify(plan));
+      } catch(e){setMessage(e instanceof Error?e.message:'Invalid stock allocation.');setSaving(false);return;}
+    }
+    if (!catalogueOnly && (changed || retryVariantRegistration || needsAllocation)) {
       form.set("variants", JSON.stringify(variants.map(({ image: _image, imageUrl: _imageUrl, stockQuantity: _stockQuantity, ...variant }) => ({
         ...variant,
         price: variant.price ? Number(variant.price) : null,
@@ -455,6 +484,11 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
         if (payload.message?.includes("Compare-at price")) setPricingError(payload.message);
         if (!isEditing && payload.code === 'DBK142_STOCK_REGISTRATION_PENDING') {
           throw new Error(payload.message || 'Product setup is incomplete. Click Create Product again to resume.');
+        }
+        if (payload.code === 'DBK151_PENDING') {
+          setMessage(payload.message || 'Allocation pending. Reload the editor before continuing.');
+          setSaving(false);
+          return;
         }
         if (isEditing && productId && payload.code === "DBK120_NEON_REGISTRATION_PENDING") {
           // Sanity saved successfully; refresh only its revision while keeping
@@ -551,7 +585,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
 
           <Card title="Variants" action={<div className="flex items-center gap-2">
             {variants.some(v=>v.retired) && <button type="button" onClick={()=>setShowRemovedVariants(v=>!v)} className="rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase">{showRemovedVariants ? 'Hide removed' : `Show removed (${variants.filter(v=>v.retired).length})`}</button>}
-            <button type="button" onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>
+            <button type="button" disabled={Boolean(product?.dbk151Pending)} onClick={()=>setVariants((current)=>[...current,blankVariant()])} className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-2 text-[9px] font-semibold uppercase"><Plus size={12}/>Add variant</button>
           </div>}>
             <p className="mb-4 rounded-xl border hairline bg-[var(--paper-2)] p-3 text-[11px] leading-5 text-[var(--muted)]">{neonInventory
               ? "Stock is managed through Inventory. New products and variants start with zero stock. Saved variant identifiers are retained to protect stock and sales history."
@@ -639,10 +673,26 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"><Field label="Display rating (4.0–4.8)"><input name="rating" type="number" min="4" max="4.8" step="0.1" defaultValue={product?.rating ?? ""} /></Field><Field label="Review count"><input name="reviewCount" type="number" min="0" step="1" defaultValue={product?.reviewCount ?? ""} /></Field></div>
           </Card>
 
-          {isEditing && neonInventory && product?.nonVariantStock && (product.nonVariantStock.onHand > 0 || product.nonVariantStock.incoming > 0) && variants.some(v => !v._key || !persistedVariantKeys.has(v._key)) && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">This product has {product.nonVariantStock.onHand} on-hand and {product.nonVariantStock.incoming} incoming units without variant identities. New variants require reviewed allocation by store before they can be saved. You can save other catalogue changes below without changing variants.</p>}
+          {needsAllocation && <Card title="Allocate existing stock to variants">
+            <div className="space-y-4 text-sm">
+              <p className="text-[var(--muted)]">Enter the physical quantity of each colour or size at every store. Quantities must match the current stock exactly. Nothing is transferred between stores.</p>
+              {product?.dbk151Pending && <p role="status" className="rounded-xl bg-amber-50 p-3 text-amber-900">A conversion is pending. Sales are paused for this product. Reload after any failed attempt, then finish allocation. Other edits are not saved during resume.</p>}
+              {!canAllocate && <p role="alert" className="text-red-700">Only Admin can allocate company stock.</p>}
+              {legacyLocations.some(l=>l.incoming>0) && <p role="alert" className="text-red-700">Receive or reconcile incoming stock first. Existing purchase identities must be preserved.</p>}
+              {product?.dbk151AllocationCommitted && <p className="font-semibold text-green-700">Stock allocation already committed. Finish to restore the saved sales settings. Any later returned stock can be allocated separately.</p>}
+              {!product?.dbk151AllocationCommitted && legacyLocations.filter(l=>l.onHand>0).map(location=>{
+                const total=allocationVariants.reduce((sum,v)=>sum+Number(allocation[JSON.stringify([location.locationId,v._key])]||0),0);
+                const name=options.storeLocations.find(s=>s._id===location.locationId)?.name || (location.locationId==='__UNALLOCATED__'?'Unallocated company stock':location.locationId);
+                return <div key={location.locationId} className="space-y-3 rounded-xl border hairline p-4"><div className="flex justify-between gap-2 font-semibold"><span>{name}</span><span>{location.onHand} units</span></div>
+                  {allocationVariants.map(v=>{const key=JSON.stringify([location.locationId,v._key]);return <label key={key} className="flex items-center justify-between gap-3"><span>{[v.title,v.colour,v.size,v.sku].filter(Boolean).join(' / ')||v._key}</span><input type="number" min="0" max={location.onHand} step="1" value={allocation[key]??''} onChange={e=>setAllocation(prev=>({...prev,[key]:e.target.value}))} disabled={!canAllocate||saving} placeholder="0" className="w-24 rounded-lg border hairline p-2"/></label>;})}
+                  <p className={total===location.onHand?'font-semibold text-green-700':'font-semibold text-amber-800'}>Allocated {total} / {location.onHand} · Remaining {location.onHand-total}</p></div>;
+              })}
+              {!legacyLocations.some(l=>l.onHand>0||l.incoming>0) && <p>No remaining legacy units. Save to register or finish the variant identities.</p>}
+            </div>
+          </Card>}
           {message && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-800">{message}</p>}
-          <button type="submit" disabled={saving || loadingOptions} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"><Save size={14}/>{saving ? (isEditing ? "Saving product…" : "Creating product…") : (isEditing ? "Save all product changes" : "Create product")}</button>
-          {isEditing && neonInventory && !retryVariantRegistration && <button type="submit" data-save-mode="catalogue-only" disabled={saving || loadingOptions || !product?._rev} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border hairline px-6 text-xs font-semibold disabled:opacity-50">Save catalogue changes only</button>}
+          <button type="submit" formNoValidate={Boolean(product?.dbk151Pending)} disabled={saving || loadingOptions || (needsAllocation && (!canAllocate || (!product?.dbk151AllocationCommitted && legacyLocations.some(l=>l.incoming>0))))} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-6 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream disabled:opacity-50"><Save size={14}/>{saving ? (isEditing ? "Saving product…" : "Creating product…") : (isEditing ? (needsAllocation ? (product?.dbk151Pending ? "Finish pending allocation" : "Allocate stock & save variants") : "Save all product changes") : "Create product")}</button>
+          {isEditing && neonInventory && !retryVariantRegistration && !product?.dbk151Pending && <button type="submit" data-save-mode="catalogue-only" disabled={saving || loadingOptions || !product?._rev} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border hairline px-6 text-xs font-semibold disabled:opacity-50">Save catalogue changes only</button>}
         </div>
       </form>
     </div>

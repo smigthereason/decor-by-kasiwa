@@ -1,3 +1,4 @@
+import { dbk69InventoryEnabled, dbk69ProductBalances } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import "server-only";
 
@@ -61,6 +62,7 @@ type RawCheckoutProduct = {
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   initialStock?: number;
+  variantAllocationManaged?:boolean;
   inventory?: { _id: string; _rev: string; locationBalances?: LocationBalance[] } | null;
   procurementCost?: number;
   available?: boolean;
@@ -311,6 +313,7 @@ async function fetchCheckoutProducts(productIds: string[]) {
       wholesalePrice,
       wholesaleMinQuantity,
       initialStock,
+      "variantAllocationManaged": defined(dbk151Pending) || dbk151VariantAllocated == true,
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{_id,_rev,locationBalances},
       procurementCost,
       available,
@@ -355,10 +358,24 @@ function normalizeCart(cart: CheckoutCartLine[]) {
   return [...normalized.values()];
 }
 
-async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[]) {
+async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreId:string) {
   const normalizedCart = normalizeCart(cart);
   const productIds = [...new Set(normalizedCart.map((line) => line.productId))];
   const products = await fetchCheckoutProducts(productIds);
+  // For explicitly converted products, catalogue quantities are not authoritative.
+  // Validate availability at the checkout's actual fulfilment store, not OTC/company totals.
+  if (dbk64OnlineRequested() && dbk69InventoryEnabled()) {
+    await Promise.all(products.filter(p=>p.variantAllocationManaged && p.available!==false && p.ecommerceEnabled!==false).map(async p=>{
+      const rows=await dbk69ProductBalances(p._id);
+      for(const v of p.variants||[]) {
+        const qty=rows.filter(r=>r.location_id===mainStoreId && r.variant_id===v._key).reduce((n,r)=>n+Number(r.on_hand),0);
+        if(!Number.isSafeInteger(qty)||qty<0) throw new Error('Invalid live variant stock.');
+        v.stockQuantity=qty;
+        const requested=normalizedCart.filter(l=>l.productId===p._id && l.variantId===v._key).reduce((n,l)=>n+l.quantity,0);
+        if(requested>qty) throw new Error(`${p.name || 'Product'} has only ${qty} units of this variant available for online purchase.`);
+      }
+    }));
+  }
   const byId = new Map(products.map((product) => [product._id, product]));
 
   const lineItems: PendingOrderLine[] = normalizedCart.map((line, index) => {
@@ -495,7 +512,7 @@ export async function initializePaystackCheckout({
     throw new Error("Online checkout requires an active Main store. When multiple Main stores exist, configure DBK_MAIN_STORE_ID on the server.");
   }
 
-  const { lineItems } = await buildAuthoritativeOrderLines(cart);
+  const { lineItems } = await buildAuthoritativeOrderLines(cart,mainStore.id);
   const workflow = await workflowForProducts(lineItems.map((line) => line.productId));
 
   const subtotal = lineItems.reduce(

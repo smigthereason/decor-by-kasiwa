@@ -30,6 +30,7 @@ type RawProduct = {
   name?: string;
   price?: number;
   initialStock?: number;
+  dbk151Pending?:string; dbk151VariantAllocated?:boolean;
   available?: boolean;
   bestSeller?: boolean;
   ecommerceEnabled?: boolean;
@@ -84,6 +85,7 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
       sku,
       price,
       initialStock,
+      dbk151Pending,dbk151VariantAllocated,
       available,
       bestSeller,
       ecommerceEnabled,
@@ -141,6 +143,7 @@ export async function getLiveProducts(storeLocationId?: string): Promise<Invento
     }));
 
     const mapped: InventoryItem = {
+      allowUnclassifiedVariantStock:Boolean(row.dbk151Pending || row.dbk151VariantAllocated),
       id: row._id,
       productId: row._id,
       slug: row.slug,

@@ -33,6 +33,7 @@ export type StoreProduct = {
   wholesalePrice?: number;
   wholesaleMinQuantity?: number;
   currency: "KES";
+  variantAllocationManaged?:boolean;
   ecommerceEnabled?: boolean;
   posEnabled?: boolean;
   demoPrice?: boolean;

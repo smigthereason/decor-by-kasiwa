@@ -183,6 +183,8 @@ export const product = defineType({
     defineField({ name: "shortDescription", title: "Short description", type: "text", rows: 3, group: "details" }),
     defineField({ name: "description", title: "Full description", type: "text", rows: 6, group: "details" }),
     defineField({ name: "colours", title: "Colours", type: "array", group: "details", of: [{ type: "string" }] }),
+    defineField({ name:"dbk151Pending",title:"Pending variant allocation",type:"text",hidden:true,readOnly:true }),
+    defineField({ name:"dbk151VariantAllocated",title:"Variant stock allocated",type:"boolean",hidden:true,readOnly:true }),
     defineField({
       name: "variants",
       title: "Product variants",

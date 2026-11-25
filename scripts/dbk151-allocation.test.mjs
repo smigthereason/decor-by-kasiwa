@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateAllocation} from '../lib/db/dbk151-allocation-core.ts';
+import {dbk69OverlayStock} from '../lib/db/dbk69-inventory-core.ts';
+const locations=[{locationId:'OTC',onHand:165,incoming:0},{locationId:'MAIN',onHand:12,incoming:0}];
+const keys=['black','silver'];
+const valid=[{locationId:'OTC',variantId:'black',quantity:100},{locationId:'OTC',variantId:'silver',quantity:65},{locationId:'MAIN',variantId:'black',quantity:12}];
+test('accepts exact store-by-store totals; no invented units',()=>assert.equal(validateAllocation(locations,keys,valid).reduce((s,r)=>s+r.quantity,0),177));
+test('rejects moving stock between stores even if company total matches',()=>assert.throws(()=>validateAllocation(locations,keys,[{locationId:'MAIN',variantId:'black',quantity:177}]),/exactly/));
+test('rejects over- or under-allocation, stale quantities and foreign locations',()=>{for(const plan of [[...valid.slice(0,2)], [...valid,{locationId:'OTC',variantId:'silver',quantity:1}], [...valid,{locationId:'other',variantId:'black',quantity:1}]]) assert.throws(()=>validateAllocation(locations,keys,plan));});
+test('rejects negative, fractional, invalid variant keys, and repeated pairs',()=>{for(const q of [-1,.5,NaN,'100'])assert.throws(()=>validateAllocation(locations,keys,[{...valid[0],quantity:q}]));assert.throws(()=>validateAllocation(locations,keys,[...valid,valid[0]]),/Duplicate/);assert.throws(()=>validateAllocation(locations,['black','black'],valid));assert.throws(()=>validateAllocation(locations,keys,[{...valid[0],variantId:'other'}]));});
+test('blocks outstanding incoming stock without rewriting purchase history',()=>assert.throws(()=>validateAllocation([{locationId:'OTC',onHand:165,incoming:1}],keys,valid),/incoming/));
+test('zero-stock variants and zero-stock legacy identity permitted',()=>assert.deepEqual(validateAllocation([{locationId:'OTC',onHand:0,incoming:0}],keys,[]),[]));
+test('historical returns remain physical but not sellable until allocation',()=>{const p={id:'p',onHand:0,incoming:0,allowUnclassifiedVariantStock:true,variants:[{id:'black',stockQuantity:0}]};const b=[{product_id:'p',variant_id:'black',location_id:'OTC',on_hand:100,incoming:0},{product_id:'p',variant_id:'',location_id:'OTC',on_hand:3,incoming:0}];const a=dbk69OverlayStock(p,b);assert.equal(a.onHand,100);assert.equal(a.companyOnHand,103);assert.equal(a.unclassifiedOnHand,3);assert.equal(a.variants[0].stockQuantity,100);assert.throws(()=>dbk69OverlayStock({...p,allowUnclassifiedVariantStock:false},b),/reconciliation required/);});
+test('unknown positive variant identities still fail closed',()=>assert.throws(()=>dbk69OverlayStock({id:'p',onHand:0,incoming:0,allowUnclassifiedVariantStock:true,variants:[{id:'black',stockQuantity:0}]},[{product_id:'p',variant_id:'wrong',location_id:'OTC',on_hand:1,incoming:0}]),/reconciliation required/));

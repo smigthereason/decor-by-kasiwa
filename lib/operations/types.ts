@@ -127,6 +127,9 @@ export type InventoryItem = {
   unitCost: number;
   companyOnHand?: number;
   unallocatedOnHand?: number;
+  allowUnclassifiedVariantStock?:boolean;
+  unclassifiedOnHand?:number;
+  unclassifiedIncoming?:number;
   locationBalances?: Array<{
     storeId: string;
     storeName: string;

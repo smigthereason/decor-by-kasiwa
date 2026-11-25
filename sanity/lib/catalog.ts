@@ -67,6 +67,7 @@ type SanityProductRecord = {
   careInstructions?: string;
 
   initialStock?: number;
+  variantAllocationManaged?:boolean;
   available?: boolean;
 
   featured?: boolean;
@@ -164,6 +165,7 @@ const productProjection = `{
   dimensions,
   careInstructions,
   initialStock,
+  "variantAllocationManaged": defined(dbk151Pending) || dbk151VariantAllocated == true,
   available,
   featured,
   newArrival,
@@ -414,6 +416,7 @@ function mapProduct(
     currency:
       "KES",
 
+    variantAllocationManaged:record.variantAllocationManaged===true,
     ecommerceEnabled: record.ecommerceEnabled !== false,
     posEnabled: record.posEnabled !== false,
 
@@ -1257,6 +1260,7 @@ export const fallbackShopNavigation: ShopNavigation =
 function withNeonCatalogBalance(product: StoreProduct, rows: Dbk69Balance[], storeId?: string): StoreProduct {
   const mapped = dbk69OverlayStock({
     id:product.id,onHand:0,incoming:0,available:product.available,
+    allowUnclassifiedVariantStock:product.variantAllocationManaged===true,
     variants:(product.variants || []).map(v => ({id:v.id,stockQuantity:Number(v.stockQuantity || 0)})),
   }, rows, storeId);
   const onHand = mapped.onHand;

@@ -512,6 +512,7 @@ export default function InventoryManagementPage() {
           </div>}
           {selectedProductRaw && <div className={`mt-4 grid gap-3 rounded-xl border hairline bg-[var(--paper-2)] p-4 sm:grid-cols-2 ${hideProcurement ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Company on hand</p><p className="mt-1 font-semibold">{selectedProductRaw.companyOnHand ?? selectedProductRaw.onHand}</p></div>
+            {Number(selectedProductRaw.unclassifiedOnHand||0)>0 && <div className="text-amber-800"><p className="text-[9px] font-semibold uppercase">Awaiting variant allocation</p><p>{selectedProductRaw.unclassifiedOnHand} units · not sellable until allocated in the Admin product editor.</p></div>}
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected source on hand</p><p className="mt-1 font-semibold">{sourceStoreId === UNALLOCATED ? unallocated : Math.max(0, Number(selectedSourceBalance?.onHand || 0))}</p></div>
             <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Selected variant</p><p className="mt-1 font-semibold">{selectedVariant ? `${selectedVariant.stockQuantity} on hand` : "—"}</p></div>
             {!hideProcurement && <div><p className="text-[9px] uppercase tracking-[0.08em] text-[var(--muted)]">Movement value</p><p className="mt-1 font-semibold">{formatKes(Number(quantity || 0) * selectedProductRaw.unitCost)}</p></div>}

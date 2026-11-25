@@ -12,6 +12,7 @@ type RawVariant = {id: string;stockQuantity: number};
 export type Dbk69InventoryItem = {
   id: string; onHand: number; companyOnHand?: number; incoming: number;
   unallocatedOnHand?: number; available?: boolean; location?: string;
+  allowUnclassifiedVariantStock?: boolean; unclassifiedOnHand?:number; unclassifiedIncoming?:number;
   variants?: RawVariant[];
   locationBalances?: Array<{storeId:string;storeName:string;storeCode?:string;onHand:number;incoming:number;
     variants?: Array<{variantId:string;onHand:number;incoming:number}>}>;
@@ -36,7 +37,8 @@ export function dbk69OverlayStock<T extends Dbk69InventoryItem>(
   // is a genuine data-integrity failure and must still block the read.
   const unmatched = candidate.filter(r => expectedVariants.size
     ? !expectedVariants.has(r.variant_id) : r.variant_id !== '');
-  if (unmatched.some(r => quantity(r.on_hand)>0 || quantity(r.incoming)>0)) {
+  const unclassified = item.allowUnclassifiedVariantStock && expectedVariants.size ? unmatched.filter(r=>r.variant_id==='') : [];
+  if (unmatched.some(r => !unclassified.includes(r) && (quantity(r.on_hand)>0 || quantity(r.incoming)>0))) {
     throw new Error('Neon product variants do not match catalogue; reconciliation required');
   }
   const known = candidate.filter(r => !unmatched.includes(r));
@@ -68,7 +70,9 @@ export function dbk69OverlayStock<T extends Dbk69InventoryItem>(
   const stock = storeId ? scoped?.onHand || 0 : companyOnHand;
   return {
     ...item,
-    companyOnHand,unallocatedOnHand,
+    companyOnHand:companyOnHand+unclassified.reduce((sum,r)=>sum+quantity(r.on_hand),0),unallocatedOnHand,
+    unclassifiedOnHand:unclassified.filter(r=>!storeId||r.location_id===storeId).reduce((sum,r)=>sum+quantity(r.on_hand),0),
+    unclassifiedIncoming:unclassified.filter(r=>!storeId||r.location_id===storeId).reduce((sum,r)=>sum+quantity(r.incoming),0),
     onHand:stock,
     incoming:storeId ? scoped?.incoming || 0 : companyIncoming,
     location:storeId ? scoped?.storeName || 'Assigned store' : item.location,
