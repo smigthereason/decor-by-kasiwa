@@ -317,6 +317,14 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
       for (const key of ["initialStock", "onHand", "incoming", "reserved", "location", "storeLocationId", "inventoryRevision"]) {
         form.delete(key);
       }
+      // Do not send unchanged legacy inventory metadata on a catalogue edit.
+      // The defaults are the same ones rendered by the inputs below.
+      const unchangedNumber = (key: string, original: number) => {
+        const raw = form.get(key);
+        if (typeof raw === "string" && raw.trim() && Number(raw) === original) form.delete(key);
+      };
+      unchangedNumber("reorderPoint", product?.inventory?.reorderPoint ?? 5);
+      unchangedNumber("procurementCost", product?.procurementCost ?? product?.inventory?.unitCost ?? 0);
     }
     if (isEditing) {
       if (product?._rev) form.set("productRevision", product._rev);
@@ -464,7 +472,7 @@ export default function ProductCreatePage({ productId, mode = "admin" }: { produ
             : `Unable to ${isEditing ? "update" : "create"} product (${response.status}).`;
         const generic = !payload.message || /^(?:error\s*40[09]|bad request|request failed)$/i.test(payload.message.trim());
         // Diagnostic codes remain in the browser console, not the customer-facing message.
-        console.warn('[Product save rejected]', {status:response.status, code:payload.code || 'UNSPECIFIED'});
+        console.warn('[Product save rejected]', {status:response.status, code:payload.code || 'UNSPECIFIED', productId});
         throw new Error(generic ? fallback : payload.message);
       }
       setRetryVariantRegistration(false);

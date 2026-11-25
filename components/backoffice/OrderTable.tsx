@@ -12,6 +12,9 @@ type Props = {
 };
 
 function orderHref(order: Order, mode: "admin" | "store") {
+  if (order.id.startsWith("dbk62.order.") || order.id.startsWith("dbk68.order.")) {
+    return `/${mode}/pos/receipt/${encodeURIComponent(order.id)}`;
+  }
   return mode === "admin" ? `/admin/orders/${order.id}` : `/store/orders/${order.id}`;
 }
 

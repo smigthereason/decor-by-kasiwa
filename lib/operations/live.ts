@@ -9,6 +9,9 @@ import { serverClient } from "@/sanity/lib/serverClient";
 import { getMainStore, isLegacyStoreName, storeOrderPredicate } from "@/lib/stores/main-store";
 
 import { adminMetrics, storeMetrics } from "./selectors";
+import { dbk148DashboardOrders } from "./dbk148-dashboard-core";
+import { dbk148ReadPaidOrders } from "./dbk148-dashboard-neon";
+import { dbk75NeonReportsRequested } from "@/lib/pos/dbk75-neon-report";
 import type {
   ActivityEvent,
   Customer,
@@ -524,7 +527,6 @@ export async function getLiveOperationsSnapshot(
  * to the browser. The main order/customer directories remain fully functional
  * via their own view-specific requests. */
 export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
-  type RevenueRow = { subtotal?: number; discountAmount?: number };
   type StockRow = {
     _id: string;
     available?: boolean;
@@ -536,26 +538,24 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
   type RecentShipment = Partial<Shipment> & { id: string; status: Shipment["status"] };
   type RecentCustomer = { _id: string; name?: string; email?: string; lastOrderAt?: string };
   type DashboardQuery = {
-    paidAmounts: RevenueRow[];
-    openOrders: number;
+    paidOrders: RecentOrder[];
+    stores: Array<{ id: string; name: string }>;
     fulfilmentQueue: number;
     stock: StockRow[];
-    recentOrders: RecentOrder[];
     recentShipments: RecentShipment[];
     recentCustomers: RecentCustomer[];
   };
 
   const result = await serverClient.fetch<DashboardQuery>(`{
-    "paidAmounts": *[_type == "commerceOrder" && paymentStatus == "paid"]{ subtotal, discountAmount },
-    "openOrders": count(*[_type == "commerceOrder" && !(status in ["delivered", "cancelled"])]),
+    "stores": *[_type == "storeLocation"]{"id":_id,name},
     "fulfilmentQueue": count(*[_type == "shipment" && status != "delivered"]),
     "stock": *[_type == "product" && defined(slug.current)]{
       _id,available, initialStock, "variants": variants[]{ _key,stockQuantity },
       "inventory": *[_type == "inventoryRecord" && product._ref == ^._id][0]{ reserved, reorderPoint }
     },
-    "recentOrders": *[_type == "commerceOrder"] | order(createdAt desc)[0...6]{
+    "paidOrders": *[_type == "commerceOrder" && paymentStatus == "paid"]{
       "id": _id, orderNumber, customerName, createdAt, updatedAt, soldAt, status,
-      paymentStatus, subtotal, total, salesChannel, paymentChannel, soldByName,
+      paymentStatus, subtotal, discountAmount, total, deliveryFee, salesChannel, paymentChannel, paymentReference, soldByName,
       soldByRole, "storeLocationName": coalesce(storeLocation->name, assignedStore, ""),
       "storeLocationId": storeLocation._ref, dispatchedByName, deliveredByName
     },
@@ -568,8 +568,8 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
     }
   }`, {}, { cache: "no-store" });
 
-  const revenue = (result.paidAmounts || []).reduce((sum, item) =>
-    sum + Math.max(0, Number(item.subtotal || 0) - Number(item.discountAmount || 0)), 0);
+  const hybrid = dbk75NeonReportsRequested();
+  const neonPaid = hybrid ? await dbk148ReadPaidOrders(new Map((result.stores || []).map(store => [store.id, store.name]))) : [];
   const dashboardNeonBalances = dbk69InventoryEnabled() ? await dbk69AllBalances() : null;
   const dashboardByProduct = new Map<string,number>();
   if (dashboardNeonBalances) for (const row of dashboardNeonBalances) {
@@ -589,7 +589,7 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
   }).length;
 
   const main = await getMainStore();
-  const orders: Order[] = (result.recentOrders || []).map((row) => ({
+  const legacyPaid: Order[] = (result.paidOrders || []).map((row) => ({
     ...row,
     ...(main && (row.salesChannel === "ONLINE" || !row.salesChannel) && !row.storeLocationId && isLegacyStoreName(row.storeLocationName)
       ? { storeLocationId: main.id, storeLocationName: main.name, storeLocationCode: main.code, assignedStore: main.name } : {}),
@@ -599,9 +599,11 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
     customerEmail: "", customerPhone: "", deliveryLocation: "",
     createdAt: row.createdAt || new Date(0).toISOString(),
     status: row.status || "pending", paymentStatus: row.paymentStatus || "pending",
-    subtotal: Number(row.subtotal || 0), deliveryFee: 0, total: Number(row.total || 0),
+    subtotal: Number(row.subtotal || 0), discountAmount: Number(row.discountAmount || 0), deliveryFee: Number(row.deliveryFee || 0), total: Number(row.total || 0),
     lineItems: [],
   }));
+  const dashboard = dbk148DashboardOrders(legacyPaid, neonPaid);
+  const orders = dashboard.recent;
   const shipments: Shipment[] = (result.recentShipments || []).map((row) => ({
     ...row,
     id: row.id, shipmentNumber: safeString(row.shipmentNumber, row.id),
@@ -619,10 +621,10 @@ export async function getAdminDashboardSnapshot(): Promise<OperationsSnapshot> {
   }));
 
   return {
-    admin: { revenue, openOrders: result.openOrders || 0, fulfilmentQueue: result.fulfilmentQueue || 0, lowStock },
+    admin: { revenue: dashboard.revenue, openOrders: dashboard.openOrders, fulfilmentQueue: result.fulfilmentQueue || 0, lowStock },
     store: { awaitingReceipt: 0, beingPicked: 0, readyToDispatch: 0, lowStock },
     products: [], customers: [], orders: orders.slice(0, 5), shipments: shipments.slice(0, 3),
     restockRequests: [], activity: buildActivity({ orders, shipments, customers }),
-    source: "sanity-live",
+    source: hybrid ? "hybrid-live" : "sanity-live",
   };
 }

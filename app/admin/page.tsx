@@ -39,7 +39,7 @@ export default function AdminOverviewPage() {
               Live operations
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
-              Products, customers, orders, inventory and fulfilment are loaded directly from the live Sanity dataset.
+              {data.source === "hybrid-live" ? "Paid sales combine live Neon and legacy Sanity orders; shipment figures still use legacy records." : "Operational data is loaded from the live Sanity dataset."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -57,9 +57,9 @@ export default function AdminOverviewPage() {
       </div>
 
       <section className="grid grid-cols-1 border-b hairline sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard index="01" label="Paid revenue" value={formatKes(data.admin.revenue)} detail="Revenue from live paid orders." icon={CircleDollarSign} />
-        <MetricCard index="02" label="Open orders" value={String(data.admin.openOrders)} detail="Orders not yet delivered or cancelled." icon={ClipboardList} />
-        <MetricCard index="03" label="Fulfilment queue" value={String(data.admin.fulfilmentQueue)} detail="Live shipments still in progress." icon={Truck} />
+        <MetricCard index="01" label="Paid revenue" value={formatKes(data.admin.revenue)} detail="Fully paid merchandise sales, before partial refunds." icon={CircleDollarSign} />
+        <MetricCard index="02" label="Open online orders" value={String(data.admin.openOrders)} detail="Paid online orders awaiting fulfilment or delivery." icon={ClipboardList} />
+        <MetricCard index="03" label="Legacy shipment queue" value={String(data.admin.fulfilmentQueue)} detail="Legacy shipments still in progress." icon={Truck} />
         <MetricCard index="04" label="Low stock" value={String(data.admin.lowStock)} detail="Products at or below their live reorder threshold." icon={PackageCheck} />
       </section>
 
@@ -68,7 +68,7 @@ export default function AdminOverviewPage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="kicker text-[var(--muted)]">Recent orders</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">Newest live commerce orders.</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Newest fully paid sales across available sources.</p>
             </div>
             <Link href="/admin/orders" className="group inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em]">
               View all <ArrowUpRight size={12} className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -106,7 +106,7 @@ export default function AdminOverviewPage() {
       <section className="px-4 pb-8 sm:px-6 lg:px-8">
         <div className="rounded-xl border hairline bg-[var(--paper)] p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
-            <p className="kicker text-[var(--muted)]">Latest shipments</p>
+            <p className="kicker text-[var(--muted)]">Latest legacy shipments</p>
             <Link href="/admin/shipments" className="text-[10px] font-semibold uppercase tracking-[0.08em]">View shipments</Link>
           </div>
           <div className="grid gap-3 md:grid-cols-3">

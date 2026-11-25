@@ -236,5 +236,5 @@ export type OperationsSnapshot = {
   viewerRole?: StaffRole;
   viewerStoreId?: string;
   viewerStoreName?: string;
-  source: "sanity-live";
+  source: "sanity-live" | "hybrid-live";
 };

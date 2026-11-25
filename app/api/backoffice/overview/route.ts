@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Failed to load live back-office data:", error);
     return NextResponse.json(
-      { message: "Live operational data could not be loaded from Sanity." },
+      { message: "Live operational data could not be loaded. Check the configured data sources." },
       { status: 500 },
     );
   }

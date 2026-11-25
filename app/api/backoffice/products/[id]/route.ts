@@ -181,7 +181,8 @@ export async function GET(
       locationBalances:product.inventory?.locationBalances || [],
     },await dbk69ProductBalances(productId));
     product.initialStock = mapped.onHand;
-    product.available = mapped.available;
+    // The editor owns the catalogue visibility flag, not stock-derived availability.
+    // Saving an out-of-stock product must not silently disable it in the catalogue.
     product.variants = (product.variants || []).map((variant: { _key?: string; stockQuantity?: number }) => ({
       ...variant,stockQuantity:mapped.variants?.find((v: { id: string; stockQuantity: number }) => v.id === variant._key)?.stockQuantity || 0,
     }));
@@ -662,6 +663,8 @@ export async function PATCH(
       }
     }
 
+    let neonMetadataInventoryId: string | undefined;
+    let neonMetadataInventoryRevision: string | undefined;
     const inventoryPatch: Record<string, unknown> = {};
     const inventoryUnset: string[] = [];
     if (body.storeLocationId !== undefined) {
@@ -690,11 +693,30 @@ export async function PATCH(
     if (reorderPoint !== undefined) inventoryPatch.reorderPoint = Math.max(0, reorderPoint);
     if (procurementCost !== undefined) inventoryPatch.unitCost = Math.max(0, procurementCost);
 
+    // Older clients submit these fields even when unchanged. Avoid unnecessary
+    // legacy inventory writes, but retain explicit cost/reorder edits and their
+    // existing authorization. Never create an inventory document just for defaults.
+    if (neonInventory && (inventoryPatch.reorderPoint !== undefined || inventoryPatch.unitCost !== undefined)) {
+      const records = await serverClient.fetch<Array<{ _id: string; _rev: string; reorderPoint?: number; unitCost?: number }>>(
+        `*[_type == "inventoryRecord" && product._ref == $id]{_id,_rev,reorderPoint,unitCost}`,
+        { id: productId }, { cache: "no-store" },
+      );
+      if (records.length > 1) return NextResponse.json({code:"DBK148_DUPLICATE_INVENTORY",message:"Multiple inventory records exist for this product. Inventory metadata was not changed."},{status:409});
+      const record = records[0];
+      if (inventoryPatch.reorderPoint === (record?.reorderPoint ?? 5)) delete inventoryPatch.reorderPoint;
+      if (inventoryPatch.unitCost === (record?.unitCost ?? 0)) delete inventoryPatch.unitCost;
+      if (Object.keys(inventoryPatch).length && !record) return NextResponse.json({code:"DBK148_INVENTORY_METADATA_MISSING",message:"The inventory metadata record is missing. Save catalogue changes separately and review the inventory record before editing cost or reorder level."},{status:409});
+      if (record) {
+        neonMetadataInventoryId = record._id;
+        neonMetadataInventoryRevision = record._rev;
+      }
+    }
+
     // Variant metadata saves must be revision-bound too: an in-flight POS sale
     // must not have its newly reduced variant quantities overwritten.
     let stockProductRevision: string | undefined = typeof managerProductRevision === "string" ? managerProductRevision : undefined;
-    let stockInventoryRevision: string | undefined;
-    let stockInventoryId: string | undefined;
+    let stockInventoryRevision: string | undefined = neonMetadataInventoryRevision;
+    let stockInventoryId: string | undefined = neonMetadataInventoryId;
     // Product quantities are company totals, while POS uses locationBalances. On an
     // explicit editor stock submission, place only the *unallocated* remainder at
     // the selected default store. Never take stock away from another branch.

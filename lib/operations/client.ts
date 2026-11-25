@@ -38,7 +38,7 @@ export function useLiveOperations(view: OperationsView = "all") {
       setError(null);
     } catch (cause) {
       console.error(cause);
-      setError("Live operational data could not be loaded from Sanity.");
+      setError("Live operational data could not be loaded. Check the configured data sources.");
     } finally {
       setLoading(false);
     }
