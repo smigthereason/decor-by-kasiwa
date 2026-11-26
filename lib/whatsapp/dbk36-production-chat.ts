@@ -5,8 +5,8 @@ import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError,maxProductionStkKes} from './dbk36-production-core';
-import {relevantProducts,catalogueImage,naturalCommand,type SalesProduct} from './dbk155-sales-core';
-import {answerKnowledge} from './dbk155-knowledge';
+import {relevantProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,type SalesProduct} from './dbk155-sales-core';
+import {planShopping} from './dbk156-shopping-ai';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
  * staging browse-flow, cart-store, processor, or staging database helpers. */
@@ -28,7 +28,7 @@ function catalogueItem(raw:unknown):SaleItem|null{
     r.available===false||r.ecommerceEnabled===false)return null;
   return {id,name,slug,price,stockQuantity:stock!==null&&Number.isSafeInteger(stock)&&stock>=0?stock:null,
     variants:r.variants===true||(Array.isArray(r.variants)&&r.variants.length>0),
-    imageUrl:catalogueImage(r.imageUrl)||catalogueImage(Array.isArray(r.images)?r.images[0]:undefined)||catalogueImage(r.heroImage)};
+    imageUrl:productImage(r,process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,process.env.NEXT_PUBLIC_SANITY_DATASET)};
 }
 export async function refreshProductionCatalogue(){
   if(process.env.DBK36_WA_PROD_CATALOGUE_SYNC_ENABLED!=='YES')throw new Error('CATALOGUE_GATE_OFF');
@@ -44,6 +44,7 @@ export async function refreshProductionCatalogue(){
     VALUES('ecommerce',${JSON.stringify(products)}::jsonb,now())
     ON CONFLICT(cache_key) DO UPDATE SET products_json=excluded.products_json,synced_at=excluded.synced_at
     RETURNING synced_at`;
+  console.info('DBK156_CATALOGUE_REFRESH',{count:products.length,withImages:products.filter(p=>p.imageUrl).length});
   return {count:products.length,syncedAt:String(result[0]?.synced_at),mainNeon:true};
 }
 async function catalogue():Promise<{products:SaleItem[];fresh:boolean}>{
@@ -110,7 +111,9 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
       ON CONFLICT(wa_id) DO UPDATE SET last_viewed_product_id=excluded.last_viewed_product_id,updated_at=now()`;
     const label=(p:SaleItem,i:number)=>`${i+1}. ${safe(p.name)} — ${money(p.price)}${p.variants?' (options available)':''}\nhttps://decorbykasiwa.co.ke/shop/${encodeURIComponent(p.slug)}`;
     const images=items.flatMap((p,i)=>p.imageUrl?[{url:p.imageUrl,caption:label(p,i)}]:[]);
-    return {reply:'Here are the matching items:\n\n'+items.map(label).join('\n\n')+'\n\n'+(items.length===1?'Would you like this one?':'Which option would you like? You can say the number or product name.'),images};
+    console.info('DBK156_PRODUCT_MEDIA',{matched:items.length,withImages:images.length});
+    const introduction=items.length===1?'I found this for you:':'These are the closest matches I found:';
+    return {reply:introduction+'\n\n'+items.map(label).join('\n\n')+'\n\n'+(items.length===1?'Is this what you had in mind?':'Which one catches your eye?')+(images.length<items.length?'\nI don’t have a catalogue photo for every item right now.':''),images};
   }
   if(/^(SEARCH\s+.+|PRODUCTS|SHOP)$/.test(cmd)){
     if(!fresh)return reply('Our catalogue is refreshing. Please try again shortly.');
@@ -127,9 +130,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     if(chosen){await db`UPDATE public.dbk36_wa_carts SET last_viewed_product_id=${chosen.id},updated_at=now() WHERE wa_id=${waId}`;cmd='ADD';}
     else if(select)return reply('Which product did you mean? Please choose one of the options I showed you.');
   }
-  if(/^(SHOW (ME )?(THE )?(PHOTO|PHOTOS|IMAGE|IMAGES|PICTURE|PICTURES)|CAN I SEE (IT|THEM))$/.test(cmd)){
-    const options=(await shortlist()).filter((p):p is SaleItem=>Boolean(p));return options.length?show(options):reply('Which product would you like to see?');
-  }
+
   if(cmd==='CART'||cmd==='BASKET'||cmd==='MY CART'){
     const current=await cart(waId,products);
     if(!current.lines.length)return reply('Your cart is empty. What would you like to shop for?');
@@ -145,7 +146,8 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     if(options.length>1&&!select&&!(named&&options.some(p=>p?.name.toUpperCase()===named[1])))return reply('Which of the options would you like? Please tell me its number or name.');
     const viewed=await db`SELECT last_viewed_product_id FROM public.dbk36_wa_carts WHERE wa_id=${waId}`;
     const item=products.find(x=>x.id===viewed[0]?.last_viewed_product_id);
-    if(!item||!options.some(p=>p?.id===item.id)||item.variants||item.stockQuantity===0)return reply('I can help you choose the right size or colour, but our team must confirm that option before purchase. Which product would you like help with?');
+    if(!item||!options.some(p=>p?.id===item.id)||item.stockQuantity===0)return reply('Which available product would you like?');
+    if(item.variants)return reply(`Great choice! ${safe(item.name)} has options available. Our team needs to confirm the exact option before I can add it. Would you like to speak to the team?`);
     if(item.stockQuantity===null||item.stockQuantity<qty)return reply('I need to confirm stock before adding that quantity. Please choose a smaller quantity or ask for staff help.');
     if(!bsuidOnly)await cancelProductionQuote(waId);
     const up=await db`INSERT INTO public.dbk36_wa_cart_items(wa_id,product_id,quantity)
@@ -202,12 +204,38 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     console.warn('DBK155_CHECKOUT_REVIEW',code);
     return reply('I couldn’t complete that step safely. Please do not send another payment request until our team checks it.');
   }
-  if(process.env.DBK100_WA_AI_ENABLED==='YES'){
-    if(fresh&&products.length){const matches=relevantProducts(text,products);if(matches.length)return show(matches);
-      if(/\b(do you have|looking for|show me|find|search|nataka|mnazo)\b/i.test(text))return show([]);}
-    if(/\b(hours|open|close|location|address|branch|deliver|delivery|refund|return|exchange|contact|policy|policies|warranty|care|clean|payment methods|shipping|where|saa|wapi|malipo)\b/i.test(text)){
-      const answer=await answerKnowledge(text);if(answer)return reply(answer);
+  const local=contextualRequest(text);
+  if(local||process.env.DBK100_WA_AI_ENABLED==='YES'){
+    const stored=await shortlist();
+    // Do not renumber a stale shortlist. A missing entry invalidates the old selection.
+    const options=stored.every(p=>p&&p.stockQuantity!==0)?stored as SaleItem[]:[];
+    // The model receives a short history of customer utterances and verified shortlist names, never credentials or payment records.
+    const recent=local?[]:await db`SELECT message_text FROM public.dbk36_wa_messages WHERE wa_id=${waId} AND direction='in' AND status='done' AND created_at>now()-interval '24 hours' ORDER BY created_at DESC LIMIT 4`;
+    const plan=local||await planShopping(text,options,recent.map(r=>String(r.message_text||'')).reverse());
+    if(plan?.intent==='search'){
+      if(!fresh)return reply('I’m refreshing our catalogue. Could you try again shortly?');
+      if(!plan.query)return reply('What kind of item are you looking for?');
+      return show(relevantProducts(plan.query,products));
     }
+    if(plan&&['photo','price','details'].includes(plan.intent)){
+      if(!fresh)return reply('I need to refresh the catalogue before confirming that. Please try again shortly.');
+      const chosen=resolveShoppingProduct(options,plan)||(!plan.option&&plan.query?resolveShoppingProduct(products,plan):undefined);
+      if(!chosen){
+        if(plan.intent==='photo'&&!plan.query&&!plan.option&&options.length>1)return show(options);
+        return reply(options.length?`Which one did you mean — ${options.map(p=>safe(p.name)).join(', ')}?`:'Which product would you like to know more about?');
+      }
+      // Narrow the shortlist to the explicitly resolved product so the next "it"/"one" refers to the same item.
+      if(plan.intent==='photo'||plan.intent==='details')return show([chosen]);
+      await show([chosen]);
+      return {reply:`${safe(chosen.name)} is listed at ${money(chosen.price)}${chosen.variants?' (options available)':''}. Would you like help choosing one?`,images:undefined};
+    }
+    if(plan?.intent==='clarify'||plan?.intent==='information'){
+      // Informational answers are model-generated from approved knowledge, not authoritative transaction results.
+      if(plan.message&&!/https?:|\b(?:pin|otp|password|paid|charged|refunded|reserved|added to|payment confirmed)\b|\b(?:KES|KSH)\s*\d/i.test(plan.message))return reply(plan.message);
+    }
+    // No arbitrary keyword search after a failed/ambiguous plan. Explicit search phrases may use a safe deterministic fallback.
+    if(!plan&&fresh&&/^(?:do you have|i(?:'m| am) looking for|show me|find|search for|nataka|mnazo)\b/i.test(text))return show(relevantProducts(text,products));
+    return reply(options.length===1?`Are you asking about ${safe(options[0].name)}? I can show you the photo, price or help you choose.`:'What would you like to find? I can also help you speak to our team.');
   }
-  return reply("I'm happy to help you find something. What product are you looking for, or would you like to speak to our team?");
+  return reply("What product are you looking for, or would you like to speak to our team?");
 }

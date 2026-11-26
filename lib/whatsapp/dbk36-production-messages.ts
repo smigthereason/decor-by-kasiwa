@@ -46,8 +46,9 @@ async function sendThroughDedicatedWorker(waId:string,text:string,imageUrl?:stri
   const result=await fetch(worker+'/__dbk36/send',{
     method:'POST',cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(imageUrl?6000:10000),
     headers:{'Content-Type':'application/json','x-dbk36-timestamp':stamp,'x-dbk36-signature':signature},
-    body});
-  if(!result.ok)throw new Error('META_OUTBOUND_UNCONFIRMED_MANUAL_REVIEW');
+    body}).catch(()=>{console.warn('DBK156_OUTBOUND_UNCERTAIN',{kind:imageUrl?'image':'text'});throw new Error('META_OUTBOUND_UNCONFIRMED_MANUAL_REVIEW');});
+  if(!result.ok){console.warn('DBK156_OUTBOUND_REJECTED',{kind:imageUrl?'image':'text',status:result.status});throw new Error('META_OUTBOUND_UNCONFIRMED_MANUAL_REVIEW');}
+  if(imageUrl)console.info('DBK156_MEDIA_ACCEPTED');
 }
 /** At most one attempted send per unique inbound message. Uncertain Meta
  * delivery is REVIEW, not automatic replay, to avoid duplicate replies/PAY. */
