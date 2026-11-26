@@ -1,9 +1,10 @@
 'use client';
 import {useEffect,useState} from 'react';
+import type {PackingLine} from '@/lib/whatsapp/dbk162-packing';
 type Order={reference:string;amount_minor:number;intake_status:string;receipt_suffix:string;
   customer_suffix:string;order_id:string|null;stock_state:string|null;fulfillment_state:string|null;
-  last_error_code:string|null};
-type Response={orders?:Order[];stockCommitEnabled?:boolean;error?:string;stockState?:string;orderId?:string;
+  last_error_code:string|null;items?:PackingLine[]};
+type Response={orders?:Order[];items?:PackingLine[];stockCommitEnabled?:boolean;error?:string;stockState?:string;orderId?:string;
   status?:string;amountKes?:number;lineCount?:number;products?:number;storeId?:string;actionRequired?:boolean};
 const api='/api/backoffice/whatsapp/paid-intake/fulfillment';
 export default function WhatsAppFulfillment(){
@@ -47,13 +48,14 @@ export default function WhatsAppFulfillment(){
     </header>
     <p className="text-sm font-medium">Stock posting: {enabled?'Approved production gate enabled':'DISABLED — read-only review'}</p>
     <section className="overflow-x-auto rounded-xl border p-4"><h2 className="mb-3 font-semibold">Recorded paid orders</h2>
-      <table className="w-full text-left text-sm"><thead><tr><th className="p-2">Reference</th><th className="p-2">KES</th><th className="p-2">Receipt</th><th className="p-2">Stock</th><th className="p-2">Fulfillment</th><th className="p-2">Action</th></tr></thead><tbody>
-        {orders.map(o=><tr key={o.reference} className="border-t"><td className="p-2">{o.reference}</td><td className="p-2">{Number(o.amount_minor)/100}</td>
+      <table className="w-full text-left text-sm"><thead><tr><th className="p-2">Reference</th><th className="p-2">Products to pack</th><th className="p-2">KES</th><th className="p-2">Receipt</th><th className="p-2">Stock</th><th className="p-2">Fulfillment</th><th className="p-2">Action</th></tr></thead><tbody>
+        {orders.map(o=><tr key={o.reference} className="border-t"><td className="p-2">{o.reference}</td><td className="p-2"><div className="space-y-2">{o.items?.map((item,i)=><div key={i} className="flex items-center gap-2"><PackingPhoto item={item} small/><div><p className="font-medium">{item.name} × {item.quantity}</p>{item.variantLabel&&<p className="text-xs text-neutral-600">{item.variantLabel}</p>}</div></div>)}{!o.items?.length&&<span className="text-xs text-amber-800">Items unavailable — review before packing</span>}</div></td><td className="p-2">{Number(o.amount_minor)/100}</td>
         <td className="p-2">••••{o.receipt_suffix}</td><td className="p-2">{o.stock_state||'AWAITING_STAFF'}</td>
         <td className="p-2">{o.fulfillment_state||'—'}</td><td className="p-2"><button type="button" className="rounded border px-2 py-1" onClick={()=>void inspect(o.reference)} disabled={busy}>Review</button></td></tr>)}
       </tbody></table>{orders.length===0&&<p className="p-2 text-sm text-neutral-500">No Till-attested orders yet. Do not enter a payment that hasn't been independently verified.</p>}</section>
     {preview&&<section className="space-y-4 rounded-xl border p-5"><h2 className="font-semibold">Order {selected}</h2>
       <p className="text-sm">{preview.stockState} {preview.orderId?`· ${preview.orderId}`:''}</p>
+      <div className="space-y-3"><h3 className="font-semibold">Packing list</h3>{(preview.items||[]).map((item,i)=><div key={i} className="flex flex-wrap items-center gap-4 rounded-lg border bg-white p-3"><PackingPhoto item={item}/><div className="min-w-0 flex-1"><p className="font-semibold break-words">{item.name}</p>{item.variantLabel&&<p className="text-sm">Option: {item.variantLabel}</p>}<p className="text-xs text-neutral-600 break-all">{item.sku?`SKU: ${item.sku}`:`Product ID: ${item.productId}`}</p>{!item.identified&&<p className="text-xs text-amber-800">Catalogue details unavailable; verify item manually before packing.</p>}</div><div className="text-right"><p className="font-semibold">Qty {item.quantity}</p><p className="text-sm">KES {(item.subtotalMinor/100).toLocaleString('en-KE')}</p></div></div>)}{!preview.items?.length&&<p className="text-sm text-amber-800">No readable paid cart lines. Verify the order before packing.</p>}</div>
       {preview.stockState==='READY_FOR_STAFF_APPROVAL'&&<><p className="text-sm">Amount KES {preview.amountKes}; {preview.lineCount} cart line(s). Stock is checked again when committing. Payment is already recorded; this action does not charge the customer.</p>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={approved} onChange={e=>setApproved(e.target.checked)}/>
           I reviewed the verified payment, customer products, store stock, and understand a one-time deduction may require manual reconciliation if the network fails.</label>
@@ -65,4 +67,11 @@ export default function WhatsAppFulfillment(){
     </section>}
     {message&&<p role="status" className="whitespace-pre-wrap text-sm">{message}</p>}
   </main>;
+}
+
+function PackingPhoto({item,small=false}:{item:PackingLine;small?:boolean}){
+  const [failed,setFailed]=useState(false);
+  useEffect(()=>setFailed(false),[item.imageUrl]);
+  const size=small?'h-12 w-12':'h-24 w-24';
+  return <div className="shrink-0 text-center">{item.imageUrl&&!failed?<img src={item.imageUrl} alt={item.imageKind==='variant'?`${item.name} ${item.variantLabel}`:item.name} loading="lazy" onError={()=>setFailed(true)} className={`${size} rounded-lg border bg-neutral-50 object-contain`}/>:<div className={`${size} grid place-items-center rounded-lg border bg-neutral-100 p-1 text-[10px] text-neutral-500`}>No photo</div>}{!small&&item.variantId&&item.imageKind==='product'&&!failed&&<p className="mt-1 text-[10px] text-neutral-600">Product photo only</p>}</div>;
 }

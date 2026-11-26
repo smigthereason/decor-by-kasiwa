@@ -4,6 +4,7 @@ import { dbk109NeonAuthorityRequested } from './dbk109-cutover-authority';
 import {neon} from '@neondatabase/serverless';
 import {serverClient} from '@/sanity/lib/serverClient';
 import {getStoreProducts} from '@/sanity/lib/catalog';
+import {packingLines, type PackingProduct} from '@/lib/whatsapp/dbk162-packing';
 import {planStockDeduction, validatePaidIntake, type PaidIntake, type ProductSnapshot, type CatalogueProduct} from '@/lib/whatsapp/dbk36-fulfillment-core';
 
 /** This module is intentionally isolated from DBK-51/55/56/62 and never calls M-Pesa.
@@ -60,9 +61,18 @@ async function computePlan(paid:PaidIntake){
   return planStockDeduction(paid,catalogue as unknown as CatalogueProduct[],stock,storeId);
 }
 
+/** Catalogue metadata is display-only; payment snapshot remains authoritative. */
+async function packingCatalogue(snapshots:unknown[]){
+  const ids=[...new Set(snapshots.flatMap(snapshot=>packingLines(snapshot,[]).map(line=>line.productId)))];
+  if(!ids.length)return [];
+  try{return await serverClient.fetch<PackingProduct[]>(`*[_type == 'product' && _id in $ids]{
+    "id":_id,name,sku,"imageUrl":coalesce(heroImage.asset->url,gallery[0].asset->url),
+    variants[]{"id":_key,title,colour,size,sku,"imageUrl":image.asset->url}
+  }`,{ids},{cache:'no-store'});}catch{return [];}
+}
 export async function fulfillmentQueue(){
   const sql=sqlClient();
-  const rows=await sql`SELECT p.reference,p.amount_minor,p.intake_status,
+  const rows=await sql`SELECT p.reference,p.amount_minor,p.intake_status,p.cart_snapshot,
     right(p.provider_receipt,4) AS receipt_suffix,
     right(p.wa_id,4) AS customer_suffix,
     f.order_id,coalesce(f.stock_state,o.stock_state) AS stock_state,f.fulfillment_state,f.claimed_at,f.stock_committed_at,
@@ -71,24 +81,27 @@ export async function fulfillmentQueue(){
     LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=p.reference
     LEFT JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=p.reference
     ORDER BY p.created_at DESC LIMIT 100`;
-  return {orders:rows,stockCommitEnabled:process.env.DBK36_WA_STOCK_COMMIT_ENABLED==='YES' ||
+  const catalogue=await packingCatalogue(rows.map(r=>r.cart_snapshot));
+  const orders=rows.map(({cart_snapshot,...row})=>({...row,items:packingLines(cart_snapshot,catalogue)}));
+  return {orders,stockCommitEnabled:process.env.DBK36_WA_STOCK_COMMIT_ENABLED==='YES' ||
       process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES',
     inventoryAuthority:process.env.DBK_INVENTORY_BACKEND==='neon'?'NEON':'SANITY',paymentsInitiated:0};
 }
 export async function fulfillmentPreview(reference:string){
   const sql=sqlClient();
+  const paid=await paidRecord(reference);
+  const items=packingLines(paid.cart_snapshot,await packingCatalogue([paid.cart_snapshot]));
   const state=await sql`SELECT stock_state,order_id,last_error_code
     FROM public.dbk36_wa_stock_fulfillment WHERE reference=${reference}`;
-  if(state.length)return {reference,existing:true,stockState:state[0].stock_state,
+  if(state.length)return {reference,items,existing:true,stockState:state[0].stock_state,
     orderId:state[0].order_id,reviewRequired:state[0].stock_state!=='COMMITTED'};
-  const paid=await paidRecord(reference);
   if(paid.verification_mode==='daraja_api_verified'&&process.env.DBK_INVENTORY_BACKEND==='neon'){
     const {amountMinor,lines}=validatePaidIntake(paid);
     const enabled=process.env.DBK36_WA_AUTO_STOCK_ENABLED==='YES'&&process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES'&&process.env.DBK62_POS_BACKEND==='neon';
-    return {reference,existing:false,stockState:enabled?'READY_FOR_STAFF_APPROVAL':'REVIEW_REQUIRED',amountKes:amountMinor/100,lineCount:lines.length,storeId:STORE,stockReserved:false,note:'Verified payment; Neon checks authority, stock and replay protection when posting.'};
+    return {reference,items,existing:false,stockState:enabled?'READY_FOR_STAFF_APPROVAL':'REVIEW_REQUIRED',amountKes:amountMinor/100,lineCount:lines.length,storeId:STORE,stockReserved:false,note:'Verified payment; Neon checks authority, stock and replay protection when posting.'};
   }
   const plan=await computePlan(paid);
-  return {reference,existing:false,stockState:'READY_FOR_STAFF_APPROVAL',
+  return {reference,items,existing:false,stockState:'READY_FOR_STAFF_APPROVAL',
     amountKes:plan.amountMinor/100,lineCount:plan.lines.length,
     products:plan.products.length,storeId:plan.storeId,stockReserved:false,
     note:'A preview is not a reservation. Product revisions are rechecked during commit.'};

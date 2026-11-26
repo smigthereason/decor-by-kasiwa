@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {packingLines} from '../lib/whatsapp/dbk162-packing.ts';
+const photo='https://cdn.sanity.io/images/project/production/example.jpg';
+const variantPhoto='https://cdn.sanity.io/images/project/production/white.jpg';
+const snapshot=[{productId:'mirror',variantId:'white',quantity:2,subtotalMinor:900000}];
+const catalog=[{id:'mirror',name:'Round mirror',imageUrl:photo,variants:[{id:'white',colour:'White',sku:'WHITE-1',imageUrl:variantPhoto},{id:'gold',colour:'Gold'}]}];
+test('exact variant photo and SKU, paid quantity and subtotal',()=>{const [item]=packingLines(snapshot,catalog);assert.equal(item.imageUrl,variantPhoto);assert.equal(item.variantLabel,'White');assert.equal(item.sku,'WHITE-1');assert.equal(item.quantity,2);assert.equal(item.subtotalMinor,900000);assert.equal(item.imageKind,'variant');});
+test('missing variant photo falls back to labelled parent photo',()=>{const [item]=packingLines([{...snapshot[0],variantId:'gold'}],catalog);assert.equal(item.imageKind,'product');assert.equal(item.imageUrl,photo);assert.equal(item.variantLabel,'Gold');});
+test('missing catalogue data retains paid identity and quantity',()=>{const [item]=packingLines(snapshot,[]);assert.equal(item.productId,'mirror');assert.equal(item.variantId,'white');assert.equal(item.quantity,2);assert.equal(item.identified,false);assert.equal(item.imageUrl,undefined);});
+test('missing and untrusted images remain absent',()=>{const [item]=packingLines([{...snapshot[0],variantId:''}],[{id:'mirror',name:'Mirror',imageUrl:'https://evil.example/images/x.jpg'}]);assert.equal(item.imageKind,'none');assert.equal(item.identified,true);});
+test('standard item keeps product SKU and snapshot quantity',()=>{const [item]=packingLines([{productId:'battery',quantity:1,subtotalMinor:3000}],[{id:'battery',name:'Batteries',sku:'BAT',imageUrl:photo}]);assert.equal(item.sku,'BAT');assert.equal(item.subtotalMinor,3000);assert.equal(item.variantLabel,'');});
