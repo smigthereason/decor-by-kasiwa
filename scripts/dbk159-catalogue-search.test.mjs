@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {relevantProducts,catalogueSku,shoppingBudget,budgetProducts} from '../lib/whatsapp/dbk155-sales-core.ts';
+const item=(id,name,price,stockQuantity=3,extra={})=>({id,name,slug:id,price,stockQuantity,variants:false,...extra});
+const battery=item('battery','AAA small Toceball Battery',50,3,{sku:'DBK-ASTB-N4U5RT'});
+const products=[battery,item('pebbles','Decorative White Pebbles',100),item('out','Out of stock battery',20,0),item('unknown','Unknown stock',10,null),item('mirror','Big Round Mirrors',4500)];
+test('battery plural and full name match available battery',()=>{assert.deepEqual(relevantProducts('batteries',products),[battery]);assert.deepEqual(relevantProducts('AAA small Toceball Battery',products),[battery]);});
+test('exact SKU is case insensitive and never matches unrelated stock',()=>{assert.equal(catalogueSku('Do you have dbk-astb-n4u5rt?'),'DBK-ASTB-N4U5RT');assert.deepEqual(relevantProducts('DBK-ASTB-N4U5RT',products),[battery]);assert.deepEqual(relevantProducts('DBK-UNKNOWN-SKU',products),[]);});
+test('budget includes only confirmed in-stock matching prices, strict under and inclusive up to',()=>{assert.deepEqual(budgetProducts(products,shoppingBudget('What are cheap affordable products under Kes 100')),[battery]);assert.deepEqual(budgetProducts(products,shoppingBudget('show me products up to KES 100')),[battery,products[1]]);});
+test('payment and negated requests are not budget browse intents',()=>{for(const q of ['pay under KES 100','refund items under KES 100','not products under KES 100','products under KES 0'])assert.equal(shoppingBudget(q),undefined);});

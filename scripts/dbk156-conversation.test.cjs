@@ -8,7 +8,7 @@ const ts=require('typescript');
 const root=path.resolve(__dirname,'..');
 const image='https://cdn.sanity.io/images/p/d/a.jpg';
 const item=(id,name,variants=false)=>({id,name,slug:id,price:4500,stockQuantity:4,variants,image:{asset:{url:image}}});
-const products=[item('clock','3 IN 1 Mirror Wall Clocks'),item('mirror','Big Round Mirrors',[{id:'white',colour:'White',stockQuantity:2,price:4500,imageUrl:image},{id:'gold',colour:'Gold',stockQuantity:1,price:4700},{id:'black',colour:'Black',stockQuantity:0,price:4500}]),item('stickers','FAMILY 3D Mirror Acrylic Wall Letter Stickers'),item('tree','Cherry pot like tree')];
+const products=[item('clock','3 IN 1 Mirror Wall Clocks'),item('mirror','Big Round Mirrors',[{id:'white',colour:'White',stockQuantity:2,price:4500,imageUrl:image},{id:'gold',colour:'Gold',stockQuantity:1,price:4700},{id:'black',colour:'Black',stockQuantity:0,price:4500}]),item('stickers','FAMILY 3D Mirror Acrylic Wall Letter Stickers'),item('tree','Cherry pot like tree'),{...item('battery','AAA small Toceball Battery'),price:50,sku:'DBK-ASTB-N4U5RT',image:undefined}];
 test('actual chat: AI search, photo, price and purchase preserve product context',async()=>{
   const cache=new Map();let shortlist=[],viewed=null,modelCalls=0,paymentCalls=0,cartWrites=0;const history=[];let pending=null,cartRow=null,quoteCancels=0,quoted=null,pickup=false;
   const db=async(strings,...values)=>{
@@ -58,5 +58,10 @@ test('actual chat: AI search, photo, price and purchase preserve product context
     // A provider failure must not fall through to random shopping recommendations.
     global.fetch=async()=>({ok:false,status:429});
     assert.doesNotMatch((await say('yes please')).reply,/Cherry pot|Clock|Stickers/);
+    assert.match((await say('Id like to purchase Batteries')).reply,/AAA small Toceball Battery/);
+    assert.match((await say('What of AAA small Toceball Battery')).reply,/AAA small Toceball Battery/);
+    assert.match((await say('DBK-ASTB-N4U5RT')).reply,/AAA small Toceball Battery/);
+    const budget=await say('What are cheap affordable products under Kes 100');assert.match(budget.reply,/AAA small Toceball Battery/);assert.doesNotMatch(budget.reply,/Mirror|Clock|Stickers|tree/);
+    assert.equal(paymentCalls,1);assert.equal(cartWrites,1);
   }finally{global.fetch=oldFetch;for(const k of keys){if(oldEnv[k]===undefined)delete process.env[k];else process.env[k]=oldEnv[k];}}
 });

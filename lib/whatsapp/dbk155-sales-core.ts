@@ -1,10 +1,30 @@
 export type SalesVariant={id:string;label:string;price:number;stockQuantity:number|null;imageUrl?:string};
-export type SalesProduct={id:string;name:string;slug:string;price:number;stockQuantity:number|null;variants:boolean;variantOptions?:SalesVariant[];imageUrl?:string};
-const stop=new Set('hi hello hey kasiwa do you have any is are there some available please could would can i me my want need looking for to buy get show find see photos photo pictures picture images image of the a an in on with what your sell stock bei gani mna mnazo nataka tafuta na ya za bedroom living room bathroom house home decorative decor beautiful nice modern like'.split(' '));
+export type SalesProduct={id:string;name:string;slug:string;sku?:string;price:number;stockQuantity:number|null;variants:boolean;variantOptions?:SalesVariant[];imageUrl?:string};
+const stop=new Set('hi hello hey kasiwa do you have any is are there some available please could would can i me my want need looking for to buy purchase get show find see photos photo pictures picture images image of the a an in on with what your sell stock bei gani mna mnazo nataka tafuta na ya za bedroom living room bathroom house home decorative decor beautiful nice modern like'.split(' '));
 const normalize=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
-const stem=(s:string)=>s.length>4&&s.endsWith('s')?s.slice(0,-1):s;
+const stem=(s:string)=>s.length>4&&s.endsWith('ies')?s.slice(0,-3)+'y':s.length>4&&s.endsWith('s')?s.slice(0,-1):s;
 const words=(s:string)=>normalize(s).split(' ').filter(Boolean).map(stem);
-export function relevantProducts(query:string,products:SalesProduct[]){
+export function catalogueSku(query:string):string|undefined{
+  const match=query.match(/\bDBK-[A-Z0-9]+(?:-[A-Z0-9]+)+\b/i);
+  return match?.[0].toUpperCase();
+}
+export function shoppingBudget(text:string):{maximum:number;inclusive:boolean}|undefined{
+  if(!/\b(?:products?|items?|options?|anything|something|cheap|affordable|budget|batter(?:y|ies)|show|find|looking|buy|purchase)\b/i.test(text))return;
+  if(/\b(?:payment|pay|refund|delivery|balance|discount|not|except)\b/i.test(text))return;
+  const m=/\b(under|below|less than|up to|at most|within|maximum(?: of)?)\s*(?:KES|KSHS?\.?|SHS?\.?)?\s*(\d{1,9}(?:,\d{3})*(?:\.\d{1,2})?)(?![\d,.])(?:\s*(?:KES|KSHS?\.?|SHS?\.?))?/i.exec(text);
+  if(!m)return;
+  const maximum=Number(m[2].replace(/,/g,''));
+  if(!Number.isSafeInteger(Math.round(maximum*100))||maximum<=0)return;
+  return {maximum,inclusive:!['under','below','less than'].includes(m[1].toLowerCase())};
+}
+export function budgetProducts(products:SalesProduct[],budget:{maximum:number;inclusive:boolean}){
+  const within=(price:number)=>Number.isFinite(price)&&price>0&&(budget.inclusive?price<=budget.maximum:price<budget.maximum);
+  return products.filter(p=>p.stockQuantity!==null&&p.stockQuantity>0&&within(p.price)&&(!p.variants||((p.variantOptions||[]).some(v=>v.stockQuantity!==null&&v.stockQuantity>0)&& (p.variantOptions||[]).filter(v=>v.stockQuantity!==null&&v.stockQuantity>0).every(v=>within(v.price)))))
+    .sort((a,b)=>a.price-b.price||a.name.localeCompare(b.name)).slice(0,3);
+}
+export function relevantProducts(query:string,products:SalesProduct[],limit=3){
+  const sku=catalogueSku(query);
+  if(sku)return products.filter(p=>p.stockQuantity!==0&&p.sku?.toUpperCase()===sku).slice(0,limit);
   const terms=[...new Set(normalize(query).split(' ').filter(w=>w.length>2&&!stop.has(w)).map(stem))];
   if(!terms.length)return [];
   const queryIsMirror=terms.includes('mirror')&&!terms.some(w=>['clock','sticker','letter','acrylic','decal'].includes(w));
@@ -15,7 +35,7 @@ export function relevantProducts(query:string,products:SalesProduct[]){
     if(!terms.every(w=>name.includes(w)))return {p,score:0};
     const exact=name.join(' ')===terms.join(' ');
     return {p,score:(exact?100:0)+terms.length*4+terms.filter(w=>slug.includes(w)).length-(name.length-terms.length)*0.1};
-  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.p.name.localeCompare(b.p.name)).slice(0,3).map(x=>x.p);
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.p.name.localeCompare(b.p.name)).slice(0,limit).map(x=>x.p);
 }
 export function catalogueImage(value:unknown):string|undefined{
   if(typeof value!=='string'||value.length>1500)return;

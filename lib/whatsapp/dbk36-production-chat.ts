@@ -5,7 +5,7 @@ import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError} from './dbk36-production-core';
-import {relevantProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
+import {relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping} from './dbk156-shopping-ai';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
@@ -36,7 +36,7 @@ function catalogueItem(raw:unknown):SaleItem|null{
     if(!vid||vid.length>180||!label||label.length>130||!Number.isSafeInteger(Math.round(vp*100))||vp<=0||Math.abs(Math.round(vp*100)-vp*100)>0.000001)return [];
     return [{id:vid,label,price:vp,stockQuantity:typeof vs==='number'&&Number.isSafeInteger(vs)&&vs>=0?vs:null,imageUrl:productImage(v,process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,process.env.NEXT_PUBLIC_SANITY_DATASET)}];
   });
-  return {id,name,slug,price,variantOptions,stockQuantity:stock!==null&&Number.isSafeInteger(stock)&&stock>=0?stock:null,
+  return {id,name,slug,sku:typeof r.sku==='string'?r.sku:undefined,price,variantOptions,stockQuantity:stock!==null&&Number.isSafeInteger(stock)&&stock>=0?stock:null,
     variants:r.variants===true||rawOptions.length>0,
     imageUrl:productImage(r,process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,process.env.NEXT_PUBLIC_SANITY_DATASET)};
 }
@@ -149,6 +149,25 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     console.info('DBK156_PRODUCT_MEDIA',{matched:items.length,withImages:images.length});
     const introduction=items.length===1?'I found this for you:':'These are the closest matches I found:';
     return {reply:introduction+'\n\n'+items.map(label).join('\n\n')+'\n\n'+(items.length===1?'Is this what you had in mind?':'Which one catches your eye?')+(images.length<items.length?'\nI don’t have a catalogue photo for every item right now.':''),images};
+  }
+  // Explicit catalogue and budget lookups are read-only, not payment commands.
+  const sku=catalogueSku(text);
+  const budget=shoppingBudget(text);
+  const directQuery=/^(?:what (?:of|about)|i(?:'|’)d like to (?:purchase|buy)|id like to (?:purchase|buy)|i (?:want|would like) to (?:purchase|buy)|do you have|i(?:'m| am) looking for|search for|find)\s+(.+)$/i.exec(text)?.[1];
+  if(sku||budget){
+    if(!fresh)return reply('Our catalogue is refreshing. Please try again shortly.');
+    if(sku)return show(relevantProducts(sku,products));
+    if(budget){
+      // A named category in a budget request must not return unrelated products.
+      const subject=text.split(/\b(?:under|below|less than|up to|at most|within|maximum)\b/i)[0].replace(/\b(?:what|are|can|you|show|me|i|would|like|to|buy|purchase|find|looking|for|some|any|the|a|cheap|cheapest|affordable|products?|items?|options?|anything|something|have|do|budget|please|is|there)\b/gi,' ').replace(/[^a-z0-9 ]/gi,' ').trim();
+      const candidates=subject?relevantProducts(subject,products,products.length):products;
+      const found=budgetProducts(candidates,budget);
+      if(!found.length){await clearPending();await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;return reply('I couldn’t find a confirmed in-stock item matching that budget. Would you like to try another amount or product?');}
+      return show(found);
+    }
+  }
+  if(directQuery&&fresh&&/^(?:what (?:of|about)|i(?:['’])?d like to (?:purchase|buy)|i (?:want|would like) to (?:purchase|buy))\s+/i.test(text)){
+    const matched=relevantProducts(directQuery,products);if(matched.length)return show(matched);
   }
   if(/^(SEARCH\s+.+|PRODUCTS|SHOP)$/.test(cmd)){
     if(!fresh)return reply('Our catalogue is refreshing. Please try again shortly.');
@@ -275,7 +294,8 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     if(plan?.intent==='search'){
       if(!fresh)return reply('I’m refreshing our catalogue. Could you try again shortly?');
       if(!plan.query)return reply('What kind of item are you looking for?');
-      return show(relevantProducts(plan.query,products));
+      const matched=relevantProducts(plan.query,products);
+      return show(matched.length?matched:directQuery?relevantProducts(directQuery,products):[]);
     }
     if(plan&&['photo','price','details'].includes(plan.intent)){
       if(!fresh)return reply('I need to refresh the catalogue before confirming that. Please try again shortly.');
@@ -289,6 +309,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
       await show([chosen]);
       return {reply:`${safe(chosen.name)} is listed at ${money(chosen.price)}${chosen.variants?' (options available)':''}. Would you like help choosing one?`,images:undefined};
     }
+    if(directQuery&&fresh&&(!plan||plan.intent==='clarify'||plan.intent==='information')){const matched=relevantProducts(directQuery,products);if(matched.length)return show(matched);}
     if(plan?.intent==='clarify'||plan?.intent==='information'){
       // Informational answers are model-generated from approved knowledge, not authoritative transaction results.
       if(plan.message&&!/https?:|\b(?:pin|otp|password|paid|charged|refunded|reserved|added to|payment confirmed)\b|\b(?:KES|KSH)\s*\d/i.test(plan.message))return reply(plan.message);
