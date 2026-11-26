@@ -1,4 +1,5 @@
-export type SalesProduct={id:string;name:string;slug:string;price:number;stockQuantity:number|null;variants:boolean;imageUrl?:string};
+export type SalesVariant={id:string;label:string;price:number;stockQuantity:number|null;imageUrl?:string};
+export type SalesProduct={id:string;name:string;slug:string;price:number;stockQuantity:number|null;variants:boolean;variantOptions?:SalesVariant[];imageUrl?:string};
 const stop=new Set('hi hello hey kasiwa do you have any is are there some available please could would can i me my want need looking for to buy get show find see photos photo pictures picture images image of the a an in on with what your sell stock bei gani mna mnazo nataka tafuta na ya za bedroom living room bathroom house home decorative decor beautiful nice modern like'.split(' '));
 const normalize=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
 const stem=(s:string)=>s.length>4&&s.endsWith('s')?s.slice(0,-1):s;
@@ -76,3 +77,14 @@ export function validKnowledge(value:unknown):value is Record<KnowledgeSection,s
   return Object.keys(v).length===knowledgeSections.length&&knowledgeSections.every(k=>typeof v[k]==='string'&&(v[k] as string).length<=3000);
 }
 export const defaultKnowledge:Record<KnowledgeSection,string>={tone:'Friendly, concise Kenyan English. Match Kiswahili or mixed language when appropriate. Introduce yourself as Kasiwa when greeting; no command menus.',business:'Decor By Kasiwa sells home decor. Store addresses, hours and contacts require owner confirmation.',delivery:'Delivery requires a staff quote. Collection availability and location must be confirmed; do not invent fees or timings.',returns:'Refer returns, refunds and exchanges to staff until policy is approved.',payments:'M-PESA requires explicit customer approval and verified provider settlement. Never request PIN or OTP in chat.',products:'Use actual catalogue names, images, prices and stock. Never invent items or discounts.',examples:'Customer: Do you have mirrors? Kasiwa: Yes, here are the matching options. Which one would you like?',handover:'When facts are missing, offer to flag the conversation for the team. Do not promise a response time.'};
+
+// Only explicit, unambiguous choices from the previously displayed options.
+export function selectVariant(text:string,options:SalesVariant[]):SalesVariant|undefined{
+  const t=normalize(text).replace(/^(?:i would like|i d like|i want|i ll take|i will take|choose|select|nataka) (?:the )?/, '').replace(/^(?:the|option|number) /,'').replace(/ (?:one|please)$/,'').trim();
+  if(/^\d{1,2}$/.test(t))return options[Number(t)-1];
+  const exact=options.filter(v=>normalize(v.label)===t);
+  if(exact.length===1)return exact[0];
+  if(exact.length)return undefined;
+  const aliases=options.filter(v=>v.label.split('/').some(part=>normalize(part)===t));
+  return aliases.length===1?aliases[0]:undefined;
+}

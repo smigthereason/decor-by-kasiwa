@@ -34,3 +34,13 @@ test('AI output cannot invoke any payment or mutation action',()=>{
   assert.equal(parseShoppingPlan(JSON.stringify({...data,option:4})),null);
   assert.equal(parseShoppingPlan('not json'),null);
 });
+
+test('variant choice requires an exact unique label or displayed index, never vague assent',async()=>{
+  const {selectVariant}=await import('../lib/whatsapp/dbk155-sales-core.ts');
+  const options=[{id:'w',label:'White / Large'},{id:'g',label:'Gold / Large'}];
+  assert.equal(selectVariant('White please',options)?.id,'w');
+  assert.equal(selectVariant('2',options)?.id,'g');
+  assert.equal(selectVariant('Large',options),undefined);
+  assert.equal(selectVariant('yes please',options),undefined);
+  assert.equal(selectVariant('pay now',options),undefined);
+});

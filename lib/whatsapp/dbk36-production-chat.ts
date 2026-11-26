@@ -5,7 +5,7 @@ import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError,maxProductionStkKes} from './dbk36-production-core';
-import {relevantProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,type SalesProduct} from './dbk155-sales-core';
+import {relevantProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping} from './dbk156-shopping-ai';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
@@ -26,8 +26,18 @@ function catalogueItem(raw:unknown):SaleItem|null{
   if(!id||id.length>180||!name||name.length>130||!slug||!Number.isFinite(price)||price<=0||
     !Number.isSafeInteger(Math.round(price*100))||Math.abs(Math.round(price*100)-price*100)>0.000001||
     r.available===false||r.ecommerceEnabled===false)return null;
-  return {id,name,slug,price,stockQuantity:stock!==null&&Number.isSafeInteger(stock)&&stock>=0?stock:null,
-    variants:r.variants===true||(Array.isArray(r.variants)&&r.variants.length>0),
+  const rawOptions=Array.isArray(r.variants)?r.variants:Array.isArray(r.variantOptions)?r.variantOptions:[];
+  const variantOptions:SalesVariant[]=rawOptions.flatMap(value=>{
+    if(!value||typeof value!=='object')return [];
+    const v=value as Record<string,unknown>;
+    const vid=typeof v.id==='string'?v.id:'';
+    const label=String(v.label||[v.title,v.colour,v.size].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(' / ')).trim();
+    const vp=v.price==null?price:Number(v.price),vs=v.stockQuantity;
+    if(!vid||vid.length>180||!label||label.length>130||!Number.isSafeInteger(Math.round(vp*100))||vp<=0||Math.abs(Math.round(vp*100)-vp*100)>0.000001)return [];
+    return [{id:vid,label,price:vp,stockQuantity:typeof vs==='number'&&Number.isSafeInteger(vs)&&vs>=0?vs:null,imageUrl:productImage(v,process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,process.env.NEXT_PUBLIC_SANITY_DATASET)}];
+  });
+  return {id,name,slug,price,variantOptions,stockQuantity:stock!==null&&Number.isSafeInteger(stock)&&stock>=0?stock:null,
+    variants:r.variants===true||rawOptions.length>0,
     imageUrl:productImage(r,process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,process.env.NEXT_PUBLIC_SANITY_DATASET)};
 }
 export async function refreshProductionCatalogue(){
@@ -55,16 +65,25 @@ async function catalogue():Promise<{products:SaleItem[];fresh:boolean}>{
   const products=(row.products_json as unknown[]).map(catalogueItem).filter((p):p is SaleItem=>p!==null);
   return {products, fresh:Number.isFinite(age)&&age>=0&&age<=60*60*1000&&products.length>0};
 }
+async function variantOptions(item:SaleItem):Promise<SalesVariant[]>{
+  if(item.variantOptions?.length)return item.variantOptions;
+  // Existing cache snapshots only store a boolean. Resolve once when needed, until next scheduled refresh.
+  const live=(await getStoreProducts('ecommerce')).find(p=>p.id===item.id);
+  return catalogueItem(live)?.variantOptions||[];
+}
 async function cart(waId:string,products:SaleItem[]){
-  const db=sql();const rows=await db`SELECT product_id,quantity FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}
+  const db=sql();const rows=await db`SELECT product_id,quantity,variant_id FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}
     ORDER BY created_at ASC LIMIT 12`;
-  const byId=new Map(products.map(p=>[p.id,p]));const lines: Array<{item:SaleItem;quantity:number;subtotalMinor:number}>=[];
+  const byId=new Map(products.map(p=>[p.id,p]));const lines: Array<{item:SaleItem;variantId:string;label:string;quantity:number;subtotalMinor:number}>=[];
   let invalid=0;
   for(const r of rows){const p=byId.get(String(r.product_id)),quantity=Number(r.quantity);
-    if(!p||!Number.isSafeInteger(quantity)||quantity<1||quantity>20||p.variants||
-      (p.stockQuantity!==null&&p.stockQuantity<quantity)||
-      !Number.isSafeInteger(Math.round(p.price*100))){invalid++;continue;}
-    lines.push({item:p,quantity,subtotalMinor:Math.round(p.price*100)*quantity});
+    if(!p||!Number.isSafeInteger(quantity)||quantity<1||quantity>20){invalid++;continue;}
+    const vid=String(r.variant_id||'');
+    const v=vid&&p.variants?(await variantOptions(p)).find(x=>x.id===vid):undefined;
+    if((p.variants&&!v)||(!p.variants&&vid)){invalid++;continue;}
+    const stock=v?v.stockQuantity:p.stockQuantity,price=v?v.price:p.price;
+    if(stock===null||stock<quantity||!Number.isSafeInteger(Math.round(price*100))){invalid++;continue;}
+    lines.push({item:p,variantId:vid,label:v?`${safe(p.name)} (${safe(v.label)})`:safe(p.name),quantity,subtotalMinor:Math.round(price*100)*quantity});
   }
   return {lines,invalid,totalMinor:lines.reduce((s,x)=>s+x.subtotalMinor,0)};
 }
@@ -98,12 +117,28 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   }
   if(conversation[0]?.mode==='human')return reply('A staff member will assist you. Reply BOT to return to automated shopping.');
   if(/^(MENU|HI|HELLO|START)$/.test(cmd)){
+    await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;
     const history=await db`SELECT id FROM public.dbk36_wa_messages WHERE wa_id=${waId} AND direction='in' AND status='done' LIMIT 1`;
     return reply(history.length?"Hi again! What can I help you find today?":"Hi, I am Kasiwa, your shopping assistant at Decor By Kasiwa! 😊 What are you looking for today?");
   }
   if(/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd)){if(!bsuidOnly)await cancelProductionQuote(waId);return reply('We can help arrange delivery. Our team needs to confirm the delivery cost before payment. Would you like me to flag this for them?');}
   const {products,fresh}=await catalogue();
+  const clearPending=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;};
+  const describe=(item:SaleItem,options:SalesVariant[])=>({reply:`Great choice! ${safe(item.name)} has options:\n\n${options.map((v,i)=>`${i+1}. ${safe(v.label)} — ${money(v.price)}`).join('\n')}\n\nWhich would you like?`,images:options.flatMap((v,i)=>v.imageUrl?[{url:v.imageUrl,caption:`${i+1}. ${safe(v.label)} — ${money(v.price)}`}]:[])});
+  async function addItem(item:SaleItem,qty:number,variant?:SalesVariant):Promise<Answer>{
+    const stock=variant?variant.stockQuantity:item.stockQuantity;
+    if(stock===null||stock<qty)return reply('That quantity is not currently confirmed in stock. Would you like another option?');
+    if(!bsuidOnly)await cancelProductionQuote(waId);
+    const vid=variant?.id||'';
+    const up=await db`INSERT INTO public.dbk36_wa_cart_items(wa_id,product_id,quantity,variant_id)
+      VALUES(${waId},${item.id},${qty},${vid}) ON CONFLICT(wa_id,product_id) DO UPDATE
+      SET quantity=public.dbk36_wa_cart_items.quantity+excluded.quantity,updated_at=now()
+      WHERE public.dbk36_wa_cart_items.variant_id=excluded.variant_id
+        AND public.dbk36_wa_cart_items.quantity+excluded.quantity<=LEAST(20,${stock}) RETURNING quantity`;
+    return reply(up.length?`I've added ${qty} × ${safe(item.name)}${variant?` (${safe(variant.label)})`:''} to your cart${variant?` — ${money(variant.price*qty)}`:''}. Would you like to keep shopping or place your order?`:'That quantity is unavailable, or another option of this product is already in your cart. You can remove the existing item before choosing a different option.');
+  }
   async function show(items:SaleItem[]):Promise<Answer>{
+    await clearPending();
     if(!items.length){await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;return reply("I couldn't find a matching item in our catalogue. Could you describe what you're looking for a little more?");}
     await db`INSERT INTO public.dbk155_wa_shortlists(wa_id,product_ids) VALUES(${waId},${JSON.stringify(items.map(p=>p.id))}::jsonb)
       ON CONFLICT(wa_id) DO UPDATE SET product_ids=excluded.product_ids,updated_at=now()`;
@@ -123,6 +158,32 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   const shortlist=async()=>{const rows=await db`SELECT product_ids FROM public.dbk155_wa_shortlists WHERE wa_id=${waId} AND updated_at>now()-interval '24 hours'`;
     const ids=rows[0]?.product_ids;
     return Array.isArray(ids)?ids.map(id=>products.find(p=>p.id===id)) as Array<SaleItem|undefined>:[];};
+  const pendingRows=await db`SELECT pending_variant_product_id,pending_variant_quantity,pending_variant_ids FROM public.dbk155_wa_shortlists WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL AND updated_at>now()-interval '15 minutes'`;
+  const pending=pendingRows[0];
+  if(pending){
+    const item=products.find(p=>p.id===pending.pending_variant_product_id);
+    const qty=Number(pending.pending_variant_quantity);
+    if(!fresh||!item||!item.variants||!Number.isInteger(qty)||qty<1||qty>20){await clearPending();return reply('I need to refresh the product options. Please search for the item again.');}
+    const all=await variantOptions(item);
+    const ids:unknown[]=Array.isArray(pending.pending_variant_ids)?pending.pending_variant_ids:[];
+    const shown=ids.map(id=>all.find(v=>v.id===id));
+    if(!shown.length||shown.some(v=>!v||v.stockQuantity===null||v.stockQuantity<qty)){await clearPending();return reply('The available options have changed. Please choose the product again so I can check current stock.');}
+    const options=shown as SalesVariant[];
+    if(/^(?:CANCEL|NEVER MIND|NO THANKS|CLEAR CART|CANCEL CHECKOUT)$/.test(cmd)){await clearPending();if(!['CLEAR CART','CANCEL CHECKOUT'].includes(cmd))return reply('No problem. What else can I help you find?');}
+    else if(/^(?:SEARCH\s+.+|PRODUCTS|SHOP)$/.test(cmd)||/^(?:do you have|i(?:'m| am) looking for|search for|find)\b/i.test(text)){await clearPending();}
+    else if(!['CART','BASKET','MY CART','PAYMENT STATUS','MY ORDERS'].includes(cmd)){
+      if(['PAY','CHECKOUT','CHECK OUT','PICKUP'].includes(cmd))return reply('Please choose the product option first. No payment has been requested.');
+      const chosen=selectVariant(text,options);
+      if(chosen){
+        // Atomically consume the selection to avoid adding the same pending choice twice.
+        const claimed=await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id=${item.id} AND pending_variant_quantity=${qty} AND pending_variant_ids=${JSON.stringify(ids)}::jsonb AND updated_at>now()-interval '15 minutes' RETURNING wa_id`;
+        if(!claimed.length)return reply('That option is no longer pending. Please choose the product again.');
+        return addItem(item,qty,chosen);
+      }
+      if(/\b(?:why|confirm|staff|team)\b/i.test(text))return reply('I just need to know which option you prefer so I can check the right price and stock. '+describe(item,options).reply);
+      return describe(item,options);
+    }
+  }
   const select=/^SELECT (\d{1,2})$/.exec(cmd);
   const named=/^(?:I WANT|I'LL TAKE|ADD|NATAKA) (.+)$/.exec(cmd);
   if(select||named&&!/^ADD \d+$/.test(cmd)&&!['ADD','CHECKOUT','DELIVERY QUOTE'].includes(cmd)){
@@ -134,7 +195,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   if(cmd==='CART'||cmd==='BASKET'||cmd==='MY CART'){
     const current=await cart(waId,products);
     if(!current.lines.length)return reply('Your cart is empty. What would you like to shop for?');
-    return reply(current.lines.map((l,i)=>`${i+1}. ${safe(l.item.name)} × ${l.quantity} — ${money(l.subtotalMinor/100)}`).join('\n')+
+    return reply(current.lines.map((l,i)=>`${i+1}. ${l.label} × ${l.quantity} — ${money(l.subtotalMinor/100)}`).join('\n')+
       `\nTotal: ${money(current.totalMinor/100)}`+(current.invalid?'\nSome unavailable items were omitted.':'')+
       '\nWould you like to place your order, or change something?');
   }
@@ -147,14 +208,13 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     const viewed=await db`SELECT last_viewed_product_id FROM public.dbk36_wa_carts WHERE wa_id=${waId}`;
     const item=products.find(x=>x.id===viewed[0]?.last_viewed_product_id);
     if(!item||!options.some(p=>p?.id===item.id)||item.stockQuantity===0)return reply('Which available product would you like?');
-    if(item.variants)return reply(`Great choice! ${safe(item.name)} has options available. Our team needs to confirm the exact option before I can add it. Would you like to speak to the team?`);
-    if(item.stockQuantity===null||item.stockQuantity<qty)return reply('I need to confirm stock before adding that quantity. Please choose a smaller quantity or ask for staff help.');
-    if(!bsuidOnly)await cancelProductionQuote(waId);
-    const up=await db`INSERT INTO public.dbk36_wa_cart_items(wa_id,product_id,quantity)
-      VALUES(${waId},${item.id},${qty}) ON CONFLICT(wa_id,product_id) DO UPDATE
-      SET quantity=public.dbk36_wa_cart_items.quantity+excluded.quantity,updated_at=now()
-      WHERE public.dbk36_wa_cart_items.quantity+excluded.quantity<=LEAST(20,${item.stockQuantity??0}) RETURNING quantity`;
-    return reply(up.length?`I've added ${qty} × ${safe(item.name)} to your cart. Would you like to keep shopping or place your order?`:'That quantity exceeds available stock. Would you like fewer?');
+    if(item.variants){
+      const options=(await variantOptions(item)).filter(v=>v.stockQuantity!==null&&v.stockQuantity>=qty).slice(0,8);
+      if(!options.length)return reply(`Great choice! ${safe(item.name)} has options, but I can’t verify stock for that quantity right now. Would you like to choose another item or speak to our team?`);
+      await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=${item.id},pending_variant_quantity=${qty},pending_variant_ids=${JSON.stringify(options.map(v=>v.id))}::jsonb,updated_at=now() WHERE wa_id=${waId}`;
+      return describe(item,options);
+    }
+    return addItem(item,qty);
   }
   if(cmd==='CLEAR CART'){
     if(!bsuidOnly)await cancelProductionQuote(waId);
@@ -177,7 +237,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
         return reply(c.totalMinor>maxProductionStkKes()*100?`Your total is ${money(c.totalMinor/100)}. Online WhatsApp payments currently support up to ${money(maxProductionStkKes())}. No payment has been requested. Our team can help you complete this order.`:'I need to confirm the items and price before checkout. No payment has been requested. Would you like staff assistance?');
       const ref='DBKWA'+randomUUID().replace(/-/g,'').slice(0,7).toUpperCase();
       const order=await createProductionCheckout({reference:ref,waId,amountKes:c.totalMinor/100,
-        cart:c.lines.map(l=>({productId:l.item.id,variantId:'',quantity:l.quantity,subtotalMinor:l.subtotalMinor})),
+        cart:c.lines.map(l=>({productId:l.item.id,variantId:l.variantId,quantity:l.quantity,subtotalMinor:l.subtotalMinor})),
         fulfillment:'pickup'});
       if(order.status!=='quoted')return reply('You already have a payment in progress. Please check its status before starting another order.');
       return reply(`Your order total is ${money(Number(order.amountKes))} (${order.reference}). Would you like to collect from our store? If you prefer delivery, our team can confirm the cost first.`);
