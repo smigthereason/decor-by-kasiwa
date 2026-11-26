@@ -2,7 +2,7 @@ export type SalesVariant={id:string;label:string;price:number;stockQuantity:numb
 export type SalesProduct={id:string;name:string;slug:string;sku?:string;price:number;stockQuantity:number|null;variants:boolean;variantOptions?:SalesVariant[];imageUrl?:string};
 const stop=new Set('hi hello hey kasiwa do you have any is are there some available please could would can i me my want need looking for to buy purchase get show find see photos photo pictures picture images image of the a an in on with what your sell stock bei gani mna mnazo nataka tafuta na ya za bedroom living room bathroom house home decorative decor beautiful nice modern like'.split(' '));
 const normalize=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
-const stem=(s:string)=>s.length>4&&s.endsWith('ies')?s.slice(0,-3)+'y':s.length>4&&s.endsWith('s')?s.slice(0,-1):s;
+const stem=(s:string)=>['donuts','doughnut','doughnuts'].includes(s)?'donut':s==='vace'||s==='vaces'?'vase':s==='knotted'?'knot':s.length>4&&s.endsWith('ies')?s.slice(0,-3)+'y':s.length>4&&s.endsWith('s')&&!s.endsWith('ss')?s.slice(0,-1):s;
 const words=(s:string)=>normalize(s).split(' ').filter(Boolean).map(stem);
 export function catalogueSku(query:string):string|undefined{
   const match=query.match(/\bDBK-[A-Z0-9]+(?:-[A-Z0-9]+)+\b/i);

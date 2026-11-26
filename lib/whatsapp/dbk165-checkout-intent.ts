@@ -24,7 +24,7 @@ export function knownCounty(location:string):string|undefined{
   return counties.find(c=>key(c)===k)||Object.prototype.hasOwnProperty.call(townMap,k)&&townMap[k]||undefined;
 }
 export function deliveryLocation(text:string,awaiting:boolean):string|null{
-  const t=text.trim().replace(/[.!?]+$/,'').replace(/,?\s+please$/i,'').trim();
+  const t=text.trim().replace(/\bdelivary\b/gi,'delivery').replace(/[.!?]+$/,'').replace(/,?\s+please$/i,'').trim();
   const m=/^(?:(?:do|can|could|will) you |how much is |what is the cost of |please |i (?:want|would like|need) |i'd like )?(?:deliver(?:y)?|ship(?:ping)?)(?: (?:it|my order))? (?:to|in|at) (.+)$/i.exec(t);
   const located=m?.[1]|| (awaiting?t.replace(/^(?:i(?:'m| am) (?:in|at)|to|in|at|my location is)\s+/i,''):'');
   if(!located||located.length>70||!/^[\p{L}][\p{L}\s.'’-]*$/u.test(located)||/\b(?:pay|payment|mpesa|cart|order|yes|no|cancel|staff|hello|thanks|pickup|collect|please|delivery|want|buy|price)\b/i.test(located))return null;

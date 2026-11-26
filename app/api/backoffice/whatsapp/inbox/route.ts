@@ -3,6 +3,7 @@ import {neon} from '@neondatabase/serverless';
 import {getApiStaff} from '@/lib/auth/api-authorization';
 import {getCustomerByDocumentId} from '@/lib/auth/sanity-users';
 import {serverClient} from '@/sanity/lib/serverClient';
+import {ensureInboundImage} from '@/lib/whatsapp/dbk166-inbound-media';
 import {deliverRecordedWhatsApp} from '@/lib/whatsapp/dbk36-production-messages';
 export const dynamic='force-dynamic'; export const runtime='nodejs'; export const maxDuration=30;
 const out=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'private, no-store'}});
@@ -21,6 +22,16 @@ export async function GET(req:NextRequest){try{
   const staff=await authorized();if(!staff)return out({error:'ACCESS_DENIED'},403);
   if(req.nextUrl.searchParams.get('access')==='1')return out({allowed:true});
   const admin=staff.role==='ADMIN', id=staff.customerId, sql=db();
+  const media=req.nextUrl.searchParams.get('media');
+  if(media){
+    if(!uuid.test(media))return out({error:'INVALID_MEDIA'},400);
+    const access=()=>sql`SELECT m.id FROM public.dbk36_wa_messages m JOIN public.dbk36_wa_conversations c ON c.wa_id=m.wa_id WHERE m.id=${media}::uuid AND m.direction='in' AND m.message_type='image' AND (${admin} OR c.staff_owner_id=${id})`;
+    if(!(await access()).length)return out({error:'ACCESS_DENIED'},403);
+    const image=await ensureInboundImage(media);
+    if(!(await access()).length)return out({error:'ACCESS_DENIED'},403);
+    if(!image)return out({error:'MEDIA_UNAVAILABLE'},404);
+    return new Response(new Uint8Array(Buffer.from(image.data,'base64')),{headers:{'Content-Type':image.mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});
+  }
   const wa=req.nextUrl.searchParams.get('wa');
   if(wa){
     if(!waPattern.test(wa))return out({error:'INVALID_CONVERSATION'},400);
@@ -28,9 +39,9 @@ export async function GET(req:NextRequest){try{
     if(!scope.length)return out({error:'ACCESS_DENIED'},403);
     const [messages,cart,orders,audit]=await Promise.all([
       sql`SELECT * FROM (
-        SELECT m.id::text AS id,m.direction,m.message_text AS text,m.status,m.created_at,NULL::text AS image_url,CASE WHEN m.direction='in' THEN 'Customer' ELSE 'Legacy' END AS actor_name
+        SELECT m.id::text AS id,m.direction,m.message_text AS text,m.status,m.created_at,CASE WHEN m.direction='in' AND m.message_type='image' AND m.media_id IS NOT NULL THEN '/api/backoffice/whatsapp/inbox?media='||m.id::text ELSE NULL END AS image_url,m.provider_message_id AS provider_id,m.context_provider_id,CASE WHEN m.direction='in' THEN 'Customer' ELSE 'Legacy' END AS actor_name
         FROM public.dbk36_wa_messages m JOIN public.dbk36_wa_conversations c ON c.wa_id=m.wa_id WHERE m.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id})
-        UNION ALL SELECT o.request_id,'out',o.message_text,o.status,o.created_at,o.image_url,CASE WHEN o.actor_id IN ('AI','SYSTEM_PAYMENT') THEN 'Kasiwa' ELSE o.actor_name END AS actor_name FROM public.dbk159_wa_outbound o JOIN public.dbk36_wa_conversations c ON c.wa_id=o.wa_id WHERE o.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id})
+        UNION ALL SELECT o.request_id,'out',o.message_text,o.status,o.created_at,o.image_url,o.provider_message_id AS provider_id,NULL::text AS context_provider_id,CASE WHEN o.actor_id IN ('AI','SYSTEM_PAYMENT') THEN 'Kasiwa' ELSE o.actor_name END AS actor_name FROM public.dbk159_wa_outbound o JOIN public.dbk36_wa_conversations c ON c.wa_id=o.wa_id WHERE o.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id})
       ) h ORDER BY created_at DESC,id DESC LIMIT 100`,
       sql`SELECT i.product_id,i.variant_id,i.quantity,p.value->>'name' AS name FROM public.dbk36_wa_cart_items i JOIN public.dbk36_wa_conversations c ON c.wa_id=i.wa_id LEFT JOIN public.dbk36_wa_catalogue_cache cache ON cache.cache_key='ecommerce' LEFT JOIN LATERAL (SELECT value FROM jsonb_array_elements(cache.products_json) WHERE value->>'id'=i.product_id LIMIT 1) p ON true WHERE i.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id}) LIMIT 12`,
       sql`SELECT o.reference,o.amount_kes,o.status,o.stock_state,o.updated_at FROM public.dbk36_wa_prod_payment_orders o JOIN public.dbk36_wa_conversations c ON c.wa_id=o.wa_id WHERE o.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id}) ORDER BY o.created_at DESC LIMIT 10`,
