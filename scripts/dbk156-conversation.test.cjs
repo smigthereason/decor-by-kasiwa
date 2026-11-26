@@ -10,12 +10,18 @@ const image='https://cdn.sanity.io/images/p/d/a.jpg';
 const item=(id,name,variants=false)=>({id,name,slug:id,price:4500,stockQuantity:4,variants,image:{asset:{url:image}}});
 const products=[item('clock','3 IN 1 Mirror Wall Clocks'),item('mirror','Big Round Mirrors',[{id:'white',colour:'White',stockQuantity:2,price:4500,imageUrl:image},{id:'gold',colour:'Gold',stockQuantity:1,price:4700},{id:'black',colour:'Black',stockQuantity:0,price:4500}]),item('stickers','FAMILY 3D Mirror Acrylic Wall Letter Stickers'),item('tree','Cherry pot like tree'),{...item('battery','AAA small Toceball Battery'),price:50,sku:'DBK-ASTB-N4U5RT',image:undefined}];
 test('actual chat: AI search, photo, price and purchase preserve product context',async()=>{
-  const cache=new Map();let shortlist=[],viewed=null,modelCalls=0,paymentCalls=0,cartWrites=0;const history=[];let pending=null,cartRow=null,quoteCancels=0,quoted=null,pickup=false;
+  const cache=new Map();let shortlist=[],viewed=null,modelCalls=0,paymentCalls=0,cartWrites=0;const history=[];let pending=null,purchase=null,cartRow=null,quoteCancels=0,quoted=null,pickup=false;
   const db=async(strings,...values)=>{
     const q=strings.join('?');
     if(q.includes('SELECT mode'))return [{mode:'bot'}];
     if(q.includes('SELECT content'))return [];
     if(q.includes('SELECT products_json'))return [{products_json:products,synced_at:new Date().toISOString()}];
+    if(q.includes('SELECT pending_purchase_product_id'))return purchase?[purchase]:[];
+    if(q.includes('SET pending_purchase_product_id=NULL')){purchase=null;return [];}
+    if(q.includes('SET pending_purchase_product_id=')){purchase={pending_purchase_product_id:values[0],pending_purchase_stage:'offer'};return [];}
+    if(q.includes("SET pending_purchase_stage='quantity'")){purchase.pending_purchase_stage='quantity';return [];}
+    if(q.includes('DELETE FROM public.dbk155_wa_shortlists')){shortlist=[];purchase=null;return [];}
+    if(q.includes('UPDATE public.dbk36_wa_carts SET last_viewed_product_id=')){viewed=values[0];return [];}
     if(q.includes('SELECT pending_variant_product_id'))return pending?[pending]:[];
     if(q.includes('SET pending_variant_product_id=NULL')){const prior=pending;pending=null;return prior?[{wa_id:'254700000000'}]:[];}
     if(q.includes('SET pending_variant_product_id=')){pending={pending_variant_product_id:values[0],pending_variant_quantity:values[1],pending_variant_ids:JSON.parse(values[2])};return [];}
@@ -63,5 +69,11 @@ test('actual chat: AI search, photo, price and purchase preserve product context
     assert.match((await say('DBK-ASTB-N4U5RT')).reply,/AAA small Toceball Battery/);
     const budget=await say('What are cheap affordable products under Kes 100');assert.match(budget.reply,/AAA small Toceball Battery/);assert.doesNotMatch(budget.reply,/Mirror|Clock|Stickers|tree/);
     assert.equal(paymentCalls,1);assert.equal(cartWrites,1);
+    assert.match((await say('No its not')).reply,/What would you prefer/);assert.equal(cartWrites,1);
+    await say('DBK-ASTB-N4U5RT');assert.match((await say('Yes I want these')).reply,/How many/);assert.equal(cartWrites,1);
+    assert.match((await say('Just one, please')).reply,/added 1 × AAA small Toceball Battery/);assert.equal(cartWrites,2);assert.equal(cartRow.quantity,1);
+    assert.doesNotMatch((await say('yes please')).reply,/added/);assert.equal(cartWrites,2);assert.equal(paymentCalls,1);
+    await say('DBK-ASTB-N4U5RT');assert.match((await say('Id like to buy')).reply,/How many/);
+    assert.match((await say('2')).reply,/added 2 ×/);assert.equal(cartRow.quantity,2);assert.equal(paymentCalls,1);
   }finally{global.fetch=oldFetch;for(const k of keys){if(oldEnv[k]===undefined)delete process.env[k];else process.env[k]=oldEnv[k];}}
 });

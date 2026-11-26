@@ -181,7 +181,8 @@ export async function reconcileProductionCheckout(checkoutId:string){
   const order=row[0] as unknown as {reference:string;wa_id:string;amount_kes:number;
     checkout_id:string;merchant_id:string;status:string;stock_state:string};
   if(order.status==='paid'){
-    await safeAutoStock(order.reference,sql);
+    await safePaymentNotice(order.reference);
+    if(order.stock_state==='PENDING')await safeAutoStock(order.reference,sql);
     return {state:'ALREADY_PAID'};
   }
   if(order.status!=='prompt_sent'&&order.status!=='review_required')return {state:'UNSETTLEABLE'};
@@ -213,8 +214,13 @@ export async function reconcileProductionCheckout(checkoutId:string){
     ${providerTime}::timestamptz) AS value`;
   const result=settled[0]?.value as {state?:string}|undefined;
   if(result?.state!=='paid')throw new Error('NEON_PRODUCTION_SETTLEMENT_UNCONFIRMED');
+  await safePaymentNotice(order.reference);
   await safeAutoStock(order.reference,sql);
   return {state:'PAID',reference:order.reference};
+}
+async function safePaymentNotice(reference:string){
+  try{const {notifyVerifiedPayment}=await import('@/lib/whatsapp/dbk160-payment-notices');await notifyVerifiedPayment(reference);}
+  catch{console.warn('DBK160_PAYMENT_NOTICE_REVIEW',reference);}
 }
 async function safeAutoStock(reference:string,sql:ReturnType<typeof db>){
   if(process.env.DBK36_WA_AUTO_STOCK_ENABLED!=='YES')return;
@@ -242,6 +248,8 @@ export async function recoverProductionPayments(){
     WHERE checkout_id IS NOT NULL AND (status IN ('prompt_sent','review_required') OR
       (status='paid' AND stock_state='PENDING')) ORDER BY updated_at ASC LIMIT 8`;
   const outcomes=[];
+  // Prioritize durable payment notices even when older reconciliation work is queued.
+  try{const {recoverVerifiedPaymentNotices}=await import('@/lib/whatsapp/dbk160-payment-notices');await recoverVerifiedPaymentNotices();}catch{console.warn('DBK160_PAYMENT_NOTICE_RECOVERY_REVIEW');}
   for(const x of rows){
     try{outcomes.push(await reconcileProductionCheckout(String(x.checkout_id)));}
     catch{outcomes.push({state:'REVIEW_RETRY_LATER'});}

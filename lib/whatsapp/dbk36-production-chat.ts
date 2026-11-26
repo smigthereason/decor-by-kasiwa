@@ -5,7 +5,7 @@ import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError} from './dbk36-production-core';
-import {relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
+import {relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,purchaseFollowup,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping} from './dbk156-shopping-ai';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
@@ -117,13 +117,14 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   }
   if(conversation[0]?.mode==='human')return reply('A staff member will assist you. Reply BOT to return to automated shopping.');
   if(/^(MENU|HI|HELLO|START)$/.test(cmd)){
-    await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;
+    await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL,pending_purchase_product_id=NULL,pending_purchase_stage=NULL WHERE wa_id=${waId}`;
     const history=await db`SELECT id FROM public.dbk36_wa_messages WHERE wa_id=${waId} AND direction='in' AND status='done' LIMIT 1`;
     return reply(history.length?"Hi again! What can I help you find today?":"Hi, I am Kasiwa, your shopping assistant at Decor By Kasiwa! 😊 What are you looking for today?");
   }
   if(/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd)){if(!bsuidOnly)await cancelProductionQuote(waId);return reply('We can help arrange delivery. Our team needs to confirm the delivery cost before payment. Would you like me to flag this for them?');}
   const {products,fresh}=await catalogue();
   const clearPending=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;};
+  const clearPurchase=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=NULL,pending_purchase_stage=NULL WHERE wa_id=${waId} AND pending_purchase_stage IS NOT NULL`;};
   const describe=(item:SaleItem,options:SalesVariant[])=>({reply:`Great choice! ${safe(item.name)} has options:\n\n${options.map((v,i)=>`${i+1}. ${safe(v.label)} — ${money(v.price)}`).join('\n')}\n\nWhich would you like?`,images:options.flatMap((v,i)=>v.imageUrl?[{url:v.imageUrl,caption:`${i+1}. ${safe(v.label)} — ${money(v.price)}`}]:[])});
   async function addItem(item:SaleItem,qty:number,variant?:SalesVariant):Promise<Answer>{
     const stock=variant?variant.stockQuantity:item.stockQuantity;
@@ -135,15 +136,18 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
       SET quantity=public.dbk36_wa_cart_items.quantity+excluded.quantity,updated_at=now()
       WHERE public.dbk36_wa_cart_items.variant_id=excluded.variant_id
         AND public.dbk36_wa_cart_items.quantity+excluded.quantity<=LEAST(20,${stock}) RETURNING quantity`;
-    return reply(up.length?`I've added ${qty} × ${safe(item.name)}${variant?` (${safe(variant.label)})`:''} to your cart${variant?` — ${money(variant.price*qty)}`:''}. Would you like to keep shopping or place your order?`:'That quantity is unavailable, or another option of this product is already in your cart. You can remove the existing item before choosing a different option.');
+    if(up.length)await clearPurchase();
+    return reply(up.length?`I've added ${qty} × ${safe(item.name)}${variant?` (${safe(variant.label)})`:''} to your cart — ${money((variant?.price??item.price)*qty)}. Would you like to keep shopping or place your order?`:'That quantity is unavailable, or another option of this product is already in your cart. You can remove the existing item before choosing a different option.');
   }
   async function show(items:SaleItem[]):Promise<Answer>{
     await clearPending();
+    await clearPurchase();
     if(!items.length){await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;return reply("I couldn't find a matching item in our catalogue. Could you describe what you're looking for a little more?");}
     await db`INSERT INTO public.dbk155_wa_shortlists(wa_id,product_ids) VALUES(${waId},${JSON.stringify(items.map(p=>p.id))}::jsonb)
       ON CONFLICT(wa_id) DO UPDATE SET product_ids=excluded.product_ids,updated_at=now()`;
     await db`INSERT INTO public.dbk36_wa_carts(wa_id,last_viewed_product_id) VALUES(${waId},${items[0].id})
       ON CONFLICT(wa_id) DO UPDATE SET last_viewed_product_id=excluded.last_viewed_product_id,updated_at=now()`;
+    if(items.length===1)await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=${items[0].id},pending_purchase_stage='offer',updated_at=now() WHERE wa_id=${waId}`;
     const label=(p:SaleItem,i:number)=>`${i+1}. ${safe(p.name)} — ${money(p.price)}${p.variants?' (options available)':''}\nhttps://decorbykasiwa.co.ke/shop/${encodeURIComponent(p.slug)}`;
     const images=items.flatMap((p,i)=>p.imageUrl?[{url:p.imageUrl,caption:label(p,i)}]:[]);
     console.info('DBK156_PRODUCT_MEDIA',{matched:items.length,withImages:images.length});
@@ -203,6 +207,32 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
       return describe(item,options);
     }
   }
+  // Confirmation and quantity are separate states, scoped to the last displayed product.
+  // An affirmative response never enters checkout or PAY.
+  const purchase=purchaseFollowup(text);
+  if(purchase){
+    const rows=await db`SELECT pending_purchase_product_id,pending_purchase_stage FROM public.dbk155_wa_shortlists WHERE wa_id=${waId} AND pending_purchase_stage IS NOT NULL AND updated_at>now()-interval '15 minutes'`;
+    const state=rows[0];
+    if(state){
+      const item=products.find(p=>p.id===state.pending_purchase_product_id);
+      if(purchase.kind==='reject'){await clearPurchase();await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;return reply('No problem. What would you prefer instead?');}
+      if(!fresh||!item||item.stockQuantity===0){await clearPurchase();return reply('Let me check the current catalogue first. Could you tell me the product again?');}
+      if(purchase.kind==='accept'){
+        await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId} AND pending_purchase_product_id=${item.id}`;
+        return reply('Perfect! How many would you like?');
+      }
+      // Bare numbers at the offer stage still select a listed option (legacy UI).
+      if(state.pending_purchase_stage==='quantity'||!/^[0-9]{1,2}$/.test(text)){
+        const qty=purchase.quantity!;
+        if(!Number.isSafeInteger(qty)||qty<1||qty>20)return reply('How many would you like? Please choose a quantity between 1 and 20.');
+        const options=await shortlist();
+        if(options.length!==1||options[0]?.id!==item.id){await clearPurchase();return reply('Which product would you like?');}
+        await db`UPDATE public.dbk36_wa_carts SET last_viewed_product_id=${item.id},updated_at=now() WHERE wa_id=${waId}`;
+        cmd='ADD '+qty;
+      }
+    }else if(purchase.kind==='reject'){return reply('No problem. What would you prefer instead?');}
+    else if(purchase.kind==='accept'||(purchase.kind==='quantity'&&!/^SELECT \d{1,2}$/.test(cmd)&&!/^ADD(?: \d+)?$/.test(cmd))){return reply('Which product would you like? I can help you choose or place your order.');}
+  }
   const select=/^SELECT (\d{1,2})$/.exec(cmd);
   const named=/^(?:I WANT|I'LL TAKE|ADD|NATAKA) (.+)$/.exec(cmd);
   if(select||named&&!/^ADD \d+$/.test(cmd)&&!['ADD','CHECKOUT','DELIVERY QUOTE'].includes(cmd)){
@@ -231,11 +261,13 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
       const options=(await variantOptions(item)).filter(v=>v.stockQuantity!==null&&v.stockQuantity>=qty).slice(0,8);
       if(!options.length)return reply(`Great choice! ${safe(item.name)} has options, but I can’t verify stock for that quantity right now. Would you like to choose another item or speak to our team?`);
       await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=${item.id},pending_variant_quantity=${qty},pending_variant_ids=${JSON.stringify(options.map(v=>v.id))}::jsonb,updated_at=now() WHERE wa_id=${waId}`;
+      await clearPurchase();
       return describe(item,options);
     }
     return addItem(item,qty);
   }
   if(cmd==='CLEAR CART'){
+    await clearPurchase();await clearPending();await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;
     if(!bsuidOnly)await cancelProductionQuote(waId);
     await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}`;
     return reply('I’ve cleared your cart. What would you like to look for next?');
@@ -250,6 +282,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   }
   try{
     if(['CHECKOUT','CHECK OUT'].includes(cmd)){
+      await clearPurchase();
       if(!fresh)return reply('Checkout is paused until the product catalogue refreshes. No payment requested.');
       const c=await cart(waId,products);
       if(!c.lines.length||c.invalid||c.totalMinor%100!==0||c.totalMinor<100||!Number.isSafeInteger(c.totalMinor))

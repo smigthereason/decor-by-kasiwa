@@ -40,7 +40,7 @@ export async function GET(req:NextRequest){try{
   const q=(req.nextUrl.searchParams.get('q')||'').slice(0,80);
   const conversations=await sql`SELECT c.wa_id,c.mode,c.staff_owner_id,c.staff_owner_name,c.last_inbound_at,c.reply_lock IS NOT NULL AS busy,
     (SELECT m.message_text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC LIMIT 1) AS last_message,
-    (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id<>'AI' AND o.status='accepted'),'-infinity'::timestamptz)) AS needs_reply
+    (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz)) AS needs_reply
     FROM public.dbk36_wa_conversations c WHERE (${admin} OR c.staff_owner_id=${id}) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0)
     ORDER BY (c.mode='human' AND c.staff_owner_id IS NULL) DESC,c.last_inbound_at DESC NULLS LAST LIMIT 100`;
   const eligible=admin?await serverClient.fetch<Array<{_id:string;name:string;role:string}>>(`*[_type=='customerUser' && !(_id in path('drafts.**')) && status=='ACTIVE' && (role=='ADMIN' || (role in ['MANAGER','STORE','STORE_STAFF'] && 'WHATSAPP_SALES' in permissions))] | order(name asc){_id,name,role}`,{}, {cache:'no-store'}):[];
