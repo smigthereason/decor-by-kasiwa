@@ -62,21 +62,27 @@ export async function createProductionCheckout(raw:unknown){
   if(process.env.DBK36_WA_STORE_LOCATION_ID!==PINNED_STORE)
     throw new Error('PRODUCTION_STORE_PIN_INVALID');
   // Never use an unchecked cart price to open a payment quote.
-  const catalogue=await getStoreProducts('pos',PINNED_STORE);
+  const [catalogue,storeStock]=await Promise.all([getStoreProducts('ecommerce'),getStoreProducts('pos',PINNED_STORE)]);
   const lines=input.cart.map(x=>({productId:x.productId,variantId:x.variantId,
     quantity:x.quantity,subtotal:x.subtotalMinor/100}));
   if(lines.some(x=>!Number.isSafeInteger(x.subtotal))||!compareAuthoritativeQuote(
-    {reference:input.reference,amountKes:input.amountKes,lines},catalogue,catalogue))
+    {reference:input.reference,amountKes:input.amountKes,lines},catalogue,storeStock))
     throw new Error('LIVE_STORE_PRICE_OR_STOCK_NOT_VERIFIED');
   const sql=db();
   await sql`UPDATE public.dbk36_wa_prod_payment_orders
     SET status='cancelled',last_error_code='QUOTE_EXPIRED',updated_at=now()
     WHERE wa_id=${input.waId} AND status='quoted' AND expires_at<=now()`;
-  const existing=await sql`SELECT reference,status,amount_kes FROM public.dbk36_wa_prod_payment_orders
+  const existing=await sql`SELECT reference,status,amount_kes,cart_snapshot FROM public.dbk36_wa_prod_payment_orders
     WHERE wa_id=${input.waId} AND status IN ('quoted','starting','prompt_sent','review_required')
     ORDER BY created_at DESC LIMIT 1`;
-  if(existing.length)return {reference:existing[0].reference,status:existing[0].status,
-    amountKes:existing[0].amount_kes,existing:true};
+  if(existing.length){
+    const previous=existing[0];
+    if(previous.status==='quoted'){
+      const canonical=(x:unknown)=>Array.isArray(x)?x.map(l=>[String(l.productId),String(l.variantId||''),Number(l.quantity),Number(l.subtotalMinor)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))):[];
+      if(Number(previous.amount_kes)!==input.amountKes||JSON.stringify(canonical(previous.cart_snapshot))!==JSON.stringify(canonical(input.cart)))throw new Error('ACTIVE_QUOTE_MISMATCH');
+    }
+    return {reference:previous.reference,status:previous.status,amountKes:previous.amount_kes,existing:true};
+  }
   const rows=await sql`INSERT INTO public.dbk36_wa_prod_payment_orders
     (reference,wa_id,amount_kes,cart_snapshot,status)
     VALUES(${input.reference},${input.waId},${input.amountKes},${JSON.stringify(input.cart)}::jsonb,'quoted')
@@ -112,6 +118,10 @@ export async function cancelProductionQuote(waId:string){
  */
 export async function payProductionCheckout(waId:string){
   paymentConfig();
+  // Never take a live payment when our callback perimeter is disabled.
+  const health=await fetch('https://dbk36-whatsapp-production.victor-dmaina.workers.dev/__dbk36/health',{cache:'no-store',signal:AbortSignal.timeout(5000)});
+  const readiness=health.ok?await health.json():null;
+  if(readiness?.installed!==true||readiness?.callbackEnabled!==true)throw new Error('PAYMENT_CALLBACK_NOT_READY');
   const order=await productionCustomerOrder(waId);
   if(!order||order.status!=='quoted')throw new Error('NO_UNPAID_QUOTE');
   const reference=String(order.reference),amount=Number(order.amount_kes);
@@ -120,11 +130,11 @@ export async function payProductionCheckout(waId:string){
   const cart=order.cart_snapshot as Array<{productId:string;variantId:string;quantity:number;subtotalMinor:number}>;
   const parsed=parseCheckout({reference,waId,amountKes:amount,cart,fulfillment:'pickup'});
   if(!parsed)throw new Error('CHECKOUT_SNAPSHOT_INVALID');
-  const catalogue=await getStoreProducts('pos',PINNED_STORE);
+  const [catalogue,storeStock]=await Promise.all([getStoreProducts('ecommerce'),getStoreProducts('pos',PINNED_STORE)]);
   const lines=parsed.cart.map(x=>({productId:x.productId,variantId:x.variantId,
     quantity:x.quantity,subtotal:x.subtotalMinor/100}));
   if(lines.some(x=>!Number.isSafeInteger(x.subtotal))||!compareAuthoritativeQuote(
-    {reference,amountKes:amount,lines},catalogue,catalogue))
+    {reference,amountKes:amount,lines},catalogue,storeStock))
     throw new Error('LIVE_STOCK_CHANGED_NO_CHARGE');
   const sql=db();
   const claims=await sql`UPDATE public.dbk36_wa_prod_payment_orders

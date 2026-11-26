@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {relevantProducts,naturalCommand,catalogueImage,validKnowledge,defaultKnowledge} from '../lib/whatsapp/dbk155-sales-core.ts';
+const item=(name,slug,stockQuantity=2)=>({id:slug,name,slug,price:100,stockQuantity,variants:false});
+const products=[item('Big Round Mirrors','big-round-mirrors'),item('Decorative White Pebbles','white-pebbles'),item('Fluffy Fux Fur Sandals','sandals'),item('Wall Mirror','wall-mirror',0)];
+test('mirror query excludes unrelated and out-of-stock items',()=>assert.deepEqual(relevantProducts('Hi Kasiwa, do you have decorative mirrors available?',products).map(x=>x.id),['big-round-mirrors']));
+test('no arbitrary recommendations',()=>assert.deepEqual(relevantProducts('Do you have chandeliers?',products),[]));
+test('selection and conversational checkout',()=>{for(const [input,expected] of [['I want option 2','SELECT 2'],['2','SELECT 2'],['I want one','ADD'],['Nataka mbili','ADD 2'],['I will collect it','PICKUP'],['place my order','CHECKOUT'],['send M-PESA prompt','PAY'],['I would like delivery','DELIVERY QUOTE']])assert.equal(naturalCommand(input),expected);});
+test('ambiguous assent and question never authorize payment',()=>{for(const input of ['yes','yes please','can I pay?','what is M-PESA?','I have paid'])assert.notEqual(naturalCommand(input),'PAY');});
+test('only trusted actual catalogue media',()=>{assert.equal(catalogueImage('https://cdn.sanity.io/images/p/d/a.jpg'),'https://cdn.sanity.io/images/p/d/a.jpg');for(const bad of ['http://cdn.sanity.io/images/a','https://cdn.sanity.io.evil.com/images/a','https://cdn.sanity.io@evil.com/images/a','https://cdn.sanity.io/files/a','https://cdn.sanity.io:8443/images/a'])assert.equal(catalogueImage(bad),undefined);});
+test('knowledge schema is bounded',()=>{assert.equal(validKnowledge(defaultKnowledge),true);assert.equal(validKnowledge({...defaultKnowledge,extra:'x'}),false);assert.equal(validKnowledge({...defaultKnowledge,tone:'x'.repeat(3001)}),false);});

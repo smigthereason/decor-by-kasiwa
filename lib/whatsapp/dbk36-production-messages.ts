@@ -36,15 +36,15 @@ export async function recordProductionWhatsAppInbound(raw:unknown){
   }
   return {accepted};
 }
-async function sendThroughDedicatedWorker(waId:string,text:string){
+async function sendThroughDedicatedWorker(waId:string,text:string,imageUrl?:string){
   if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES')throw new Error('CHAT_GATE_OFF');
   const secret=process.env.DBK36_WA_PRODUCTION_BRIDGE_SECRET||'';
   if(secret.length<32)throw new Error('BRIDGE_SECRET_NOT_CONFIGURED');
-  const body=JSON.stringify({to:waId,text:text.slice(0,3500)});
+  const body=JSON.stringify({to:waId,text:text.slice(0,imageUrl?1024:3500),...(imageUrl?{imageUrl}:{})});
   const stamp=String(Math.floor(Date.now()/1000));
   const signature=createHmac('sha256',secret).update(`${stamp}.${body}`).digest('hex');
   const result=await fetch(worker+'/__dbk36/send',{
-    method:'POST',cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(15000),
+    method:'POST',cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(imageUrl?6000:10000),
     headers:{'Content-Type':'application/json','x-dbk36-timestamp':stamp,'x-dbk36-signature':signature},
     body});
   if(!result.ok)throw new Error('META_OUTBOUND_UNCONFIRMED_MANUAL_REVIEW');
@@ -67,6 +67,8 @@ export async function processProductionWhatsAppQueue(limit=3){
     try{
       const answer=await handleProductionChat(wa,String(m.message_text));
       await sendThroughDedicatedWorker(wa,answer.reply);
+      // Text first so product names/prices remain visible if Meta rejects media. Never replay a partially delivered response.
+      for(const image of (answer.images||[]).slice(0,3))await sendThroughDedicatedWorker(wa,image.caption,image.url);
       await sql`UPDATE public.dbk36_wa_messages SET status='done',updated_at=now() WHERE id=${id}::uuid AND status='processing'`;
       out.processed++;
     }catch{

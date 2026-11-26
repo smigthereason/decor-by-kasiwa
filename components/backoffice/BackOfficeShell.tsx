@@ -66,6 +66,7 @@ const adminNavigation: NavigationItem[] = [
   { label: "WhatsApp Paid Orders", href: "/admin/whatsapp/paid-intake", icon: MessageCircle },
   { label: "WhatsApp Fulfillment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
   { label: "AI Shopping Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
+  { label: "Kasiwa AI Knowledge", href: "/admin/whatsapp/knowledge", icon: Bot },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
   { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
   { label: "Stores / Locations", href: "/admin/stores", icon: Warehouse },
