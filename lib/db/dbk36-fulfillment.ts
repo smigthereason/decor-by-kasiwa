@@ -65,10 +65,11 @@ export async function fulfillmentQueue(){
   const rows=await sql`SELECT p.reference,p.amount_minor,p.intake_status,
     right(p.provider_receipt,4) AS receipt_suffix,
     right(p.wa_id,4) AS customer_suffix,
-    f.order_id,f.stock_state,f.fulfillment_state,f.claimed_at,f.stock_committed_at,
-    f.last_error_code
+    f.order_id,coalesce(f.stock_state,o.stock_state) AS stock_state,f.fulfillment_state,f.claimed_at,f.stock_committed_at,
+    coalesce(f.last_error_code,o.last_error_code) AS last_error_code
     FROM public.dbk36_wa_paid_intake p
     LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=p.reference
+    LEFT JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=p.reference
     ORDER BY p.created_at DESC LIMIT 100`;
   return {orders:rows,stockCommitEnabled:process.env.DBK36_WA_STOCK_COMMIT_ENABLED==='YES' ||
       process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES',
@@ -81,6 +82,11 @@ export async function fulfillmentPreview(reference:string){
   if(state.length)return {reference,existing:true,stockState:state[0].stock_state,
     orderId:state[0].order_id,reviewRequired:state[0].stock_state!=='COMMITTED'};
   const paid=await paidRecord(reference);
+  if(paid.verification_mode==='daraja_api_verified'&&process.env.DBK_INVENTORY_BACKEND==='neon'){
+    const {amountMinor,lines}=validatePaidIntake(paid);
+    const enabled=process.env.DBK36_WA_AUTO_STOCK_ENABLED==='YES'&&process.env.DBK103_WA_NEON_STOCK_ENABLED==='YES'&&process.env.DBK62_POS_BACKEND==='neon';
+    return {reference,existing:false,stockState:enabled?'READY_FOR_STAFF_APPROVAL':'REVIEW_REQUIRED',amountKes:amountMinor/100,lineCount:lines.length,storeId:STORE,stockReserved:false,note:'Verified payment; Neon checks authority, stock and replay protection when posting.'};
+  }
   const plan=await computePlan(paid);
   return {reference,existing:false,stockState:'READY_FOR_STAFF_APPROVAL',
     amountKes:plan.amountMinor/100,lineCount:plan.lines.length,
@@ -95,9 +101,15 @@ async function sanityReceiptAlreadyUsed(receipt:string,reference:string){
 }
 export async function commitPaidStock(reference:string,confirmation:string,actor:{customerId:string;customerEmail:string}){
   if ((await dbk109MaintenanceDecision()) !== 'OPEN') throw new Error('DBK109_CUTOVER_FREEZE');
-  commitEnabled();
   if(!REF.test(reference)||confirmation!==`COMMIT ${reference}`||!actor.customerId||!actor.customerEmail)
     throw new Error('STAFF_STOCK_APPROVAL_REQUIRED');
+  const paid=await paidRecord(reference);
+  if(paid.verification_mode==='daraja_api_verified'&&process.env.DBK_INVENTORY_BACKEND==='neon'){
+    const result=await commitAutomaticallyVerifiedStock(reference);
+    if(result.stockState!=='COMMITTED')throw new Error('DBK103_NEON_STOCK_RECONCILIATION_REQUIRED');
+    return result;
+  }
+  commitEnabled();
   // Staff attestations are not the independently verified Daraja payment proof
   // required by DBK-103. Fail closed rather than update Sanity after cutover.
   if(dbk109NeonAuthorityRequested())

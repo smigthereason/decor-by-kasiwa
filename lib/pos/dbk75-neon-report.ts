@@ -9,6 +9,7 @@ import { mapDBK62History, type RealNeonOrder } from '@/lib/db/dbk62-pos-mapper';
 import { dbk68Summary, dbk68Kes, type DBK68Order } from '@/lib/db/dbk68-daraja-core';
 import { mapNeonOrder, type NeonOrderRow } from '@/lib/db/dbk65-online-fulfilment-core';
 import { kesMinor, requireCompletePage, withinWindow } from '@/lib/pos/dbk75-report-core';
+import {readWhatsAppSales,assertWhatsAppDisjoint} from '@/lib/db/dbk161-whatsapp-sales';
 import type { PosHistoryOrder } from '@/lib/pos/operations';
 
 const PROD_HOST = 'ep-steep-scene-bausr4ct-pooler.c-8.eu-central-1.aws.neon.tech';
@@ -123,6 +124,8 @@ export async function dbk75ReadNeonReport(start:string,end:string,storeId:string
       lineItems:row.snapshot.lines.map(l=>({productId:l.productId,name:l.name,
         variantId:l.variantId,quantity:l.quantity,unitPrice:kesMinor(l.unitPriceMinor)}))});
   }
+  const whatsapp=await readWhatsAppSales({storeId:storeId||undefined},{start,end});
+  assertWhatsAppDisjoint(whatsapp,orders);orders.push(...whatsapp);
   const refundRows:NeonReportReturn[]=refunds.map(raw=>{
     const minor=kesMinor(raw.refund_minor as number|string);
     const items=raw.items as Array<{productId:string;quantity:number}>;

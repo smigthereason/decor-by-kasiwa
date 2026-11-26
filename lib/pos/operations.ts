@@ -1,5 +1,6 @@
 import "server-only";
 import { dbk75NeonReportsRequested, dbk75ReadNeonReport } from "@/lib/pos/dbk75-neon-report";
+import {assertWhatsAppDisjoint} from "@/lib/db/dbk161-whatsapp-sales";
 import { distinctReportOrders } from "@/lib/pos/dbk75-report-core";
 import { dbk107ApplyToLegacyOrders, dbk107ReportCollections } from "@/lib/db/dbk107-legacy-finance-neon";
 import { dbk108ApplyLegacyRefunds, dbk108ReportLegacyRefunds } from "@/lib/db/dbk108-legacy-refunds-neon";
@@ -58,7 +59,8 @@ export type PosHistoryOrder = {
   customerName: string;
   customerPhone: string;
   customerEmail: string;
-  salesChannel: "ONLINE" | "POS";
+  salesChannel: "ONLINE" | "POS" | "WHATSAPP";
+  stockState?: string;
   soldByName: string;
   soldAt: string;
   paymentStatus: string;
@@ -196,6 +198,8 @@ export type SalesReport = {
   deliveryPayables: number;
   onlineSales: number;
   posSales: number;
+  whatsappSales?: number;
+  whatsappStockReview?: number;
   manualPayments: number;
   mpesaPayments: number;
   paystackPayments: number;
@@ -301,6 +305,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
   const neonReport = dbk75NeonReportsRequested()
     ? await dbk75ReadNeonReport(start, end, storeId)
     : null;
+  if(neonReport)assertWhatsAppDisjoint(neonReport.orders.filter(o=>o.salesChannel==="WHATSAPP"),legacyOrders);
   const orders = neonReport ? distinctReportOrders(legacyOrders, neonReport.orders) : legacyOrders;
   if (neonReport) returnRows.push(...neonReport.refundRows);
   const legacyRefunds = await dbk108ReportLegacyRefunds(start,end,storeId);
@@ -372,7 +377,7 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
       current.revenue += Number(line.quantity || 0) * Number(line.unitPrice || 0);
       productMap.set(line.productId || line.name, current);
     }
-    const cashier = order.salesChannel === "POS" ? order.soldByName || "POS Staff" : "Online Shop";
+    const cashier = order.salesChannel === "WHATSAPP" ? "Kasiwa" : order.salesChannel === "POS" ? order.soldByName || "POS Staff" : "Online Shop";
     const current = cashierMap.get(cashier) || { name: cashier, orders: 0, revenue: 0 };
     current.orders += 1;
     current.revenue += revenueValue(order);
@@ -434,6 +439,8 @@ export async function getSalesReport(period: "day" | "week" | "month", range: Sa
     deliveryPayables: orders.reduce((sum, order) => sum + deliveryValue(order), 0),
     onlineSales: channelRevenue((order) => order.salesChannel === "ONLINE"),
     posSales: channelRevenue((order) => order.salesChannel === "POS"),
+    whatsappSales: channelRevenue((order) => order.salesChannel === "WHATSAPP"),
+    whatsappStockReview: orders.filter(o=>o.salesChannel==="WHATSAPP"&&o.stockState!=="COMMITTED").length,
     manualPayments: channelMoneyIn((order) => order.paymentProvider === "manual" || order.paymentChannel === "external") + legacyCollections.totalPeriodKES,
     mpesaPayments: channelMoneyIn((order) => order.paymentChannel === "mobile_money"),
     paystackPayments: channelMoneyIn((order) => order.paymentProvider === "paystack" && order.paymentChannel !== "mobile_money"),

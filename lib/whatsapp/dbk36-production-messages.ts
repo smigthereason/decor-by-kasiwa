@@ -96,9 +96,9 @@ export async function processProductionWhatsAppQueue(limit=3){
       // A human-owned conversation remains silent until staff explicitly resumes AI.
       if(m.mode==='bot'){
         const answer=await handleProductionChat(wa,String(m.message_text));
-        await sendRecordedWhatsApp(wa,lock+':0','AI','Kasiwa AI',answer.reply);
+        await sendRecordedWhatsApp(wa,lock+':0','AI','Kasiwa',answer.reply);
         let index=0;
-        for(const image of (answer.images||[]).slice(0,3))await sendRecordedWhatsApp(wa,lock+':'+(++index),'AI','Kasiwa AI',image.caption,image.url);
+        for(const image of (answer.images||[]).slice(0,3))await sendRecordedWhatsApp(wa,lock+':'+(++index),'AI','Kasiwa',image.caption,image.url);
       }
       await sql`UPDATE public.dbk36_wa_messages SET status='done',updated_at=now() WHERE id=${id}::uuid AND status='processing'`;
       out.processed++;

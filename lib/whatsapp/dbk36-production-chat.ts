@@ -18,7 +18,7 @@ const safe=(s:string)=>s.replace(/[\r\n*`]/g,' ').trim().slice(0,90);
 type Answer={reply:string;images?:Array<{url:string;caption:string}>};
 const reply=(text:string):Answer=>({reply:text});
 const sql=()=>neon(process.env.DATABASE_URL!);
-function catalogueItem(raw:unknown):SaleItem|null{
+export function catalogueItem(raw:unknown):SaleItem|null{
   if(!raw||typeof raw!=='object')return null;
   const r=raw as Record<string,unknown>;
   const id=String(r.id||r._id||''),name=String(r.name||r.title||''),slug=String(r.slug||'');

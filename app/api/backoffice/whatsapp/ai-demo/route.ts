@@ -2,7 +2,10 @@ import {NextRequest,NextResponse} from 'next/server';
 import {neon} from '@neondatabase/serverless';
 import {getApiStaff} from '@/lib/auth/api-authorization';
 import {getStoreProducts} from '@/sanity/lib/catalog';
-import {buildDemoCatalogue,normalizeTurns,makeInput,DEMO_INSTRUCTIONS,extractResponseText} from '@/lib/whatsapp/dbk36-ai-demo-core';
+import {normalizeTurns} from '@/lib/whatsapp/dbk36-ai-demo-core';
+import {catalogueItem} from '@/lib/whatsapp/dbk36-production-chat';
+import {planShopping} from '@/lib/whatsapp/dbk156-shopping-ai';
+import {catalogueSku,shoppingBudget,budgetProducts,relevantProducts,type SalesProduct} from '@/lib/whatsapp/dbk155-sales-core';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=40;
@@ -49,46 +52,29 @@ export async function POST(req:NextRequest){
     if(admission[0]?.allowed!==true)return fail('DEMO_DAILY_LIMIT_REACHED',429);
     phase='catalogue';
     const source=await getStoreProducts('ecommerce');
-    const products=buildDemoCatalogue(source,question);
+    const products=source.map(catalogueItem).filter((p):p is SalesProduct=>p!==null && p.stockQuantity!==null && p.stockQuantity>0);
     if(!products.length)return fail('NO_AVAILABLE_CATALOGUE_ITEMS',503);
+    const previous=turns.filter(t=>t.role==='assistant').at(-1)?.content.toLowerCase()||'';
+    const options=products.filter(p=>previous.includes(p.name.toLowerCase())).slice(0,3);
     phase='openai';
-    const res=await fetch('https://api.openai.com/v1/responses',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.OPENAI_API_KEY}`},
-      body:JSON.stringify({model:'gpt-4.1-mini',instructions:DEMO_INSTRUCTIONS,
-        input:makeInput(question,turns,products),max_output_tokens:420,store:false}),
-      signal:AbortSignal.timeout(28000),cache:'no-store',
-    });
-    if(!res.ok){
-      // Never log credentials, customer messages, or the full provider response.
-      let providerCode='unknown';
-      try{
-        const data=await res.json() as {error?:{code?:string;type?:string}};
-        providerCode=data?.error?.code||data?.error?.type||'unknown';
-      }catch{}
-      console.error('DBK36_AI_PROVIDER_FAILURE',{status:res.status,code:providerCode,model:'gpt-4.1-mini'});
-      return fail('AI_PROVIDER_TEMPORARILY_UNAVAILABLE',502);
-    }
-    phase='response';
-    const answer=extractResponseText(await res.json() as unknown);
-    // Only images from the real catalogue, never model-generated or arbitrary URLs.
-    // Previously suggested products remain relevant when the customer asks for photos.
-    const lower=answer.toLowerCase();
-    const prior=turns.filter(t=>t.role==='assistant').slice(-2).map(t=>t.content.toLowerCase()).join(' ');
-    const named=products.filter(item=>lower.includes(item.name.toLowerCase()));
-    const candidates=named.length?named:/(photos?|pictures?|images?|show me)/i.test(question)
-      ?products.filter(item=>prior.includes(item.name.toLowerCase())).slice(0,4):[];
-    const shown=(candidates.length?candidates:named).slice(0,4);
-    const productCards=shown.flatMap(item=>{
-      const found=source.find(row=>row.id===item.id);
-      const raw=found?.images?.[0]||found?.heroImage||'';
-      let imageUrl:string|undefined;
-      try{const u=new URL(raw);if(u.protocol==='https:'&&u.hostname==='cdn.sanity.io')imageUrl=u.toString();}
-      catch{};
-      if(!imageUrl)return [];
-      const slug=typeof found?.slug==='string'?found.slug:'';
-      return [{id:item.id,name:item.name,price:item.price,imageUrl,
-        href:slug?'/shop/'+encodeURIComponent(slug):undefined}];
-    });
+    const plan=await planShopping(question,options,turns.map(t=>t.content));
+    if(!plan)return fail('AI_PROVIDER_TEMPORARILY_UNAVAILABLE',502);
+    let selected:SalesProduct[]=[];
+    let answer='';
+    const sku=catalogueSku(question),budget=shoppingBudget(question);
+    if(sku)selected=relevantProducts(sku,products);
+    else if(budget){
+      const subject=question.split(/\b(?:under|below|less than|up to|at most|within|maximum)\b/i)[0].replace(/\b(?:what|are|can|you|show|me|i|would|like|to|buy|purchase|find|looking|for|some|any|the|a|cheap|cheapest|affordable|products?|items?|options?|anything|something|have|do|budget|please|is|there)\b/gi,' ').replace(/[^a-z0-9 ]/gi,' ').trim();
+      selected=budgetProducts(subject?relevantProducts(subject,products,products.length):products,budget);
+    }else if(plan.intent==='search')selected=relevantProducts(plan.query,products);
+    else if(['photo','price','details'].includes(plan.intent)){
+      selected=plan.query?relevantProducts(plan.query,products):plan.option>0?[options[plan.option-1]].filter(Boolean):options.length===1?options:[];
+      if(!selected.length)answer='Which product would you like to know more about?';
+    }else answer=plan.message||'What would you like help finding?';
+    if(selected.length){
+      answer=selected.map(p=>`${p.name} — KES ${p.price.toLocaleString('en-KE')}${p.variants?' (options available)':''}`).join('\n')+'\n'+(selected.length===1?'Is this what you had in mind?':'Which one catches your eye?');
+    }else if(!answer)answer='I couldn’t find a confirmed in-stock item matching that request. Would you like to try another product or budget?';
+    const productCards=selected.map(p=>({id:p.id,name:p.name,price:p.price,imageUrl:p.imageUrl||'',href:'/shop/'+encodeURIComponent(p.slug)}));
     return NextResponse.json({answer,products:productCards,model:'gpt-4.1-mini',catalogueItemsConsidered:products.length,
       realAI:true,priceAndStockConfirmedAtCheckout:true,actionsPerformed:[]},{headers:HEADERS});
   }catch(e){

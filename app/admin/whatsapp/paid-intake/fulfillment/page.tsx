@@ -42,7 +42,7 @@ export default function WhatsAppFulfillment(){
   const current=orders.find(x=>x.reference===selected);
   return <main className="mx-auto max-w-5xl space-y-6 px-5 py-10 text-neutral-900">
     <header className="space-y-2"><h1 className="text-2xl font-bold">WhatsApp payment fulfillment</h1>
-      <p className="text-sm text-neutral-600">Separate Neon order ledger. Stock changes occur only after Till-attested intake, explicit administrator approval and successful Sanity revision checks. This does not issue refunds, M-Pesa charges or enable public checkout.</p>
+      <p className="text-sm text-neutral-600">Verified payment stock review. Neon-authoritative orders use the guarded stock engine; legacy orders retain their original checks. This does not charge customers or issue refunds.</p>
       <a href="/admin/whatsapp/paid-intake" className="text-sm underline">Back to Till reconciliation</a>
     </header>
     <p className="text-sm font-medium">Stock posting: {enabled?'Approved production gate enabled':'DISABLED — read-only review'}</p>
@@ -56,7 +56,7 @@ export default function WhatsAppFulfillment(){
       <p className="text-sm">{preview.stockState} {preview.orderId?`· ${preview.orderId}`:''}</p>
       {preview.stockState==='READY_FOR_STAFF_APPROVAL'&&<><p className="text-sm">Amount KES {preview.amountKes}; {preview.lineCount} cart line(s). Stock is checked again when committing. Payment is already recorded; this action does not charge the customer.</p>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={approved} onChange={e=>setApproved(e.target.checked)}/>
-          I reviewed the Till-attested payment, customer products, store stock, and understand a one-time deduction may require manual reconciliation if the network fails.</label>
+          I reviewed the verified payment, customer products, store stock, and understand a one-time deduction may require manual reconciliation if the network fails.</label>
         <button type="button" disabled={!canPost||busy} className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-40" onClick={()=>void submit('COMMIT_STOCK')}>Post order and deduct stock once</button></>}
       {current?.stock_state==='COMMITTED'&&<div className="flex flex-wrap gap-2">
         {(['PREPARING','READY_FOR_PICKUP','HANDED_OVER','REFUND_REVIEW'] as const).map(s=><button key={s} type="button" disabled={busy} className="rounded border px-3 py-2 text-sm" onClick={()=>void submit('SET_FULFILLMENT',s)}>{s.replaceAll('_',' ')}</button>)}

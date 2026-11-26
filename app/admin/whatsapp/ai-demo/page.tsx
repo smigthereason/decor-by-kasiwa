@@ -5,9 +5,9 @@ type Turn={role:'user'|'assistant';content:string;products?:ProductCard[]};
 type Reply={answer?:string;products?:ProductCard[];error?:string;enabled?:boolean;model?:string;realAI?:boolean};
 const API='/api/backoffice/whatsapp/ai-demo';
 const prompts=[
-  'Help me style a warm, elegant living room under KES 5,000.',
-  'I want a thoughtful home gift. What do you recommend?',
-  'Suggest a few pieces that work together for a modern bedroom.',
+  'Show me affordable products under KES 100.',
+  'Do you have Tocebal Batteries?',
+  'I am looking for a big round mirror.',
 ];
 export default function WhatsAppAiDemoPage(){
   const [messages,setMessages]=useState<Turn[]>([]),[question,setQuestion]=useState('');
@@ -28,10 +28,10 @@ export default function WhatsAppAiDemoPage(){
     }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}
   }
   return <main className="mx-auto max-w-4xl space-y-6 px-5 py-10 text-neutral-900">
-    <header className="space-y-2"><span className="rounded-full border px-3 py-1 text-xs font-medium">ADMIN-ONLY · REAL AI DEMO</span>
+    <header className="space-y-2"><span className="rounded-full border px-3 py-1 text-xs font-medium">ADMIN-ONLY · READ-ONLY PREVIEW</span>
       <h1 className="text-3xl font-semibold tracking-tight">Decor By Kasiwa · AI Shopping Adviser</h1>
-      <p className="text-sm text-neutral-600">Live production catalogue, real AI recommendations, no M-Pesa charges, no inventory changes. This is a stakeholder demonstration—not a customer WhatsApp channel.</p>
-      <a href="/admin/whatsapp/paid-intake/fulfillment" className="text-sm underline">View production fulfillment</a>
+      <p className="text-sm text-neutral-600">Uses the current Kasiwa shopping planner, published knowledge and live catalogue. This preview does not change carts, send WhatsApp messages, charge customers or deduct stock.</p>
+      <div className="flex gap-4 text-sm"><a href="/admin/whatsapp/inbox" className="underline">Live WhatsApp Centre</a><a href="/admin/whatsapp/knowledge" className="underline">Published knowledge</a></div>
     </header>
     <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
       <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">{enabled===null?'Checking access…':enabled?'AI configured · gpt-4.1-mini':'AI demo not enabled or access denied'}</p>
@@ -42,7 +42,7 @@ export default function WhatsAppAiDemoPage(){
            <div className={m.role==='user'?'rounded-xl bg-neutral-900 p-3 text-sm text-white':'rounded-xl border bg-white p-3 text-sm whitespace-pre-wrap'}>{m.content}</div>
            {m.role==='assistant'&&m.products?.length? <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
              {m.products.map(item=><div key={item.id} className="overflow-hidden rounded-xl border bg-white">
-               <img src={item.imageUrl} alt={item.name} loading="lazy" className="aspect-square w-full object-cover"/>
+               {item.imageUrl?<img src={item.imageUrl} alt={item.name} loading="lazy" className="aspect-square w-full object-cover"/>:<div className="grid aspect-square place-items-center bg-neutral-100 text-xs text-neutral-500">No catalogue photo</div>}
                <div className="space-y-1 p-2 text-xs"><p className="font-semibold">{item.name}</p><p>KES {item.price.toLocaleString('en-KE')}</p>
                  {item.href?<a className="underline" href={item.href}>View product</a>:null}</div>
              </div>)}

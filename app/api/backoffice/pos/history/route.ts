@@ -5,6 +5,7 @@ import { listSalesCashiers, listSalesHistory } from "@/lib/pos/operations";
 import { dbk61ReadHistory, dbk61SandboxAllowed } from "@/lib/db/dbk61-pos-compat";
 import { dbk62ReadEnabled, dbk62ReadHistory } from "@/lib/db/dbk62-pos-cutover";
 import { dbk68ReadEnabled, dbk68ListHistory } from "@/lib/db/dbk68-daraja-neon";
+import {readWhatsAppSales,assertWhatsAppDisjoint} from "@/lib/db/dbk161-whatsapp-sales";
 import { dbk64ReadPaidSalesHistory } from "@/lib/db/dbk64-sales-history";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,10 @@ export async function GET(request: Request) {
   }
 
   try {
+    if(channel==='WHATSAPP'){
+      const orders=await readWhatsAppSales({cashier,query,from,to,storeId});
+      return NextResponse.json({orders:orders.slice(0,Math.max(1,Math.min(500,Number.isFinite(limit)?limit:150))),cashiers:['Kasiwa']},{headers:{'Cache-Control':'private, no-store'}});
+    }
     const [orders, cashiers] = await Promise.all([
       listSalesHistory({ limit, channel: channel === "POS" || channel === "ONLINE" ? channel : undefined, cashier, query, from, to, storeId }),
       listSalesCashiers(storeId),
@@ -56,14 +61,17 @@ export async function GET(request: Request) {
         (!to || o.soldAt <= `${to}T23:59:59+03:00`));
       // Prefer the authoritative Neon checkout projection when legacy Sanity has the same payment reference.
       const onlineReferences = new Set(onlineOrders.map(o => o.paymentReference).filter(Boolean));
+      const whatsapp=channel?[]:await readWhatsAppSales({cashier,query,from,to,storeId});
+      assertWhatsAppDisjoint(whatsapp,[...orders,...neonOrders,...filteredDaraja,...onlineOrders]);
       const combined = [
+        ...whatsapp,
         ...orders.filter(o => !onlineReferences.has(o.paymentReference)),
         ...neonOrders.filter(o => !onlineReferences.has(o.paymentReference)),
         ...filteredDaraja.filter(o => !onlineReferences.has(o.paymentReference)),
         ...onlineOrders,
       ].sort((a,b)=>b.soldAt.localeCompare(a.soldAt))
         .slice(0,Math.max(1,Math.min(500,Math.floor(Number.isFinite(limit)?limit:150))));
-      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName),...filteredDaraja.map(o=>o.soldByName),...onlineOrders.map(o=>o.soldByName)])].sort()},
+      return NextResponse.json({orders:combined,cashiers:[...new Set([...cashiers,...neonOrders.map(o=>o.soldByName),...filteredDaraja.map(o=>o.soldByName),...onlineOrders.map(o=>o.soldByName),...whatsapp.map(o=>o.soldByName)])].sort()},
         {headers:{"Cache-Control":"private, no-store"}});
     }
     return NextResponse.json({ orders, cashiers });

@@ -23,7 +23,7 @@ export async function notifyVerifiedPayment(reference:string){
     AND EXISTS(SELECT 1 FROM public.dbk36_wa_prod_payment_orders o WHERE o.reference=${reference} AND o.wa_id=c.wa_id AND o.status='paid' AND o.payment_notice_required AND o.receipt IS NOT NULL)
     RETURNING c.wa_id)
     INSERT INTO public.dbk159_wa_outbound(request_id,wa_id,actor_id,actor_name,message_text,status)
-    SELECT ${key},wa_id,'SYSTEM_PAYMENT','Kasiwa Payments',${message},'sending' FROM locked RETURNING request_id`;
+    SELECT ${key},wa_id,'SYSTEM_PAYMENT','Kasiwa',${message},'sending' FROM locked RETURNING request_id`;
   if(!claimed.length)return;
   try{await deliverRecordedWhatsApp(wa,key,message);console.info('DBK160_PAYMENT_NOTICE_ACCEPTED',reference);}
   catch{console.warn('DBK160_PAYMENT_NOTICE_UNCERTAIN',reference);}
