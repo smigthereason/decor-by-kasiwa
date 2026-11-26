@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {getStoreProducts} from '@/sanity/lib/catalog';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
-import {cleanError,maxProductionStkKes} from './dbk36-production-core';
+import {cleanError} from './dbk36-production-core';
 import {relevantProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping} from './dbk156-shopping-ai';
 
@@ -233,8 +233,8 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
     if(['CHECKOUT','CHECK OUT'].includes(cmd)){
       if(!fresh)return reply('Checkout is paused until the product catalogue refreshes. No payment requested.');
       const c=await cart(waId,products);
-      if(!c.lines.length||c.invalid||c.totalMinor%100!==0||c.totalMinor<100||c.totalMinor>maxProductionStkKes()*100)
-        return reply(c.totalMinor>maxProductionStkKes()*100?`Your total is ${money(c.totalMinor/100)}. Online WhatsApp payments currently support up to ${money(maxProductionStkKes())}. No payment has been requested. Our team can help you complete this order.`:'I need to confirm the items and price before checkout. No payment has been requested. Would you like staff assistance?');
+      if(!c.lines.length||c.invalid||c.totalMinor%100!==0||c.totalMinor<100||!Number.isSafeInteger(c.totalMinor))
+        return reply('I need to confirm the items and price before checkout. No payment has been requested. Would you like staff assistance?');
       const ref='DBKWA'+randomUUID().replace(/-/g,'').slice(0,7).toUpperCase();
       const order=await createProductionCheckout({reference:ref,waId,amountKes:c.totalMinor/100,
         cart:c.lines.map(l=>({productId:l.item.id,variantId:l.variantId,quantity:l.quantity,subtotalMinor:l.subtotalMinor})),

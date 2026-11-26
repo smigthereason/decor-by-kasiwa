@@ -10,7 +10,7 @@ const image='https://cdn.sanity.io/images/p/d/a.jpg';
 const item=(id,name,variants=false)=>({id,name,slug:id,price:4500,stockQuantity:4,variants,image:{asset:{url:image}}});
 const products=[item('clock','3 IN 1 Mirror Wall Clocks'),item('mirror','Big Round Mirrors',[{id:'white',colour:'White',stockQuantity:2,price:4500,imageUrl:image},{id:'gold',colour:'Gold',stockQuantity:1,price:4700},{id:'black',colour:'Black',stockQuantity:0,price:4500}]),item('stickers','FAMILY 3D Mirror Acrylic Wall Letter Stickers'),item('tree','Cherry pot like tree')];
 test('actual chat: AI search, photo, price and purchase preserve product context',async()=>{
-  const cache=new Map();let shortlist=[],viewed=null,modelCalls=0,paymentCalls=0,cartWrites=0;const history=[];let pending=null,cartRow=null,quoteCancels=0;
+  const cache=new Map();let shortlist=[],viewed=null,modelCalls=0,paymentCalls=0,cartWrites=0;const history=[];let pending=null,cartRow=null,quoteCancels=0,quoted=null,pickup=false;
   const db=async(strings,...values)=>{
     const q=strings.join('?');
     if(q.includes('SELECT mode'))return [{mode:'bot'}];
@@ -31,7 +31,7 @@ test('actual chat: AI search, photo, price and purchase preserve product context
   function load(file){if(cache.has(file))return cache.get(file);const m={exports:{}};cache.set(file,m.exports);
     const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,strict:true},reportDiagnostics:true});
     assert.equal(code.diagnostics.filter(d=>d.category===ts.DiagnosticCategory.Error).length,0);
-    const req=id=>{if(id==='server-only')return {};if(id==='@neondatabase/serverless')return {neon:()=>db};if(id==='@/sanity/lib/catalog')return {getStoreProducts:async()=>products};if(id==='@/lib/db/dbk36-production-payments')return new Proxy({},{get:(_,name)=>async()=>{if(name==='cancelProductionQuote'){quoteCancels++;return false;}paymentCalls++;throw Error('Unexpected payment action');}});if(id.startsWith('.'))return load(path.resolve(path.dirname(file),id+'.ts'));return require(id);};
+    const req=id=>{if(id==='server-only')return {};if(id==='@neondatabase/serverless')return {neon:()=>db};if(id==='@/sanity/lib/catalog')return {getStoreProducts:async()=>products};if(id==='@/lib/db/dbk36-production-payments')return new Proxy({},{get:(_,name)=>async(input)=>{if(name==='createProductionCheckout'){assert.equal(input.amountKes,4500);assert.equal(input.cart[0].variantId,'white');quoted=input;return {...input,status:'quoted'};}if(name==='confirmProductionPickup'){assert.ok(quoted);pickup=true;return {reference:quoted.reference,amount_kes:quoted.amountKes};}if(name==='payProductionCheckout'){assert.ok(pickup);paymentCalls++;return {amountKes:quoted.amountKes};}if(name==='cancelProductionQuote'){quoteCancels++;return false;}paymentCalls++;throw Error('Unexpected payment action');}});if(id.startsWith('.'))return load(path.resolve(path.dirname(file),id+'.ts'));return require(id);};
     new Function('require','module','exports',code.outputText)(req,m,m.exports);return m.exports;
   }
   const oldFetch=global.fetch;const keys=['OPENAI_API_KEY','DBK100_WA_AI_ENABLED','DBK36_WA_PRODUCTION_CHAT_ENABLED'];const oldEnv=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
@@ -49,8 +49,12 @@ test('actual chat: AI search, photo, price and purchase preserve product context
     assert.match((await say('send M-PESA prompt')).reply,/No payment has been requested/);assert.equal(paymentCalls,0);
     assert.match((await say('White')).reply,/added 1 × Big Round Mirrors \(White\)/);assert.equal(cartWrites,1);assert.equal(quoteCancels,1);
     assert.match((await say('CART')).reply,/Big Round Mirrors \(White\).*4,500/);
-    assert.match((await say('Place my order')).reply,/up to KES 500/);
-    assert.equal(modelCalls,2);assert.equal(paymentCalls,0);assert.equal(cartWrites,1);
+    assert.match((await say('Place my order')).reply,/order total is KES 4,500/);
+    assert.equal(paymentCalls,0);
+    assert.match((await say('I will collect')).reply,/Collection confirmed/);
+    assert.equal(paymentCalls,0);
+    assert.match((await say('send M-PESA prompt')).reply,/requested an M-PESA prompt for KES 4,500/);
+    assert.equal(modelCalls,2);assert.equal(paymentCalls,1);assert.equal(cartWrites,1);
     // A provider failure must not fall through to random shopping recommendations.
     global.fetch=async()=>({ok:false,status:429});
     assert.doesNotMatch((await say('yes please')).reply,/Cherry pot|Clock|Stickers/);

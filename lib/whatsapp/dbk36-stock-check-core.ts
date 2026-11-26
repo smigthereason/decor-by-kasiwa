@@ -6,7 +6,7 @@ export function validateQuoteRequest(value:unknown):{reference:string;amountKes:
   if(!value || typeof value!=='object'||Array.isArray(value))return null;
   const x=value as Record<string,unknown>;
   if(typeof x.reference!=='string'||!/^DBKWA[A-Z0-9]{7}$/.test(x.reference)||
-    typeof x.amountKes!=='number'||!Number.isSafeInteger(x.amountKes)||x.amountKes<1||x.amountKes>500||
+    typeof x.amountKes!=='number'||!Number.isSafeInteger(x.amountKes)||x.amountKes<1||!Number.isSafeInteger(x.amountKes*100)||
     !Array.isArray(x.lines)||x.lines.length===0||x.lines.length>12)return null;
   const seen=new Set<string>();let sum=0; const lines:Line[]=[];
   for(const raw of x.lines){
@@ -22,7 +22,7 @@ export function validateQuoteRequest(value:unknown):{reference:string;amountKes:
     lines.push({productId:line.productId,quantity:line.quantity as number,subtotal:line.subtotal as number,
       variantId:typeof line.variantId==='string'?line.variantId:''});
   }
-  return sum===x.amountKes?{reference:x.reference,amountKes:x.amountKes,lines}:null;
+  return Number.isSafeInteger(sum)&&sum===x.amountKes?{reference:x.reference,amountKes:x.amountKes,lines}:null;
 }
 /** Deny unknown stock, ambiguous variants, price changes, or unavailable items. */
 export function compareAuthoritativeQuote(

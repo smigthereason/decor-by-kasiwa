@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parseCheckout,matchedProviderProof} from '../lib/whatsapp/dbk36-production-core.ts';
+import {validateQuoteRequest,compareAuthoritativeQuote} from '../lib/whatsapp/dbk36-stock-check-core.ts';
+import {validatePaidIntake} from '../lib/whatsapp/dbk36-fulfillment-core.ts';
+const ref='DBKWAABCDEFG',waId='254700000000';
+const checkout=amount=>({reference:ref,waId,amountKes:amount,fulfillment:'pickup',cart:[{productId:'mirror',variantId:'white',quantity:1,subtotalMinor:amount*100}]});
+const quote=amount=>({reference:ref,amountKes:amount,lines:[{productId:'mirror',variantId:'white',quantity:1,subtotal:amount}]});
+const paid=amount=>({reference:ref,provider_receipt:'RECEIPT123',wa_id:waId,checkout_id:'checkout-test',amount_minor:amount*100,cart_snapshot:checkout(amount).cart,verification_mode:'daraja_api_verified',intake_status:'AWAITING_STAFF_STOCK_REVIEW',attested_by:'DBK36_DARAJA_QUERY'});
+test('no pilot monetary ceilings on quotes or paid intake',()=>{for(const amount of [1,500,501,4500,5001,25000,100000]){assert.ok(parseCheckout(checkout(amount)));assert.ok(validateQuoteRequest(quote(amount)));assert.equal(validatePaidIntake(paid(amount)).amountMinor,amount*100);}});
+test('reject invalid amounts and mismatched totals',()=>{for(const amount of [0,-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER]){assert.equal(parseCheckout(checkout(amount)),null);assert.equal(validateQuoteRequest(quote(amount)),null);}const bad=checkout(4500);bad.cart[0].subtotalMinor=100;assert.equal(parseCheckout(bad),null);assert.throws(()=>validatePaidIntake({...paid(4500),amount_minor:100}));assert.throws(()=>validatePaidIntake({...paid(4500),verification_mode:'unverified'}));});
+test('variant price and authoritative stock checks stay active above old caps',()=>{const product={id:'mirror',price:4500,variants:[{id:'white',price:4500,stockQuantity:1}]};assert.equal(compareAuthoritativeQuote(quote(4500),[product],[product]),true);assert.equal(compareAuthoritativeQuote(quote(4501),[product],[product]),false);assert.equal(compareAuthoritativeQuote(quote(4500),[product],[{...product,variants:[{id:'white',stockQuantity:0}]}]),false);});
+test('provider amount proof must match exactly',()=>{const order={wa_id:waId,checkout_id:'checkout-test',merchant_id:'merchant-test',amount_kes:4500};const cb={checkoutRequestId:'checkout-test',merchantRequestId:'merchant-test',resultCode:0,phone:waId,amount:4500,receiptNumber:'RECEIPT123',transactionDate:'20261126171800'};const query={CheckoutRequestID:'checkout-test',MerchantRequestID:'merchant-test',ResultCode:0};assert.equal(matchedProviderProof(order,cb,query),true);assert.equal(matchedProviderProof(order,{...cb,amount:500},query),false);});

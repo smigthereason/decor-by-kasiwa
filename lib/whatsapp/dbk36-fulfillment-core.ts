@@ -46,7 +46,7 @@ export function validatePaidIntake(source:PaidIntake):{amountMinor:number;lines:
     Boolean(source.attested_by)&&source.intake_status==='AWAITING_STAFF_STOCK_REVIEW',
     'VERIFIED_PAID_INTAKE_REQUIRED');
   const amount=Number(source.amount_minor);
-  requireTrue(safe(amount)&&amount>=100&&amount<=50000,'PAID_AMOUNT_INVALID');
+  requireTrue(safe(amount)&&amount>=100,'PAID_AMOUNT_INVALID');
   requireTrue(Array.isArray(source.cart_snapshot)&&source.cart_snapshot.length>0&&source.cart_snapshot.length<=12,'PAID_CART_INVALID');
   const keys=new Set<string>();const lines:PaidCartLine[]=[];let sum=0;
   for(const raw of source.cart_snapshot){
