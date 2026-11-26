@@ -14,7 +14,7 @@ import {dbk95ProjectAfterCommit} from "@/lib/db/dbk95-project-audits";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
-import { expenseBackendIsNeon, expenseReadsIncludeNeon, insertNeonExpense, listNeonExpenses, listNeonExpensesInRange, listNeonExpenseAudit, countNeonExpenseAudits } from "@/lib/db/expenses-neon";
+import { expenseBackendIsNeon, expenseReadsIncludeNeon, insertNeonExpense, listNeonExpenses, listNeonExpensesInRange, listNeonExpenseReport, listNeonExpenseAudit, countNeonExpenseAudits } from "@/lib/db/expenses-neon";
 import { auditArchiveReadsEnabled, listArchivedAudits, archivedAuditIds, mergeUniqueById } from "@/lib/db/audit-archive-neon";
 import { getMainStore, isLegacyStoreName, storeOrderPredicate, relatedOrderPredicate } from "@/lib/stores/main-store";
 
@@ -486,6 +486,25 @@ export async function listExpenses(limit = 150, storeId?: string) {
     .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate))
     .slice(0, limit)
     .map((row) => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }));
+}
+
+// Keep the recent history endpoint intact; reports read the full requested date window.
+export async function listExpenseReport(start: string, endExclusive: string, storeId?: string) {
+  const id = cleanText(storeId) || undefined;
+  const [legacy, neon] = await Promise.all([
+    serverClient.fetch<Array<{
+      id: string; expenseNumber: string; expenseType: string; ledgerAccount?: string; expenseCategory?: string; staffName?: string; description: string; amount: number; paymentMethod?: string; transactionReference?: string; expenseDate: string; createdByName?: string; storeLocationId?: string; storeLocationName?: string; storeLocationCode?: string;
+    }>>(
+      `*[_type == "expenseTransaction" && dateTime(expenseDate) >= dateTime($start) && dateTime(expenseDate) < dateTime($endExclusive) && (!defined($storeId) || storeLocation._ref == $storeId)]{"id":_id,expenseNumber,expenseType,ledgerAccount,expenseCategory,staffName,description,amount,paymentMethod,transactionReference,expenseDate,createdByName,"storeLocationId":storeLocation._ref,"storeLocationName":storeLocation->name,"storeLocationCode":storeLocation->code}`,
+      { start, endExclusive, storeId: id || null }, { cache: "no-store" },
+    ),
+    expenseReadsIncludeNeon() ? listNeonExpenseReport(start, endExclusive, id) : Promise.resolve([]),
+  ]);
+  // Same source gates and legacy ledger normalization as expenditure history/P&L.
+  // Identical record IDs are counted once; do not guess duplicates from amount or description.
+  const unique = new Map([...legacy, ...neon].map(row => [row.id, row]));
+  return [...unique.values()].map(row => ({ ...row, ledgerAccount: cleanLedgerAccount(row.ledgerAccount, row.expenseCategory, row.expenseType) }))
+    .sort((a, b) => Date.parse(b.expenseDate) - Date.parse(a.expenseDate) || a.id.localeCompare(b.id));
 }
 
 export async function createExpense(input: ExpenseInput, seller: PosSeller) {

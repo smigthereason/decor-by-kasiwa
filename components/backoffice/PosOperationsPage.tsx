@@ -11,6 +11,7 @@ import ExportButtons from "@/components/backoffice/ExportButtons";
 import IndependentSalesReports from "@/components/backoffice/IndependentSalesReports";
 import SalesCalendarReport from "@/components/backoffice/SalesCalendarReport";
 import { formatMoney } from "@/lib/money";
+import { EXPENSE_TYPES, expenseReportDates, expenseReportWindow, expenseLedgerOptions, filterExpenses } from "@/lib/pos/dbk153-expenditure-core";
 
 type Tab = "history" | "reports" | "receivables" | "expenses" | "reconciliation" | "audit";
 type HistoryOrder = {
@@ -72,6 +73,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
   const [appliedReportFrom, setAppliedReportFrom] = useState("");
   const [appliedReportTo, setAppliedReportTo] = useState("");
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseReportRefresh, setExpenseReportRefresh] = useState(0);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [reconcilingReference, setReconcilingReference] = useState<string | null>(null);
@@ -121,6 +123,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
 
   const load = useCallback(async (target: Tab = tab) => {
     setLoading(true); setMessage(null);
+    if (target === "expenses") setExpenseReportRefresh(value => value + 1);
     try {
       const reportParams = new URLSearchParams({ period });
       if (storeFilter) reportParams.set("store", storeFilter);
@@ -462,10 +465,9 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
       };
     }
     if (tab === "receivables") return { title:`Receivables - ${selectedStore?.name || "All stores"}`, columns:[{key:"store",label:"Store"},{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"order",label:"Order"},{key:"total",label:"Total (KES)"},{key:"paid",label:"Paid (KES)"},{key:"balance",label:"Outstanding (KES)"}], rows:receivables.map((order)=>({store:order.storeLocationName||"Company / online",customer:order.customerName,phone:order.customerPhone,order:order.orderNumber,total:order.total,paid:order.amountPaid,balance:order.balanceDue})) };
-    if (tab === "expenses") return { title:`Expenditure and Petty Cash - ${selectedStore?.name || "All stores"}`, columns:[{key:"date",label:"Date"},{key:"store",label:"Store"},{key:"ledger",label:"Ledger Account"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}], rows:expenses.map((expense)=>({date:expense.expenseDate,store:expense.storeLocationName||"Company-wide",ledger:expense.ledgerAccount,type:expense.expenseType,payee:expense.staffName||"—",description:expense.description,amount:expense.amount,method:expense.paymentMethod||"—",recordedBy:expense.createdByName||"—"})) };
     if (tab === "reconciliation") return { title:`Payment Reconciliation - ${selectedStore?.name || "All stores"}`, columns:[{key:"time",label:"Time"},{key:"store",label:"Store"},{key:"reference",label:"Reference"},{key:"order",label:"Order"},{key:"customer",label:"Customer"},{key:"phone",label:"Phone"},{key:"provider",label:"Provider"},{key:"channel",label:"Channel"},{key:"status",label:"Status"},{key:"amount",label:"Amount (KES)"},{key:"providerRef",label:"Provider Transaction"},{key:"processedBy",label:"Processed By"},{key:"relatedPaid",label:"Possible Paid Retry"},{key:"inventoryReview",label:"Inventory Review"}], rows:filteredPayments.map((payment)=>({time:payment.createdAt,store:payment.storeLocationName||"Company / online",reference:payment.reference,order:payment.orderNumber||"—",customer:payment.customerName||"—",phone:payment.customerPhone||"—",provider:payment.provider||"—",channel:payment.channel||"—",status:payment.status,amount:payment.amount,providerRef:payment.providerReceiptNumber||payment.providerTransactionId||"—",processedBy:payment.processedByName||"—",relatedPaid:relatedPaidAttempts.get(payment.reference)?.orderNumber||"—",inventoryReview:payment.inventoryReviewRequired ? payment.inventoryReconciliationReason || "Required" : "—"})) };
     return { title:"POS Audit Trail", columns:[{key:"time",label:"Time"},{key:"event",label:"Event"},{key:"entity",label:"Entity"},{key:"actor",label:"Actor"},{key:"role",label:"Role"},{key:"detail",label:"Detail"}], rows:audit.map((item)=>({time:item.createdAt,event:item.eventType,entity:item.entityLabel||"—",actor:item.actorName||"System",role:item.actorRole||"—",detail:item.detail||"—"})) };
-  }, [audit, expenses, filteredPayments, filteredReportProducts, orders, receivables, relatedPaidAttempts, report, selectedStore, tab]);
+  }, [audit, filteredPayments, filteredReportProducts, orders, receivables, relatedPaidAttempts, report, selectedStore, tab]);
 
   async function submitExpense(event: FormEvent) {
     event.preventDefault();
@@ -500,7 +502,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
         <div className="mx-auto max-w-[1600px]">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div><p className="kicker text-[var(--muted)]">POS & Payment Integration</p><h1 className="mt-2 text-3xl font-medium tracking-[-0.04em]">Sales Operations</h1><p className="mt-2 text-sm text-[var(--muted)]">Sales history, receivables, reporting, payments, returns and expenditure.</p></div>
-            <div className="flex flex-wrap items-center gap-2">{tab !== "reports" && <ExportButtons title={`Decor by Kasiwa ${exportData.title}`} columns={exportData.columns} rows={exportData.rows}/>}<Link href={`${basePath}/pos`} className="inline-flex min-h-11 items-center rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">New POS sale</Link></div>
+            <div className="flex flex-wrap items-center gap-2">{tab !== "reports" && tab !== "expenses" && <ExportButtons title={`Decor by Kasiwa ${exportData.title}`} columns={exportData.columns} rows={exportData.rows}/>}<Link href={`${basePath}/pos`} className="inline-flex min-h-11 items-center rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase tracking-[0.08em] !text-soft-cream">New POS sale</Link></div>
           </div>
           <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
             {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setTab(id)} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-[10px] font-semibold uppercase tracking-[0.06em] ${tab === id ? "border-[var(--brand-green)] bg-[var(--brand-green)] !text-soft-cream" : "hairline bg-[var(--paper)]"}`}><Icon size={13} />{label}</button>)}
@@ -589,7 +591,7 @@ export default function PosOperationsPage({ basePath }: { basePath: "/admin" | "
               <button disabled={expenseSaving} className="min-h-11 rounded-full bg-[var(--brand-green)] px-5 text-[10px] font-semibold uppercase !text-soft-cream disabled:opacity-60">{expenseSaving ? "Saving…" : "Save expenditure"}</button>
             </div>
           </form>
-          <SimpleTable headers={["Date","Store","Ledger Account","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={expenses.map((expense)=>[new Date(expense.expenseDate).toLocaleDateString("en-KE"),expense.storeLocationName || "Company-wide",expense.ledgerAccount,expense.expenseType.replaceAll("_"," "),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} />
+          <ExpenditureReport storeId={storeFilter} storeName={selectedStore?.name || ((role === "MANAGER" || role === "STORE_STAFF") ? "Assigned store" : "All stores")} refresh={expenseReportRefresh} />
         </div>}
 
         {tab === "reconciliation" && (manager || salesStaff) && <div className="overflow-hidden rounded-2xl border hairline bg-[var(--paper)]">
@@ -704,6 +706,63 @@ function ProfitLossStatement({ report }: { report: Report }) {
       </div>
     </div>
     <div className="border-t hairline px-5 py-3 text-[10px] text-[var(--muted)]">Discounts: {formatMoney(report.discounts)} · Returns: {formatMoney(report.returns)}</div>
+  </section>;
+}
+
+function ExpenditureReport({ storeId, storeName, refresh }: { storeId: string; storeName: string; refresh: number }) {
+  const [dates, setDates] = useState(expenseReportDates);
+  const [applied, setApplied] = useState(dates);
+  const [type, setType] = useState("");
+  const [ledger, setLedger] = useState("");
+  const [validation, setValidation] = useState("");
+  const [result, setResult] = useState<{ key: string; rows: Expense[]; error?: string } | null>(null);
+  const requestKey = JSON.stringify([storeId, applied.from, applied.to, refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ from: applied.from, to: applied.to });
+    if (storeId) params.set("store", storeId);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/backoffice/pos/expenses?${params}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json();
+        if (!response.ok || !Array.isArray(payload.expenses)) throw new Error(payload.message || "Unable to load expenditure report.");
+        if (!controller.signal.aborted) setResult({ key: requestKey, rows: payload.expenses });
+      } catch (cause) {
+        if (!controller.signal.aborted) setResult({ key: requestKey, rows: [], error: cause instanceof Error ? cause.message : "Unable to load expenditure report." });
+      }
+    })();
+    return () => controller.abort();
+  }, [storeId, applied.from, applied.to, requestKey]);
+  const current = result?.key === requestKey ? result : null;
+  const accounts = expenseLedgerOptions(current?.rows || []);
+  const filtered = filterExpenses(current?.rows || [], type, ledger);
+  const dateLabel = (value: string) => new Date(value).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi" });
+  const typeLabel = (value: string) => EXPENSE_TYPES.find(item => item.value === value)?.label || value.replaceAll("_", " ");
+  const filtersDirty = dates.from !== applied.from || dates.to !== applied.to;
+  const inputClass = "min-h-10 w-full rounded-lg border hairline bg-[var(--paper)] px-3 text-xs text-[var(--ink)]";
+  const labelClass = "grid min-w-0 gap-1 text-xs font-medium";
+  const exportRows = filtered.rows.map(expense => ({ date: dateLabel(expense.expenseDate), store: expense.storeLocationName || "Company-wide", ledger: expense.ledgerAccount, type: typeLabel(expense.expenseType), payee: expense.staffName || "—", description: expense.description, amount: expense.amount, method: expense.paymentMethod || "—", recordedBy: expense.createdByName || "—" }));
+  return <section className="min-w-0 space-y-3">
+    <div className="rounded-2xl border hairline bg-[var(--paper)] p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="text-lg font-semibold">Expenditure report</h2><p className="mt-1 text-xs text-[var(--muted)]">Filter recorded expenses by Kenyan business date, type and ledger account.</p></div>
+        <ExportButtons title={`Decor by Kasiwa Expenditure - ${storeName} - ${applied.from} to ${applied.to}${type ? ` - ${typeLabel(type)}` : ""}${ledger ? ` - ${accounts.find(a => a.value === ledger)?.label || ledger}` : ""}`} disabled={!current || Boolean(current.error) || filtersDirty} columns={[{key:"date",label:"Date"},{key:"store",label:"Store"},{key:"ledger",label:"Ledger Account"},{key:"type",label:"Type"},{key:"payee",label:"Staff / Payee"},{key:"description",label:"Description"},{key:"amount",label:"Amount (KES)"},{key:"method",label:"Payment Method"},{key:"recordedBy",label:"Recorded By"}]} rows={exportRows}/>
+      </div>
+      <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); try { expenseReportWindow(dates.from, dates.to); setValidation(""); setApplied({...dates}); } catch (cause) { setValidation(cause instanceof Error ? cause.message : "Invalid dates."); } }}>
+        <label className={labelClass}>From date<input required type="date" value={dates.from} onChange={event => {setDates(previous => ({...previous, from:event.target.value}));setValidation("");}} className={inputClass}/></label>
+        <label className={labelClass}>To date<input required type="date" value={dates.to} onChange={event => {setDates(previous => ({...previous, to:event.target.value}));setValidation("");}} className={inputClass}/></label>
+        <label className={labelClass}>Expense type<select value={type} onChange={event => setType(event.target.value)} className={inputClass}><option value="">All expense types</option>{EXPENSE_TYPES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <label className={labelClass}>Ledger account<select value={ledger} onChange={event => setLedger(event.target.value)} className={inputClass}><option value="">All ledger accounts</option>{ledger && !accounts.some(account => account.value === ledger) && <option value={ledger}>{ledger} (no records in period)</option>}{accounts.map(account => <option key={account.value} value={account.value}>{account.label}</option>)}</select></label>
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <button type="submit" className="min-h-10 rounded-full bg-[var(--brand-green)] px-5 text-xs font-semibold !text-soft-cream">Apply dates</button>
+          <button type="button" className="min-h-10 rounded-full border hairline px-5 text-xs font-semibold" onClick={() => {const next = expenseReportDates();setDates(next);setApplied(next);setType("");setLedger("");setValidation("");}}>Reset filters</button>
+        </div>
+      </form>
+      {validation && <p role="alert" className="mt-3 text-xs text-red-700">{validation}</p>}
+      {filtersDirty && <p className="mt-3 text-xs text-[var(--muted)]">Apply dates to update the report and its exports.</p>}
+      {!current ? <p role="status" className="mt-4 text-xs text-[var(--muted)]">Loading expenditure report…</p> : current.error ? <p role="alert" className="mt-4 text-xs text-red-700">{current.error} Use Refresh to retry.</p> : <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t hairline pt-4"><div><p className="text-xs text-[var(--muted)]">{applied.from} to {applied.to} · {filtered.rows.length} of {current.rows.length} records</p><p className="mt-1 text-xs text-[var(--muted)]">Total for matching expenses</p></div><p className="text-xl font-semibold tabular-nums">{formatMoney(filtered.total)}</p></div>}
+    </div>
+    {current && !current.error && (filtered.rows.length ? <SimpleTable headers={["Date","Store","Ledger Account","Type","Staff / Payee","Description","Amount","Recorded by"]} rows={filtered.rows.map(expense => [dateLabel(expense.expenseDate),expense.storeLocationName || "Company-wide",expense.ledgerAccount,typeLabel(expense.expenseType),expense.staffName || "—",expense.description,formatMoney(expense.amount),expense.createdByName || "—"])} /> : <p className="rounded-xl border hairline bg-[var(--paper)] p-6 text-center text-xs text-[var(--muted)]">No expenses match the selected filters.</p>)}
   </section>;
 }
 

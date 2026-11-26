@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getApiStaff } from "@/lib/auth/api-authorization";
-import { createExpense, listExpenses, type ExpenseInput } from "@/lib/pos/operations";
+import { createExpense, listExpenses, listExpenseReport, type ExpenseInput } from "@/lib/pos/operations";
 import { expenseBackendIsNeon } from "@/lib/db/expenses-neon";
+
+import { expenseReportWindow } from "@/lib/pos/dbk153-expenditure-core";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +15,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "A store assignment is required." }, { status: 403 });
   }
   try {
-    const requestedStoreId = new URL(request.url).searchParams.get("store")?.trim() || undefined;
+    const params = new URL(request.url).searchParams;
+    const requestedStoreId = params.get("store")?.trim() || undefined;
     const storeId = staff.role === "MANAGER" || staff.role === "STORE_STAFF" ? staff.storeLocationId : requestedStoreId;
+    if (params.has("from") || params.has("to")) {
+      let window: ReturnType<typeof expenseReportWindow>;
+      try { window = expenseReportWindow(params.get("from") || "", params.get("to") || ""); }
+      catch (cause) { return NextResponse.json({ message: cause instanceof Error ? cause.message : "Invalid dates." }, { status: 400 }); }
+      return NextResponse.json({ expenses: await listExpenseReport(window.start, window.endExclusive, storeId) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json({ expenses: await listExpenses(150, storeId) });
   } catch (cause) {
     console.error("[DBK-72] Expenditure GET failed", cause);

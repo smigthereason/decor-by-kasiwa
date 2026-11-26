@@ -82,6 +82,17 @@ export async function listNeonExpensesInRange(start: string, end: string, storeI
   return rows.map((row) => asExpense(row.payload));
 }
 
+// The expenditure report has no recent-record limit and uses an exclusive end boundary.
+export async function listNeonExpenseReport(start: string, endExclusive: string, storeId?: string) {
+  const sql = getNeonSql();
+  const id = storeId || null;
+  const rows = await sql`SELECT payload FROM dbk_expense_records
+    WHERE expense_date >= ${start}::timestamptz AND expense_date < ${endExclusive}::timestamptz
+    AND (${id}::text IS NULL OR store_location_id = ${id})
+    ORDER BY expense_date DESC, created_at DESC`;
+  return rows.map((row) => asExpense(row.payload));
+}
+
 export async function countNeonStoreExpenses(storeId: string) {
   const sql = getNeonSql();
   const result = await sql`SELECT COUNT(*)::integer AS total FROM dbk_expense_records WHERE store_location_id=${storeId}`;
