@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -65,9 +65,9 @@ const adminNavigation: NavigationItem[] = [
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "WhatsApp Centre", href: "/admin/whatsapp/inbox", icon: MessageCircle },
   { label: "WhatsApp Paid Orders", href: "/admin/whatsapp/paid-intake", icon: MessageCircle },
-  { label: "WhatsApp Fulfillment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
-  { label: "AI Shopping Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
-  { label: "Kasiwa AI Knowledge", href: "/admin/whatsapp/knowledge", icon: Bot },
+  { label: "WhatsApp Fulfilment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
+  { label: "Kasiwa Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
+  { label: "Kasiwa Knowledge", href: "/admin/whatsapp/knowledge", icon: Bot },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
   { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
   { label: "Stores / Locations", href: "/admin/stores", icon: Warehouse },
@@ -142,8 +142,15 @@ export default function BackOfficeShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const { notifications } = useBackofficeNotifications();
 
+  const [whatsappAllowed,setWhatsappAllowed]=useState(false);
+  useEffect(()=>{
+    if(mode!=="store"||!["STORE","MANAGER","STORE_STAFF"].includes(staffRole))return;
+    let active=true;setWhatsappAllowed(false);
+    void fetch("/api/backoffice/whatsapp/inbox?access=1",{cache:"no-store"}).then(async r=>r.ok&&(await r.json()).allowed===true).then(allowed=>{if(active)setWhatsappAllowed(allowed);}).catch(()=>{});
+    return()=>{active=false;};
+  },[mode,staffRole,staffEmail]);
   const fulfilmentOnly = ["PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF"].includes(staffRole);
-  const navigation =
+  const navigationItems =
     mode === "admin"
       ? adminNavigation
       : fulfilmentOnly
@@ -151,6 +158,7 @@ export default function BackOfficeShell({
         : staffRole === "STORE_STAFF"
           ? salesStaffNavigation
           : storeManagerNavigation;
+  const navigation=navigationItems.filter(item=>item.href!=="/store/whatsapp/inbox"||staffRole==="ADMIN"||whatsappAllowed);
 
   const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : staffRole === "MANAGER" ? "Manager Operations" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";
@@ -169,6 +177,8 @@ export default function BackOfficeShell({
   }
 
   function isActive(href: string) {
+    // A legacy WhatsApp workspace must not also highlight the live inbox.
+    if(href==='/store/whatsapp'&&pathname.startsWith('/store/whatsapp/inbox'))return false;
     // Use the most specific WhatsApp route for the fulfillment submenu.
     if (href === "/admin/whatsapp/paid-intake" && pathname.startsWith("/admin/whatsapp/paid-intake/fulfillment")) return false;
     return pathname === href || (href !== rootHref && pathname.startsWith(`${href}/`));

@@ -1,5 +1,7 @@
 import 'server-only';
 import { neon } from '@neondatabase/serverless';
+import {packingCatalogue} from '@/lib/whatsapp/dbk163-packing-catalogue';
+import {packingLines} from '@/lib/whatsapp/dbk162-packing';
 
 const MAIN_HOST='ep-steep-scene-bausr4ct-pooler.c-8.eu-central-1.aws.neon.tech';
 const STAGE_HOST='ep-damp-mouse-ba3xilk3-pooler.c-8.eu-central-1.aws.neon.tech';
@@ -134,7 +136,7 @@ export async function recordWhatsAppPaidIntake(input: {
 // DBK161: production reads must not depend on the retired staging reader.
 export async function listProductionWhatsAppPayments() {
   const sql=mainDb();
-  const orders=await sql`SELECT i.reference,i.amount_minor,i.intake_status,i.paid_at,
+  const rows=await sql`SELECT i.reference,i.amount_minor,i.intake_status,i.paid_at,i.cart_snapshot,
     i.verification_mode,right(i.provider_receipt,4) AS receipt_last4,
     o.status AS payment_status,o.stock_state AS payment_stock_state,
     f.order_id,f.stock_state AS fulfillment_stock_state,f.fulfillment_state
@@ -142,6 +144,8 @@ export async function listProductionWhatsAppPayments() {
     LEFT JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=i.reference
     LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=i.reference
     ORDER BY i.paid_at DESC LIMIT 100`;
+  const catalogue=await packingCatalogue(rows.map(r=>r.cart_snapshot));
+  const orders=rows.map(({cart_snapshot,...row})=>({...row,items:packingLines(cart_snapshot,catalogue)}));
   return {orders,source:'PRODUCTION_NEON'};
 }
 export async function lookupProductionWhatsAppPayment(reference:string,amountKes:number) {
@@ -149,7 +153,7 @@ export async function lookupProductionWhatsAppPayment(reference:string,amountKes
     throw new Error('INVALID_PAYMENT_LOOKUP');
   const sql=mainDb();
   const rows=await sql`SELECT i.reference,i.amount_minor,i.provider_receipt AS receipt,
-    i.paid_at,i.intake_status,i.verification_mode,o.status AS payment_status,
+    i.paid_at,i.intake_status,i.verification_mode,i.cart_snapshot,o.status AS payment_status,
     o.stock_state AS payment_stock_state,f.order_id,f.stock_state AS fulfillment_stock_state,
     f.fulfillment_state
     FROM public.dbk36_wa_paid_intake i
@@ -160,5 +164,7 @@ export async function lookupProductionWhatsAppPayment(reference:string,amountKes
         (i.verification_mode='daraja_api_verified' AND o.status='paid'
          AND o.receipt=i.provider_receipt AND o.checkout_id=i.checkout_id
          AND o.amount_kes::bigint*100=i.amount_minor AND o.paid_at IS NOT NULL)) LIMIT 1`;
-  return rows[0]||null;
+  if(!rows[0])return null;
+  const {cart_snapshot,...payment}=rows[0];
+  return {...payment,items:packingLines(cart_snapshot,await packingCatalogue([cart_snapshot]))};
 }

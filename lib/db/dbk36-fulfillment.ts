@@ -4,7 +4,8 @@ import { dbk109NeonAuthorityRequested } from './dbk109-cutover-authority';
 import {neon} from '@neondatabase/serverless';
 import {serverClient} from '@/sanity/lib/serverClient';
 import {getStoreProducts} from '@/sanity/lib/catalog';
-import {packingLines, type PackingProduct} from '@/lib/whatsapp/dbk162-packing';
+import {packingLines} from '@/lib/whatsapp/dbk162-packing';
+import {packingCatalogue} from '@/lib/whatsapp/dbk163-packing-catalogue';
 import {planStockDeduction, validatePaidIntake, type PaidIntake, type ProductSnapshot, type CatalogueProduct} from '@/lib/whatsapp/dbk36-fulfillment-core';
 
 /** This module is intentionally isolated from DBK-51/55/56/62 and never calls M-Pesa.
@@ -61,15 +62,6 @@ async function computePlan(paid:PaidIntake){
   return planStockDeduction(paid,catalogue as unknown as CatalogueProduct[],stock,storeId);
 }
 
-/** Catalogue metadata is display-only; payment snapshot remains authoritative. */
-async function packingCatalogue(snapshots:unknown[]){
-  const ids=[...new Set(snapshots.flatMap(snapshot=>packingLines(snapshot,[]).map(line=>line.productId)))];
-  if(!ids.length)return [];
-  try{return await serverClient.fetch<PackingProduct[]>(`*[_type == 'product' && _id in $ids]{
-    "id":_id,name,sku,"imageUrl":coalesce(heroImage.asset->url,gallery[0].asset->url),
-    variants[]{"id":_key,title,colour,size,sku,"imageUrl":image.asset->url}
-  }`,{ids},{cache:'no-store'});}catch{return [];}
-}
 export async function fulfillmentQueue(){
   const sql=sqlClient();
   const rows=await sql`SELECT p.reference,p.amount_minor,p.intake_status,p.cart_snapshot,

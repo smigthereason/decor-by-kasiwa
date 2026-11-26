@@ -19,11 +19,12 @@ async function authorized(){
 }
 export async function GET(req:NextRequest){try{
   const staff=await authorized();if(!staff)return out({error:'ACCESS_DENIED'},403);
+  if(req.nextUrl.searchParams.get('access')==='1')return out({allowed:true});
   const admin=staff.role==='ADMIN', id=staff.customerId, sql=db();
   const wa=req.nextUrl.searchParams.get('wa');
   if(wa){
     if(!waPattern.test(wa))return out({error:'INVALID_CONVERSATION'},400);
-    const scope=await sql`SELECT wa_id,mode,staff_owner_id,staff_owner_name,reply_lock IS NOT NULL AS busy,last_inbound_at FROM public.dbk36_wa_conversations WHERE wa_id=${wa} AND (${admin} OR staff_owner_id=${id})`;
+    const scope=await sql`SELECT wa_id,mode,staff_owner_id,staff_owner_name,reply_lock IS NOT NULL AS busy,last_inbound_at, (SELECT m.id::text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) AS latest_inbound_id FROM public.dbk36_wa_conversations c WHERE wa_id=${wa} AND (${admin} OR staff_owner_id=${id})`;
     if(!scope.length)return out({error:'ACCESS_DENIED'},403);
     const [messages,cart,orders,audit]=await Promise.all([
       sql`SELECT * FROM (
@@ -39,9 +40,13 @@ export async function GET(req:NextRequest){try{
   }
   const q=(req.nextUrl.searchParams.get('q')||'').slice(0,80);
   const conversations=await sql`SELECT c.wa_id,c.mode,c.staff_owner_id,c.staff_owner_name,c.last_inbound_at,c.reply_lock IS NOT NULL AS busy,
-    (SELECT m.message_text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC LIMIT 1) AS last_message,
+    latest.message_text AS last_message, latest.id AS latest_inbound_id,
+    (latest.id IS NOT NULL AND seen.last_read_message_id IS DISTINCT FROM latest.id) AS unread,
     (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz)) AS needs_reply
-    FROM public.dbk36_wa_conversations c WHERE (${admin} OR c.staff_owner_id=${id}) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0)
+    FROM public.dbk36_wa_conversations c
+    LEFT JOIN LATERAL (SELECT m.id::text AS id,m.message_text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) latest ON true
+    LEFT JOIN public.dbk163_wa_staff_read seen ON seen.wa_id=c.wa_id AND seen.staff_id=${id}
+    WHERE (${admin} OR c.staff_owner_id=${id}) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0)
     ORDER BY (c.mode='human' AND c.staff_owner_id IS NULL) DESC,c.last_inbound_at DESC NULLS LAST LIMIT 100`;
   const eligible=admin?await serverClient.fetch<Array<{_id:string;name:string;role:string}>>(`*[_type=='customerUser' && !(_id in path('drafts.**')) && status=='ACTIVE' && (role=='ADMIN' || (role in ['MANAGER','STORE','STORE_STAFF'] && 'WHATSAPP_SALES' in permissions))] | order(name asc){_id,name,role}`,{}, {cache:'no-store'}):[];
   return out({conversations,eligible,viewer:{id,admin}});
@@ -53,6 +58,15 @@ export async function POST(req:NextRequest){try{
   const body=JSON.parse(raw);const wa=body?.wa;
   if(typeof wa!=='string'||!waPattern.test(wa))return out({error:'INVALID_CONVERSATION'},400);
   const admin=staff.role==='ADMIN', id=staff.customerId, sql=db();
+  if(body.action==='read'){
+    if(typeof body.messageId!=='string'||!body.messageId||body.messageId.length>180)return out({error:'INVALID_READ_MARKER'},400);
+    // Only mark the latest inbound message that the authorized viewer actually opened.
+    const marked=await sql`INSERT INTO public.dbk163_wa_staff_read(wa_id,staff_id,last_read_message_id)
+      SELECT c.wa_id,${id},${body.messageId} FROM public.dbk36_wa_conversations c
+      WHERE c.wa_id=${wa} AND (${admin} OR c.staff_owner_id=${id}) AND ${body.messageId}=(SELECT m.id::text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1)
+      ON CONFLICT(wa_id,staff_id) DO UPDATE SET last_read_message_id=EXCLUDED.last_read_message_id,updated_at=now() RETURNING wa_id`;
+    return out({ok:true,marked:marked.length===1});
+  }
   if(body.action==='assign'){
     if(!admin)return out({error:'ADMIN_REQUIRED'},403);
     const owner=typeof body.owner==='string'?await getCustomerByDocumentId(body.owner):null;

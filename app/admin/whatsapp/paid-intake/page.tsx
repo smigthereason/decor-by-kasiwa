@@ -1,5 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
+import WhatsAppPackingItems from '@/components/backoffice/WhatsAppPackingItems';
+import type {PackingLine} from '@/lib/whatsapp/dbk162-packing';
 
 type Intake={reference:string;amount_minor:number;intake_status:string;created_at:string;receipt_last4:string;customer_last4:string};
 type Pending={reference:string;amount_kes:number;paid_at:string;receipt_last4:string;customer_last4:string};
@@ -72,7 +74,7 @@ function LegacyIntake(){
 
 type ProductionPayment={reference:string;amount_minor:number;intake_status:string;paid_at:string;
   verification_mode:string;receipt_last4?:string;receipt?:string;payment_status:string|null;
-  payment_stock_state:string|null;fulfillment_stock_state:string|null;fulfillment_state:string|null;order_id:string|null};
+  payment_stock_state:string|null;fulfillment_stock_state:string|null;fulfillment_state:string|null;order_id:string|null;items?:PackingLine[]};
 const productionApi='/api/backoffice/whatsapp/paid-intake';
 export default function WhatsAppPaidIntakePage(){
   const [orders,setOrders]=useState<ProductionPayment[]>([]),[reference,setReference]=useState(''),[amount,setAmount]=useState('');
@@ -104,7 +106,7 @@ export default function WhatsAppPaidIntakePage(){
         <button disabled={busy||!reference||!amount} className="self-end rounded-lg bg-neutral-950 px-4 py-3 text-white disabled:opacity-40">{busy?'Finding…':'Find verified payment'}</button>
       </form>
       {found&&<div className="space-y-3 rounded-lg border p-4"><h3 className="font-semibold">{found.reference} · {money(found.amount_minor)}</h3>
-        <p className="text-sm">Till receipt: <strong>{found.receipt}</strong></p><p className="text-sm">Verification: {found.verification_mode==='daraja_api_verified'?'Daraja verified':'Staff Till attested'}</p>
+        <WhatsAppPackingItems items={found.items}/><p className="text-sm">Till receipt: <strong>{found.receipt}</strong></p><p className="text-sm">Verification: {found.verification_mode==='daraja_api_verified'?'Daraja verified':'Staff Till attested'}</p>
         <p className="text-sm">Stock: {stock(found)} · Fulfilment: {found.fulfillment_state||'Awaiting review'}</p>
         <p className="text-sm text-neutral-600">Already recorded. Do not record or charge again.</p>
         <a className="inline-block rounded border px-3 py-2 text-sm" href="/admin/whatsapp/paid-intake/fulfillment">Review fulfilment</a>
@@ -113,7 +115,7 @@ export default function WhatsAppPaidIntakePage(){
     </section>
     <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Latest recorded production payments</h2><button disabled={busy} onClick={()=>{setError('');void refresh().catch(e=>setError(e.message));}} className="rounded border px-3 py-2">Refresh</button></div>
-      <div className="overflow-x-auto"><table className="mt-3 w-full text-left text-sm"><thead><tr>{['Reference','Amount','Till receipt','Verification','Stock','Action'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{orders.map(o=><tr key={o.reference} className="border-t"><td className="p-2">{o.reference}</td><td className="p-2">{money(o.amount_minor)}</td><td className="p-2">••••{o.receipt_last4}</td><td className="p-2">{o.verification_mode==='daraja_api_verified'?'Daraja verified':'Staff Till attested'}</td><td className="p-2">{stock(o)}</td><td className="p-2"><button disabled={busy} className="rounded border px-2 py-1" onClick={()=>{const k=String(Number(o.amount_minor)/100);setReference(o.reference);setAmount(k);void lookup(o.reference,k);}}>View receipt</button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="mt-3 w-full text-left text-sm"><thead><tr>{['Reference','Products','Amount','Till receipt','Verification','Stock','Action'].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>{orders.map(o=><tr key={o.reference} className="border-t"><td className="p-2">{o.reference}</td><td className="p-2 min-w-[180px]"><WhatsAppPackingItems items={o.items} compact/></td><td className="p-2">{money(o.amount_minor)}</td><td className="p-2">••••{o.receipt_last4}</td><td className="p-2">{o.verification_mode==='daraja_api_verified'?'Daraja verified':'Staff Till attested'}</td><td className="p-2">{stock(o)}</td><td className="p-2"><button disabled={busy} className="rounded border px-2 py-1" onClick={()=>{const k=String(Number(o.amount_minor)/100);setReference(o.reference);setAmount(k);void lookup(o.reference,k);}}>View receipt</button></td></tr>)}</tbody></table></div>
       {!orders.length&&!error&&<p className="mt-3 text-sm text-neutral-500">No recorded payments returned.</p>}
     </section>
     <button className="rounded border px-3 py-2 text-sm" onClick={()=>setLegacy(v=>!v)}>{legacy?'Hide legacy staging intake':'Legacy staging intake (historical payments only)'}</button>
