@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getStoreProducts } from '@/sanity/lib/catalog';
+import { whatsappPromotionCatalogue } from '@/lib/product-pricing';
 import { compareAuthoritativeQuote, validateQuoteRequest } from '@/lib/whatsapp/dbk36-stock-check-core';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -35,7 +36,7 @@ export async function POST(req:Request) {
     const stock=await getStoreProducts('pos',storeId);
     // Single uncached authenticated POS read: products must also be ecommerce-enabled.
     // Prevent stale 10-second storefront CDN prices from authorizing a charge.
-    const valid=compareAuthoritativeQuote(quote,stock,stock);
+    const valid=compareAuthoritativeQuote(quote,whatsappPromotionCatalogue(stock),stock);
     return NextResponse.json({valid,reference:quote.reference,amountKes:quote.amountKes,
       availability:valid?'available':'unavailable',stockReserved:false},{headers});
   }catch{

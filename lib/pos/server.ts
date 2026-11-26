@@ -16,6 +16,7 @@ import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { configuredBulkPromotion } from "@/lib/dbk164-promotion-server";
 import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
 import {
@@ -456,7 +457,7 @@ async function buildLines(cart: PosCartLine[], seller: PosSeller, options: { sto
       size: line.size || variant?.size,
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
-      unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
+      unitPrice: getQuantityUnitPrice({...product, bulkPromotion: configuredBulkPromotion()}, line.quantity, variant?.price),
       unitCost: Math.max(0, Number(product.procurementCost || 0)),
     };
   });

@@ -68,6 +68,8 @@ export type StoreProduct = {
   newArrival?: boolean;
   bestSeller?: boolean;
   onSale?: boolean;
+  individualSaleEnabled?: boolean;
+  bulkPromotion?: import("@/lib/product-pricing").BulkPromotion;
   salePrice?: number;
   saleStartAt?: string;
   saleEndAt?: string;

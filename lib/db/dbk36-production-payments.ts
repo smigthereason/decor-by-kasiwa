@@ -1,6 +1,7 @@
 import 'server-only';
 import {neon} from '@neondatabase/serverless';
 import {getStoreProducts} from '@/sanity/lib/catalog';
+import {whatsappPromotionCatalogue} from '@/lib/product-pricing';
 import {compareAuthoritativeQuote} from '@/lib/whatsapp/dbk36-stock-check-core';
 import {callbackMetadata,darajaTransactionDate,queryDarajaStkStatus,
   type DarajaStkCallbackPayload} from '@/lib/whatsapp/dbk36-production-daraja';
@@ -66,7 +67,7 @@ export async function createProductionCheckout(raw:unknown){
   const lines=input.cart.map(x=>({productId:x.productId,variantId:x.variantId,
     quantity:x.quantity,subtotal:x.subtotalMinor/100}));
   if(lines.some(x=>!Number.isSafeInteger(x.subtotal))||!compareAuthoritativeQuote(
-    {reference:input.reference,amountKes:input.amountKes,lines},catalogue,storeStock))
+    {reference:input.reference,amountKes:input.amountKes,lines},whatsappPromotionCatalogue(catalogue),storeStock))
     throw new Error('LIVE_STORE_PRICE_OR_STOCK_NOT_VERIFIED');
   const sql=db();
   await sql`UPDATE public.dbk36_wa_prod_payment_orders
@@ -134,7 +135,7 @@ export async function payProductionCheckout(waId:string){
   const lines=parsed.cart.map(x=>({productId:x.productId,variantId:x.variantId,
     quantity:x.quantity,subtotal:x.subtotalMinor/100}));
   if(lines.some(x=>!Number.isSafeInteger(x.subtotal))||!compareAuthoritativeQuote(
-    {reference,amountKes:amount,lines},catalogue,storeStock))
+    {reference,amountKes:amount,lines},whatsappPromotionCatalogue(catalogue),storeStock))
     throw new Error('LIVE_STOCK_CHANGED_NO_CHARGE');
   const sql=db();
   const claims=await sql`UPDATE public.dbk36_wa_prod_payment_orders

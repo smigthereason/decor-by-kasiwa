@@ -15,6 +15,7 @@ import { serverClient } from "@/sanity/lib/serverClient";
 import { getMainStore } from "@/lib/stores/main-store";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { getQuantityUnitPrice } from "@/lib/product-pricing";
+import { configuredBulkPromotion } from "@/lib/dbk164-promotion-server";
 import { getDeliveryZoneById } from "@/lib/shipping-server";
 import { sendOrderConfirmationEmail } from "@/lib/order-email";
 import { createShortOrderNumber } from "@/lib/order-number";
@@ -448,7 +449,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreI
       size: line.size || variant?.size,
       variantId: line.variantId || variant?._key,
       quantity: line.quantity,
-      unitPrice: getQuantityUnitPrice(product, line.quantity, variant?.price),
+      unitPrice: getQuantityUnitPrice({...product, bulkPromotion: configuredBulkPromotion()}, line.quantity, variant?.price),
       unitCost: Math.max(0, Number(product.procurementCost || 0)),
     };
   });
