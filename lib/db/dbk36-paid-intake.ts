@@ -15,16 +15,20 @@ function checkedUrl(raw:string|undefined,host:string):string {
     throw new Error('DATABASE_PIN_MISMATCH');
   return raw;
 }
-function dbs() {
+function mainDb() {
   // Does NOT require or modify DBK62 cutover. This writes only its own intake table.
   if (process.env.VERCEL_ENV!=='production' ||
       process.env.DBK36_WA_PAID_INTAKE_ENABLED!=='YES' ||
       process.env.DBK36_STAGING_WORKER==='YES') throw new Error('PAID_INTAKE_DISABLED');
+  return neon(checkedUrl(process.env.DATABASE_URL,MAIN_HOST));
+}
+function dbs() {
+  const main=mainDb();
   const reader=checkedUrl(process.env.DBK36_WA_STAGING_READONLY_URL,STAGE_HOST);
   if (decodeURIComponent(new URL(reader).username)!=='dbk36_paid_intake_sql_reader')
     throw new Error('STAGING_READER_ROLE_MISMATCH');
   return {
-    main:neon(checkedUrl(process.env.DATABASE_URL,MAIN_HOST)),
+    main,
     stage:neon(reader),
   };
 }
@@ -125,4 +129,36 @@ export async function recordWhatsAppPaidIntake(input: {
   const value=result[0]?.value as {reference?:string;status?:string;replayed?:boolean}|undefined;
   if (!value || value.reference!==input.reference || !value.status) throw new Error('PRODUCTION_INTAKE_UNCONFIRMED');
   return {...value,stockDeducted:false,requiresStaffStockReview:true};
+}
+
+// DBK161: production reads must not depend on the retired staging reader.
+export async function listProductionWhatsAppPayments() {
+  const sql=mainDb();
+  const orders=await sql`SELECT i.reference,i.amount_minor,i.intake_status,i.paid_at,
+    i.verification_mode,right(i.provider_receipt,4) AS receipt_last4,
+    o.status AS payment_status,o.stock_state AS payment_stock_state,
+    f.order_id,f.stock_state AS fulfillment_stock_state,f.fulfillment_state
+    FROM public.dbk36_wa_paid_intake i
+    LEFT JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=i.reference
+    LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=i.reference
+    ORDER BY i.paid_at DESC LIMIT 100`;
+  return {orders,source:'PRODUCTION_NEON'};
+}
+export async function lookupProductionWhatsAppPayment(reference:string,amountKes:number) {
+  if(!REF.test(reference)||!Number.isSafeInteger(amountKes)||amountKes<1||!Number.isSafeInteger(amountKes*100))
+    throw new Error('INVALID_PAYMENT_LOOKUP');
+  const sql=mainDb();
+  const rows=await sql`SELECT i.reference,i.amount_minor,i.provider_receipt AS receipt,
+    i.paid_at,i.intake_status,i.verification_mode,o.status AS payment_status,
+    o.stock_state AS payment_stock_state,f.order_id,f.stock_state AS fulfillment_stock_state,
+    f.fulfillment_state
+    FROM public.dbk36_wa_paid_intake i
+    LEFT JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=i.reference
+    LEFT JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=i.reference
+    WHERE i.reference=${reference} AND i.amount_minor=${amountKes*100}
+      AND (i.verification_mode='staff_till_attested' OR
+        (i.verification_mode='daraja_api_verified' AND o.status='paid'
+         AND o.receipt=i.provider_receipt AND o.checkout_id=i.checkout_id
+         AND o.amount_kes::bigint*100=i.amount_minor AND o.paid_at IS NOT NULL)) LIMIT 1`;
+  return rows[0]||null;
 }

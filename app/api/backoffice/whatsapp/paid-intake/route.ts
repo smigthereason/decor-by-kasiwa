@@ -1,6 +1,6 @@
 import { NextRequest,NextResponse } from 'next/server';
 import {getApiStaff} from '@/lib/auth/api-authorization';
-import {listRecordedWhatsAppIntakes,recordWhatsAppPaidIntake} from '@/lib/db/dbk36-paid-intake';
+import {listRecordedWhatsAppIntakes,recordWhatsAppPaidIntake,listProductionWhatsAppPayments,lookupProductionWhatsAppPayment} from '@/lib/db/dbk36-paid-intake';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'};
@@ -8,10 +8,22 @@ const error=(e:unknown)=>{
   const s=e instanceof Error?e.message:'PAID_INTAKE_UNAVAILABLE';
   return /^[A-Z0-9_]{3,90}$/.test(s)?s:'PAID_INTAKE_UNAVAILABLE';
 };
-export async function GET() {
+export async function GET(req:NextRequest) {
   const staff=await getApiStaff(['ADMIN']);
   if (!staff.ok) return NextResponse.json({error:'ACCESS_DENIED'},{status:staff.status,headers});
-  try {return NextResponse.json(await listRecordedWhatsAppIntakes(),{headers});}
+  try {
+    const q=req.nextUrl.searchParams;
+    if(q.get('legacy')==='1')return NextResponse.json(await listRecordedWhatsAppIntakes(),{headers});
+    if(q.has('reference')||q.has('amount')){
+      const reference=(q.get('reference')||'').trim().toUpperCase();
+      const amount=Number(q.get('amount'));
+      if(!/^DBKWA[A-Z0-9]{7}$/.test(reference)||!Number.isSafeInteger(amount)||amount<1||!Number.isSafeInteger(amount*100))
+        return NextResponse.json({error:'INVALID_PAYMENT_LOOKUP'},{status:400,headers});
+      const payment=await lookupProductionWhatsAppPayment(reference,amount);
+      return NextResponse.json(payment?{payment}:{error:'VERIFIED_PAYMENT_NOT_FOUND'},{status:payment?200:404,headers});
+    }
+    return NextResponse.json(await listProductionWhatsAppPayments(),{headers});
+  }
   catch(e){return NextResponse.json({error:error(e)},{status:503,headers});}
 }
 export async function POST(req:NextRequest) {
