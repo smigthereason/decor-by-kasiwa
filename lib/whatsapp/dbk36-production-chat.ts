@@ -106,7 +106,7 @@ export async function handleProductionChat(waId:string,rawText:string):Promise<A
   if(bsuidOnly&&['CHECKOUT','CHECK OUT','PICKUP','PAY','PAYMENT STATUS','MY ORDERS',
     'CANCEL CHECKOUT'].includes(cmd))
     return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
-  if(/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)){
+  if(/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)||/^(?:CAN I|COULD I|MAY I|I WANT TO|I'D LIKE TO) (?:SPEAK|TALK) (?:TO|WITH) (?:A |THE )?(?:HUMAN|PERSON|STAFF|TEAM|SALES PERSON|AGENT|SOMEONE)$/.test(cmd)){
     await db`UPDATE public.dbk36_wa_conversations SET mode='human',updated_at=now() WHERE wa_id=${waId}`;
     return reply('I’ve flagged this conversation for our team. They can assist you from here.');
   }

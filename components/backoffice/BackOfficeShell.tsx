@@ -63,6 +63,7 @@ const adminNavigation: NavigationItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Point of Sale", href: "/admin/pos", icon: ShoppingCart },
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
+  { label: "WhatsApp Centre", href: "/admin/whatsapp/inbox", icon: MessageCircle },
   { label: "WhatsApp Paid Orders", href: "/admin/whatsapp/paid-intake", icon: MessageCircle },
   { label: "WhatsApp Fulfillment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
   { label: "AI Shopping Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
@@ -83,6 +84,7 @@ const adminNavigation: NavigationItem[] = [
 const storeManagerNavigation: NavigationItem[] = [
   { label: "Store Overview", href: "/store", icon: Warehouse },
   { label: "WhatsApp Sales", href: "/store/whatsapp", icon: MessageCircle },
+  { label: "WhatsApp Centre", href: "/store/whatsapp/inbox", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
@@ -98,6 +100,7 @@ const storeManagerNavigation: NavigationItem[] = [
 const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
   { label: "WhatsApp Sales", href: "/store/whatsapp", icon: MessageCircle },
+  { label: "WhatsApp Centre", href: "/store/whatsapp/inbox", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
   { label: "Products", href: "/store/products", icon: Boxes },

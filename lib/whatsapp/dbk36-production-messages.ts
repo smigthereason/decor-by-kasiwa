@@ -25,11 +25,14 @@ export async function recordProductionWhatsAppInbound(raw:unknown){
       if(!(phone.test(wa)||bsuid.test(wa))||!/^wamid\.[\w:=+/.-]{8,200}$/.test(messageId))continue;
       const txt=String(m.text?.body||m.interactive?.button_reply?.title||m.interactive?.list_reply?.title||'').trim().slice(0,500);
       if(!txt)continue;
-      await sql`INSERT INTO public.dbk36_wa_conversations(wa_id,last_inbound_at)
+      // The upsert locks this conversation until the message is inserted. Inbound
+      // messages during staff ownership are recorded, never queued for a later AI reply.
+      const result=await sql`WITH conversation AS (
+        INSERT INTO public.dbk36_wa_conversations(wa_id,last_inbound_at)
         VALUES(${wa},now()) ON CONFLICT(wa_id) DO UPDATE
-        SET last_inbound_at=now(),updated_at=now()`;
-      const result=await sql`INSERT INTO public.dbk36_wa_messages(wa_id,provider_message_id,direction,message_type,message_text,status)
-        VALUES(${wa},${messageId},'in','text',${txt},'pending')
+        SET last_inbound_at=now(),updated_at=now() RETURNING wa_id,mode)
+        INSERT INTO public.dbk36_wa_messages(wa_id,provider_message_id,direction,message_type,message_text,status)
+        SELECT wa_id,${messageId},'in','text',${txt},CASE WHEN mode='human' THEN 'done' ELSE 'pending' END FROM conversation
         ON CONFLICT(provider_message_id) DO NOTHING RETURNING id`;
       accepted+=result.length;
     }
@@ -50,26 +53,53 @@ async function sendThroughDedicatedWorker(waId:string,text:string,imageUrl?:stri
   if(!result.ok){console.warn('DBK156_OUTBOUND_REJECTED',{kind:imageUrl?'image':'text',status:result.status});throw new Error('META_OUTBOUND_UNCONFIRMED_MANUAL_REVIEW');}
   if(imageUrl)console.info('DBK156_MEDIA_ACCEPTED');
 }
+/** Persist the attempt BEFORE calling Meta. Never replay an uncertain send. */
+export async function sendRecordedWhatsApp(wa:string,id:string,actorId:string,actorName:string,text:string,imageUrl?:string){
+  const sql=db();
+  const created=await sql`INSERT INTO public.dbk159_wa_outbound(request_id,wa_id,actor_id,actor_name,message_text,image_url,status)
+    VALUES(${id},${wa},${actorId},${actorName},${text},${imageUrl||null},'sending') ON CONFLICT(request_id) DO NOTHING RETURNING request_id`;
+  if(!created.length)throw new Error('MESSAGE_ALREADY_ATTEMPTED');
+  await deliverRecordedWhatsApp(wa,id,text,imageUrl);
+}
+/** Caller must own the durable conversation reply lock and have inserted the attempt. */
+export async function deliverRecordedWhatsApp(wa:string,id:string,text:string,imageUrl?:string){
+  const sql=db();
+  try{
+    await sendThroughDedicatedWorker(wa,text,imageUrl);
+    await sql`UPDATE public.dbk159_wa_outbound SET status='accepted',updated_at=now() WHERE request_id=${id} AND status='sending'`;
+  }catch(error){
+    await sql`UPDATE public.dbk159_wa_outbound SET status='uncertain',updated_at=now() WHERE request_id=${id} AND status='sending'`;
+    throw error;
+  }
+}
 /** At most one attempted send per unique inbound message. Uncertain Meta
  * delivery is REVIEW, not automatic replay, to avoid duplicate replies/PAY. */
 export async function processProductionWhatsAppQueue(limit=3){
   if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES')throw new Error('PRODUCTION_CHAT_DISABLED');
   const sql=db();const out:{processed:number;review:number}={processed:0,review:0};
   for(let n=0;n<Math.max(1,Math.min(5,limit));n++){
+    // Claim the conversation and its earliest pending message atomically. No staff
+    // assignment can slip between claiming the inbound event and the AI send.
     const items=await sql`WITH next AS (
-      SELECT id FROM public.dbk36_wa_messages
-      WHERE direction='in' AND status='pending' AND next_attempt_at<=now()
-      ORDER BY created_at ASC FOR UPDATE SKIP LOCKED LIMIT 1)
+      SELECT m.id,m.wa_id FROM public.dbk36_wa_messages m JOIN public.dbk36_wa_conversations c ON c.wa_id=m.wa_id
+      WHERE m.direction='in' AND m.status='pending' AND m.next_attempt_at<=now() AND c.reply_lock IS NULL
+      AND NOT EXISTS(SELECT 1 FROM public.dbk36_wa_messages earlier WHERE earlier.wa_id=m.wa_id AND earlier.direction='in' AND earlier.status IN ('pending','processing') AND (earlier.created_at,earlier.id)<(m.created_at,m.id))
+      ORDER BY m.created_at ASC,m.id ASC FOR UPDATE OF c,m SKIP LOCKED LIMIT 1),
+      locked AS (UPDATE public.dbk36_wa_conversations c SET reply_lock='ai:'||next.id::text,reply_locked_at=now()
+        FROM next WHERE c.wa_id=next.wa_id AND c.reply_lock IS NULL RETURNING c.wa_id,c.mode,c.reply_lock,next.id)
       UPDATE public.dbk36_wa_messages AS m
       SET status='processing',attempts=m.attempts+1,claimed_at=now(),updated_at=now()
-      FROM next WHERE m.id=next.id RETURNING m.id,m.wa_id,m.message_text`;
+      FROM locked WHERE m.id=locked.id RETURNING m.id,m.wa_id,m.message_text,locked.mode,locked.reply_lock`;
     if(!items.length)break;
-    const m=items[0];const id=String(m.id),wa=String(m.wa_id);
+    const m=items[0];const id=String(m.id),wa=String(m.wa_id),lock=String(m.reply_lock);
     try{
-      const answer=await handleProductionChat(wa,String(m.message_text));
-      await sendThroughDedicatedWorker(wa,answer.reply);
-      // Text first so product names/prices remain visible if Meta rejects media. Never replay a partially delivered response.
-      for(const image of (answer.images||[]).slice(0,3))await sendThroughDedicatedWorker(wa,image.caption,image.url);
+      // A human-owned conversation remains silent until staff explicitly resumes AI.
+      if(m.mode==='bot'){
+        const answer=await handleProductionChat(wa,String(m.message_text));
+        await sendRecordedWhatsApp(wa,lock+':0','AI','Kasiwa AI',answer.reply);
+        let index=0;
+        for(const image of (answer.images||[]).slice(0,3))await sendRecordedWhatsApp(wa,lock+':'+(++index),'AI','Kasiwa AI',image.caption,image.url);
+      }
       await sql`UPDATE public.dbk36_wa_messages SET status='done',updated_at=now() WHERE id=${id}::uuid AND status='processing'`;
       out.processed++;
     }catch{
@@ -77,6 +107,8 @@ export async function processProductionWhatsAppQueue(limit=3){
         SET status='failed',last_error='PRODUCTION_MESSAGE_REQUIRES_REVIEW',updated_at=now()
         WHERE id=${id}::uuid AND status='processing'`;
       out.review++;
+    }finally{
+      await sql`UPDATE public.dbk36_wa_conversations SET reply_lock=NULL,reply_locked_at=NULL WHERE wa_id=${wa} AND reply_lock=${lock}`;
     }
   }
   return out;
