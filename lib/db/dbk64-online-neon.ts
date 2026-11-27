@@ -53,6 +53,42 @@ export type DBK64CheckoutSnapshot = {
 };
 
 
+/** DBK174: preflight every exact SKU at the actual checkout store before taking money.
+ * This is a current-stock check, not a reservation; settlement must still handle races. */
+export async function dbk64AssertCheckoutStock(storeId: string, lines: Array<{
+  productId: string; variantId?: string; quantity: number; name: string;
+}>) {
+  if (process.env.DBK_INVENTORY_BACKEND !== 'neon' || !storeId || storeId === '__UNALLOCATED__' ||
+      !lines.length || lines.length > 100) throw new Error('Online checkout inventory is unavailable.');
+  const required = new Map<string, { productId: string; variantId: string; quantity: number; name: string }>();
+  for (const line of lines) {
+    const variantId = line.variantId || '';
+    if (!line.productId || variantId === '__UNALLOCATED_VARIANT__' ||
+        !Number.isSafeInteger(line.quantity) || line.quantity <= 0) throw new Error('Invalid online stock line.');
+    const key = JSON.stringify([line.productId, variantId]);
+    const quantity = (required.get(key)?.quantity || 0) + line.quantity;
+    if (!Number.isSafeInteger(quantity) || quantity > 2147483647) throw new Error('Invalid online stock quantity.');
+    required.set(key, { productId: line.productId, variantId, quantity, name: line.name });
+  }
+  const sql = getSql('create');
+  const rows = await sql`SELECT r."productId" AS product_id, r."variantId" AS variant_id,
+    b.on_hand FROM jsonb_to_recordset(${JSON.stringify([...required.values()].map(({productId,variantId,quantity})=>({productId,variantId,quantity})))}::jsonb)
+    AS r("productId" text, "variantId" text, quantity integer)
+    LEFT JOIN public.dbk51_stock_balances b ON b.product_id=r."productId"
+      AND b.variant_id=r."variantId" AND b.location_id=${storeId}`;
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.product_id,row.variant_id]);
+    const item = required.get(key);
+    if (!item || seen.has(key)) throw new Error('Online checkout inventory is unavailable.');
+    seen.add(key);
+    const available = row.on_hand == null ? 0 : Number(row.on_hand);
+    if (!Number.isSafeInteger(available) || available < 0) throw new Error('Online checkout inventory is unavailable.');
+    if (available < item.quantity) throw new Error(`${item.name} has only ${available} units available at our online fulfilment store. Please adjust your bag or contact our sales team.`);
+  }
+  if (seen.size !== required.size) throw new Error('Online checkout inventory is unavailable.');
+}
+
 /** DBK135: concurrency-safe, database-owned public order number; requires the verified annual seed. */
 export async function dbk135NextOnlineOrderNumber(): Promise<string> {
   const sql = getSql('create');

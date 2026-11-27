@@ -1,4 +1,3 @@
-import { dbk69InventoryEnabled, dbk69ProductBalances } from "@/lib/db/dbk69-inventory-neon";
 import { dbk109NeonAuthorityRequested } from '@/lib/db/dbk109-cutover-authority';
 import "server-only";
 
@@ -21,7 +20,7 @@ import { sendOrderConfirmationEmail } from "@/lib/order-email";
 import { createShortOrderNumber } from "@/lib/order-number";
 import { workflowForProducts } from "@/lib/operations/workflow";
 import {
-  dbk64OnlineRequested, dbk64CreatePending, dbk64MarkInitFailed,
+  dbk64OnlineRequested, dbk64AssertCheckoutStock, dbk64CreatePending, dbk64MarkInitFailed,
   dbk135NextOnlineOrderNumber, dbk64GetPending, dbk64RecordVerifiedPayment,
   type DBK64CheckoutSnapshot,
 } from "@/lib/db/dbk64-online-neon";
@@ -363,20 +362,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreI
   const normalizedCart = normalizeCart(cart);
   const productIds = [...new Set(normalizedCart.map((line) => line.productId))];
   const products = await fetchCheckoutProducts(productIds);
-  // For explicitly converted products, catalogue quantities are not authoritative.
-  // Validate availability at the checkout's actual fulfilment store, not OTC/company totals.
-  if (dbk64OnlineRequested() && dbk69InventoryEnabled()) {
-    await Promise.all(products.filter(p=>p.variantAllocationManaged && p.available!==false && p.ecommerceEnabled!==false).map(async p=>{
-      const rows=await dbk69ProductBalances(p._id);
-      for(const v of p.variants||[]) {
-        const qty=rows.filter(r=>r.location_id===mainStoreId && r.variant_id===v._key).reduce((n,r)=>n+Number(r.on_hand),0);
-        if(!Number.isSafeInteger(qty)||qty<0) throw new Error('Invalid live variant stock.');
-        v.stockQuantity=qty;
-        const requested=normalizedCart.filter(l=>l.productId===p._id && l.variantId===v._key).reduce((n,l)=>n+l.quantity,0);
-        if(requested>qty) throw new Error(`${p.name || 'Product'} has only ${qty} units of this variant available for online purchase.`);
-      }
-    }));
-  }
+  const neonCheckout = dbk64OnlineRequested();
   const byId = new Map(products.map((product) => [product._id, product]));
 
   const lineItems: PendingOrderLine[] = normalizedCart.map((line, index) => {
@@ -396,7 +382,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreI
 
     const variantProduct = hasVariants(product.variants);
     if (
-      !variantProduct &&
+      !neonCheckout && !variantProduct &&
       typeof product.initialStock === "number" &&
       product.initialStock < line.quantity
     ) {
@@ -418,14 +404,14 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreI
       ? product.variants?.find((item) => item._key === line.variantId)
       : undefined;
 
-    if (variantProduct && !variant) {
+    if ((variantProduct || (neonCheckout && line.variantId)) && !variant) {
       throw new Error(`${product.name || "A product"} selected variant is no longer available.`);
     }
     if (variant && variant.retired === true) {
       throw new Error(`${product.name || "A product"} variant has been removed from online sales. Refresh your bag.`);
     }
 
-    if (variantProduct && variant) {
+    if (!neonCheckout && variantProduct && variant) {
       const availableVariantStock = Number(variant.stockQuantity);
       const variantName = variant.title?.trim() || variant.colour?.trim() || variant.size?.trim() || "selected variant";
 
@@ -454,6 +440,7 @@ async function buildAuthoritativeOrderLines(cart: CheckoutCartLine[], mainStoreI
     };
   });
 
+  if (neonCheckout) await dbk64AssertCheckoutStock(mainStoreId, lineItems);
   return { lineItems, products };
 }
 
