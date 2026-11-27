@@ -26,12 +26,13 @@ export function wantsSelectedPurchase(text:string):boolean{
 }
 export const DELIVERY_QUESTION='Where should we deliver? Please tell me your town or area and county, e.g. Kikuyu, Kiambu.';
 export const counties='Baringo|Bomet|Bungoma|Busia|Elgeyo Marakwet|Embu|Garissa|Homa Bay|Isiolo|Kajiado|Kakamega|Kericho|Kiambu|Kilifi|Kirinyaga|Kisii|Kisumu|Kitui|Kwale|Laikipia|Lamu|Machakos|Makueni|Mandera|Marsabit|Meru|Migori|Mombasa|Muranga|Nairobi|Nakuru|Nandi|Narok|Nyamira|Nyandarua|Nyeri|Samburu|Siaya|Taita Taveta|Tana River|Tharaka Nithi|Trans Nzoia|Turkana|Uasin Gishu|Vihiga|Wajir|West Pokot'.split('|');
-const key=(v:string)=>norm(v).replace(/[-']/g,' ').replace(/\s+/g,' ').trim();
-const townMap:Record<string,string>={chuka:'Tharaka Nithi',chogoria:'Tharaka Nithi',thika:'Kiambu',ruiru:'Kiambu',kikuyu:'Kiambu',juja:'Kiambu',limuru:'Kiambu',kitengela:'Kajiado',ngong:'Kajiado','ongata rongai':'Kajiado',eldoret:'Uasin Gishu',kitale:'Trans Nzoia',naivasha:'Nakuru',nanyuki:'Laikipia',malindi:'Kilifi',watamu:'Kilifi',voi:'Taita Taveta',diani:'Kwale',mwatate:'Taita Taveta',kerugoya:'Kirinyaga',karatina:'Nyeri',wote:'Makueni',ithanga:'Muranga',migori:'Migori',bondo:'Siaya',maua:'Meru',mwingi:'Kitui'};
+const key=(v:string)=>norm(v).replace(/'/g,'').replace(/-/g,' ').replace(/\s+/g,' ').trim();
+// County headquarters cross-checked against county lists; no guess for Thika.
+const townMap:Record<string,string>={kabarnet:'Baringo',iten:'Elgeyo Marakwet',kerugoya:'Kirinyaga',hola:'Tana River',wundanyi:'Taita Taveta',kathwana:'Tharaka Nithi',lodwar:'Turkana',kapenguria:'West Pokot',maralal:'Samburu',kapsabet:'Nandi',rumuruti:'Laikipia','ol kalou':'Nyandarua',olkalou:'Nyandarua',mbale:'Vihiga',matuu:'Machakos',kithimani:'Machakos',kathiani:'Machakos','nairobi cbd':'Nairobi',chuka:'Tharaka Nithi',chogoria:'Tharaka Nithi',tala:'Machakos',kangundo:'Machakos',ruiru:'Kiambu',kikuyu:'Kiambu',juja:'Kiambu',limuru:'Kiambu',kitengela:'Kajiado',ngong:'Kajiado','ongata rongai':'Kajiado',eldoret:'Uasin Gishu',kitale:'Trans Nzoia',naivasha:'Nakuru',nanyuki:'Laikipia',malindi:'Kilifi',watamu:'Kilifi',voi:'Taita Taveta',diani:'Kwale',mwatate:'Taita Taveta',karatina:'Nyeri',wote:'Makueni',ithanga:'Muranga',migori:'Migori',bondo:'Siaya',maua:'Meru',mwingi:'Kitui'};
 export function knownCounty(location:string):string|undefined{
   const parts=location.split(',').map(x=>x.trim());
-  if(parts.length===2){const explicit=counties.find(c=>key(c)===key(parts[1]).replace(/ county$/,''));if(!explicit)return undefined;const inferred=knownCounty(parts[0]);return inferred&&inferred!==explicit?undefined:explicit;}
-  const k=key(location).replace(/ county$/,'').replace(/^county of /,'');
+  if(parts.length===2){const explicit=counties.find(c=>key(c)===key(parts[1]).replace(/ county$/,'').replace(/^nairobi city$/,'nairobi'));if(!explicit)return undefined;const inferred=knownCounty(parts[0]);return inferred&&inferred!==explicit?undefined:explicit;}
+  const k=key(location).replace(/ county$/,'').replace(/^county of /,'').replace(/^nairobi city$/,'nairobi');
   return counties.find(c=>key(c)===k)||Object.prototype.hasOwnProperty.call(townMap,k)&&townMap[k]||undefined;
 }
 export function deliveryLocation(text:string,awaiting:boolean):string|null{
@@ -39,6 +40,6 @@ export function deliveryLocation(text:string,awaiting:boolean):string|null{
   const m=/^(?:(?:do|can|could|will) you |how much is |what is the cost of |please |i (?:want|would like|need) |i'd like )?(?:deliver(?:y)?|ship(?:ping)?)(?: (?:it|my order))? (?:to|in|at) (.+)$/i.exec(t);
   const referenced=/^(?:i (?:want|need|would like)|nataka) (?:these|those|this|them|hizi|hizo)(?: kindly| please)? (?:delivered|delivery) (?:to|in|at) (.+)$/i.exec(t);
   const located=m?.[1]||referenced?.[1]|| (awaiting?t.replace(/^(?:i(?:'m| am) (?:in|at)|to|in|at|my location is)\s+/i,''):'');
-  if(!located||located.length>70||!/^[\p{L}][\p{L}\s.'’,-]*$/u.test(located)||/\b(?:pay|payment|mpesa|cart|order|yes|no|cancel|staff|hello|thanks|pickup|collect|please|delivery|want|buy|price)\b/i.test(located))return null;
+  if(!located||located.length>70||!/^[\p{L}][\p{L}\s.'’,-]*$/u.test(located)||/\b(?:pay|payment|mpesa|cart|order|yes|no|cancel|staff|hello|thanks|pickup|collect|please|delivery|want|buy|price|search|show|find|products|items|add|remove|clear|checkout|return|refund|open|hours)\b/i.test(located))return null;
   return located.trim();
 }

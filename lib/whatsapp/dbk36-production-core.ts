@@ -33,7 +33,7 @@ export function parseCheckout(input:unknown):{
   return {reference:x.reference as string,waId:x.waId as string,
     amountKes:x.amountKes as number,cart:lines,fulfillment:'pickup'};
 }
-export function matchedProviderProof(order:{wa_id:string;checkout_id:string|null;
+export function matchedProviderProof(order:{wa_id:string;payer_phone?:string|null;checkout_id:string|null;
   merchant_id:string|null;amount_kes:number},cb:{checkoutRequestId:string;
   merchantRequestId:string;resultCode:number;phone?:string;amount?:number;
   receiptNumber?:string;transactionDate?:string},query:{CheckoutRequestID?:string;
@@ -43,7 +43,7 @@ export function matchedProviderProof(order:{wa_id:string;checkout_id:string|null
     order.checkout_id===cb.checkoutRequestId&&query.CheckoutRequestID===order.checkout_id&&
     order.merchant_id===cb.merchantRequestId&&
     (!query.MerchantRequestID||query.MerchantRequestID===order.merchant_id)&&
-    cb.phone===order.wa_id&&cb.amount===Number(order.amount_kes)&&
+    cb.phone===(order.payer_phone??order.wa_id)&&cb.amount===Number(order.amount_kes)&&
     typeof cb.receiptNumber==='string'&&/^[A-Za-z0-9]{6,20}$/.test(cb.receiptNumber)&&
     typeof cb.transactionDate==='string'&&/^\d{14}$/.test(cb.transactionDate);
 }

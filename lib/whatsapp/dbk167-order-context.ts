@@ -55,6 +55,6 @@ export function deliveryChoices(county:string, zones:DeliveryZone[], countyAppro
 export function deliveryMethod(text:string):string|null {
   const t=text.toLowerCase().replace(/[’‘]/g,"'").replace(/[.!]+$/,'').replace(/\s+/g,' ').trim();
   if(text.includes('?')||/\b(?:not|don't|dont|no|how|what|if|price|cost)\b/.test(t))return null;
-  const m=/^(?:(?:i (?:want|prefer|choose|will use|would like)|i'll use|use|send via|via|nataka|please use|please arrange) )?(rider(?: delivery| quote)?|matatu(?: delivery)?|within cbd|outside cbd(?: via matatu)?|long distance matatu)(?: please)?$/.exec(t);
+  const m=/^(?:(?:i (?:want|prefer|choose|will use|would like)|i'll use|use|send via|via|nataka|please use|please arrange) )?(rider(?: delivery| quote)?|standard delivery|county delivery|matatu(?: delivery)?|within cbd|outside cbd(?: via matatu)?|long distance matatu)(?: please)?$/.exec(t);
   return m?.[1]||null;
 }

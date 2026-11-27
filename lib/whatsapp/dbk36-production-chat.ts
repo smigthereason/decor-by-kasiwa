@@ -5,14 +5,14 @@ import {getStoreProducts} from '@/sanity/lib/catalog';
 import {promotionCacheKey} from '../dbk164-promotion-server';
 import {whatsappPromotionPrice,type PriceableProduct} from '../product-pricing';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
-  confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
+  confirmProductionPickup,cancelProductionQuote,selectProductionPayer,suspendProductionPickup} from '@/lib/db/dbk36-production-payments';
 import {cleanError} from './dbk36-production-core';
 import {explicitPaperSizes,relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,purchaseFollowup,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping,suggestDeliveryCounty} from './dbk156-shopping-ai';
 import {checkoutIntent,wantsCheckout,wantsSelectedPurchase,paymentAssent,deliveryLocation,knownCounty,counties,DELIVERY_QUESTION} from './dbk165-checkout-intent';
 import {getPublishedKnowledge} from './dbk155-knowledge';
-import {getActiveDeliveryZones} from '@/lib/shipping-server';
-import {namedOrderRequest,namedOrderCandidates,parseDeliveryContext,deliveryChoices,deliveryMethod} from './dbk167-order-context';
+import {countyDeliveryFee,payerNumber,alternatePayerRequest,PAYER_INPUT,displayPayer,deliveryTiming} from './dbk178-policy';
+import {namedOrderRequest,namedOrderCandidates,parseDeliveryContext,deliveryMethod} from './dbk167-order-context';
 import {cartIntent,cartTarget,CART_CHOICE,paymentStatusIntent,glueSearchPage} from './dbk176-cart-intent';
 import {compareCataloguePhotos,type VisualLookup} from './dbk166-inbound-media';
 import {wantsHuman,frustratedAutomation,wholesaleEnquiry,pointerOnly,NO_MATCH,previousMiss,cleanProductQuery,groupedMatches,visualCatalogueMatches} from './dbk166-sales-recovery';
@@ -125,8 +125,8 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       'PLACE MY ORDER','PROCEED TO CHECKOUT','I WANT TO CHECK OUT'].includes(cmd))cmd='CHECKOUT';
   // A BSUID is not a verified M-PESA phone number. Never let these sessions
   // read/create payment orders, confirm pickup or initiate an STK push.
-  if(bsuidOnly&&['CHECKOUT','CHECK OUT','PICKUP','PAY','PAYMENT STATUS','MY ORDERS',
-    'CANCEL CHECKOUT','PAY_PHONE','PAY_OTHER_PHONE'].includes(cmd))
+  if(bsuidOnly&&(['CHECKOUT','CHECK OUT','PICKUP','PAY','PAYMENT STATUS','MY ORDERS',
+    'CANCEL CHECKOUT','PAY_PHONE','PAY_OTHER_PHONE'].includes(cmd)||(!visual&&alternatePayerRequest(text))))
     return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
   if(!visual&&(wantsHuman(text)||/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)||/^(?:CAN I|COULD I|MAY I|I WANT TO|I'D LIKE TO) (?:SPEAK|TALK) (?:TO|WITH) (?:A |THE )?(?:HUMAN|PERSON|STAFF|TEAM|SALES PERSON|AGENT|SOMEONE)$/.test(cmd))){
     await db`UPDATE public.dbk36_wa_conversations SET mode='human',updated_at=now() WHERE wa_id=${waId}`;
@@ -154,11 +154,12 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     const history=await db`SELECT id FROM public.dbk36_wa_messages WHERE wa_id=${waId} AND direction='in' AND status='done' LIMIT 1`;
     return reply(history.length?"Hi again! What can I help you find today?":"Hi, I am Kasiwa, your shopping assistant at Decor By Kasiwa! 😊 What are you looking for today?");
   }
-  if(cmd==='PAY'&&(/[?]/.test(text)||/\b(?:do not|don't|never|cancel|stop)\b/i.test(text)))return reply('I can send a prompt after you confirm your order and collection. No payment has been requested.');
-  if(cmd==='PAY_OTHER_PHONE')return reply('For security, automated M-PESA prompts can only go to the phone number you are chatting from. Would you like to use that number or speak to our team? No payment has been requested.');
+  if(cmd==='PAY'&&(/[?]/.test(text)||/\b(?:do not|don't|never|cancel|stop)\b/i.test(text)))return reply('I can send a prompt after you confirm your order and collection. No new payment has been requested.');
+  let cachedPreviousReply:string|undefined;
   const previousReply=async()=>{
+    if(cachedPreviousReply!==undefined)return cachedPreviousReply;
     try{const rows=await db`SELECT message_text FROM public.dbk159_wa_outbound WHERE wa_id=${waId} AND actor_id='AI' AND status='accepted' AND image_url IS NULL AND created_at>now()-interval '15 minutes' ORDER BY created_at DESC,request_id DESC LIMIT 1`;
-    return String(rows[0]?.message_text||'');}catch{return '';}
+    return cachedPreviousReply=String(rows[0]?.message_text||'');}catch{return cachedPreviousReply='';}
   };
   // Payment status reads durable state only. Do not turn a status request into
   // provider polling or an STK. A draft cancellation cannot cancel a submitted payment.
@@ -203,12 +204,37 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   }
   // Consent is valid only for the current quote and the immediately preceding,
   // server-generated payment question, never an AI-generated offer.
-  const paymentQuestion=(o:{reference:unknown;amount_kes:unknown})=>`Collection confirmed for ${o.reference}. Shall I send an M-PESA payment prompt for ${money(Number(o.amount_kes))} to your WhatsApp number? Please say “send M-PESA prompt” to confirm.`;
-  if(!visual&&!bsuidOnly&&paymentAssent(text)){
+  const paymentQuestion=(o:{reference:unknown;amount_kes:unknown;payer_phone?:unknown})=>{
+    const payer=String(o.payer_phone??waId);
+    return payer===waId
+      ?`Collection confirmed for ${o.reference}. Shall I send an M-PESA payment prompt for ${money(Number(o.amount_kes))} to your WhatsApp number? Say “send M-PESA prompt”${process.env.DBK178_ALTERNATE_PAYER_ENABLED==='YES'?' or “use another number”':''}.`
+      :`Collection confirmed for ${o.reference}. Shall I send an M-PESA payment prompt for ${money(Number(o.amount_kes))} to ${displayPayer(payer)}? Please ensure the phone owner agrees. Say “send M-PESA prompt” or “use another number”.`;
+  };
+  let expectedPayment:{reference:string;payer:string}|undefined;
+  const useOwn=!visual&&/^(?:use (?:my|this|the) (?:whatsapp )?number|use my whatsapp|same number|this number)[.!]?$/i.test(text);
+  const awaitingPayer=!visual&&!bsuidOnly&&!basketAction&&!/^(?:SEARCH\b|PRODUCTS$|SHOP$|PICKUP$|CHECKOUT$|CHECK OUT$)/.test(cmd)&&await previousReply()===PAYER_INPUT;
+  if(!visual&&!bsuidOnly&&(awaitingPayer||cmd==='PAY_OTHER_PHONE'||cmd==='PAY_PHONE'||alternatePayerRequest(text)||useOwn||cmd==='PAY'||paymentAssent(text))){
     const last=await previousReply();
-    if(last.startsWith('Collection confirmed for ')){
-      const o=await productionCustomerOrder(waId);
-      if(o?.status==='quoted'&&o.pickup_confirmed_at&&new Date(String(o.expires_at)).getTime()>Date.now()&&last===paymentQuestion(o as {reference:unknown;amount_kes:unknown}))cmd='PAY';
+    const selecting=alternatePayerRequest(text)||useOwn||cmd==='PAY_OTHER_PHONE'||last===PAYER_INPUT;
+    const order=await productionCustomerOrder(waId);
+    const active=order&&['starting','prompt_sent','review_required'].includes(String(order.status));
+    if(active&&(selecting||cmd==='PAY'||cmd==='PAY_PHONE'))return paymentStatus();
+    const ready=order?.status==='quoted'&&order.pickup_confirmed_at&&new Date(String(order.expires_at)).getTime()>Date.now()&&!deliveryContext;
+    if(selecting||(cmd==='PAY_PHONE'&&ready)){
+      if(conversation[0]?.staff_review_reason==='Wholesale enquiry')return reply('Our team needs to confirm your wholesale rate first.');
+      if(!ready||!order)return reply('Please confirm your order and collection method before choosing the payment number.');
+      if(process.env.DBK178_ALTERNATE_PAYER_ENABLED!=='YES'&&!useOwn&&cmd!=='PAY_PHONE')return reply('Alternative M-PESA numbers are temporarily handled by our sales team. You can use your WhatsApp number instead.');
+      if(alternatePayerRequest(text))return reply(PAYER_INPUT);
+      const payer=useOwn?waId:payerNumber(text);
+      if(!payer||(awaitingPayer&&!useOwn&&!/^(?:\+?254|0)[17](?:[ -]?\d){8}$/.test(text.trim())))return reply(PAYER_INPUT);
+      try{return reply(paymentQuestion(await selectProductionPayer(waId,String(order.reference),payer) as {reference:unknown;amount_kes:unknown;payer_phone?:unknown}));}
+      catch{return reply('I could not update the payment number safely. Please review your order or ask our team for help.');}
+    }
+    if(ready&&order&&(cmd==='PAY'||paymentAssent(text))){
+      const payer=String(order.payer_phone??waId);
+      if(last===paymentQuestion(order as {reference:unknown;amount_kes:unknown;payer_phone?:unknown})){
+        expectedPayment={reference:String(order.reference),payer};cmd='PAY';
+      }else if(cmd==='PAY')return reply(paymentQuestion(order as {reference:unknown;amount_kes:unknown;payer_phone?:unknown}));
     }
   }
   // A yes to the exact server-generated cart question opens a quote, never an STK.
@@ -216,48 +242,63 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     const last=await previousReply();
     if(last.startsWith("I've added " )&&last.includes('Would you like to place your order?'))cmd='CHECKOUT';
     else if(last.startsWith('Your order total is '))return reply('Would you prefer store collection or delivery?');
-    else if(last.startsWith('Delivery options for '))return reply('Which option would you prefer — collection, matatu delivery or a rider quote?');
+    else if(last.startsWith('Delivery options for '))return reply('Would you prefer standard delivery, store collection or a rider quote?');
   }
-  // Delivery is still staff-priced; resolving a town never authorises a payment.
+  // A published timing policy is informational; it does not promise an order-specific date.
+  if(!visual&&/\b(?:deliver(?:y|ed)?|shipping)\b/i.test(text)&&/\b(?:how long|how soon|when|delivery time|how many days|timeline|takes?)\b/i.test(text)&&!/(?:order|my parcel|track|tracking)\b/i.test(text)){
+    const timing=deliveryTiming((await getPublishedKnowledge()).delivery);
+    if(timing)return reply(timing);
+  }
+  // Standard rates come from published knowledge; settlement still requires staff.
+
   const deliveryCommand=!visual&&(/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd)||/^(?:(?:i (?:want|need|prefer|would like)|nataka|naomba) )?delivery(?: please)?[.!]?$/i.test(text));
   const lastForLocation=!visual&&!deliveryCommand&&/^[\p{L}][\p{L}\s.'’,-]{0,69}$/u.test(text)?await previousReply():'';
   const suggested=/^Is your delivery county (.+) County\? Please confirm\.$/.exec(lastForLocation);
   const confirmedCounty=suggested&&paymentAssent(text)&&counties.includes(suggested[1])?suggested[1]:null;
   const bareLocation=deliveryLocation(text,true);
-  const awaitingCounty=lastForLocation===DELIVERY_QUESTION||lastForLocation.startsWith('I couldn’t identify that town')||lastForLocation.startsWith('Please confirm the town or area and its correct county')||lastForLocation.endsWith('Please also share your specific town or area and county.')||!!suggested||((lastForLocation.startsWith('Your order total is ')||lastForLocation==='Would you prefer store collection or delivery?')&&!!bareLocation&&!!knownCounty(bareLocation));
-  let location=visual?null:confirmedCounty||deliveryLocation(text,awaitingCounty&&cmd!=='PICKUP'&&cmd!=='PAY'&&cmd!=='CHECKOUT');
-  if(location&&deliveryContext&&!deliveryContext.county&&!location.includes(',')&&counties.some(c=>c.toLowerCase()===location!.toLowerCase()))location=deliveryContext.location+', '+location;
+  const countyUpdate=/^(?:add|set|change|update)(?: to)?(?: my)?(?: delivery)?(?: location| county)?(?: to)?\s+(.+?)(?: to my delivery location(?: for my order)?)?$/i.exec(text);
+  const repeatedCounty=!!deliveryContext&&!!bareLocation&&!!knownCounty(bareLocation)&&counties.includes(knownCounty(bareLocation)!);
+  const awaitingCounty=lastForLocation===DELIVERY_QUESTION||lastForLocation.startsWith('I couldn’t identify that town')||lastForLocation.startsWith('Please confirm the town or area and its correct county')||lastForLocation.startsWith('Which county should I use for ')||lastForLocation.endsWith('Please also share your specific town or area and county.')||!!suggested||((lastForLocation.startsWith('Your order total is ')||lastForLocation==='Would you prefer store collection or delivery?')&&!!bareLocation);
+  let location=visual?null:confirmedCounty||(deliveryContext&&countyUpdate&&knownCounty(countyUpdate[1])?countyUpdate[1]:null)||deliveryLocation(text,(awaitingCounty||repeatedCounty)&&!['PICKUP','PAY','CHECKOUT','PAY_PHONE','PAY_OTHER_PHONE'].includes(cmd));
+  if(!visual&&deliveryContext&&/^(?:add to county|change county|update county|set county)[.!]?$/i.test(text))return reply('Which county should I use for '+safe(deliveryContext.location)+'?');
+  if(location&&deliveryContext&&!location.includes(',')&&counties.includes(knownCounty(location)||'')&&(/county$/i.test(location)||counties.some(c=>c.toLowerCase()===location!.toLowerCase()))){
+    const c=knownCounty(location)!;
+    if(deliveryContext.location!=='Delivery address pending'&&(!deliveryContext.county||deliveryContext.county===c))location=deliveryContext.location+', '+c;
+  }
   const method=!visual&&deliveryContext?.county?deliveryMethod(text):null;
   const referencedDelivery=!!location&&/^(?:i (?:want|need|would like)|nataka) (?:these|those|this|them|hizi|hizo)\b/i.test(text);
   if(deliveryCommand||location||method){
     if(!bsuidOnly){
       const o=await productionCustomerOrder(waId);
       if(o&&['starting','prompt_sent','review_required'].includes(String(o.status)))return reply('Your payment is still being checked. Please do not pay again. Our team can help with delivery once the payment status is confirmed.');
-      await cancelProductionQuote(waId);
+      if(o?.status==='quoted'&&o.pickup_confirmed_at&&!await suspendProductionPickup(waId,String(o.reference)))return paymentStatus();
     }
     if(method&&deliveryContext){
       deliveryContext={...deliveryContext,method};
       await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,staff_review_reason=CASE WHEN staff_review_reason='Wholesale enquiry' THEN staff_review_reason ELSE 'Delivery quote' END,updated_at=now() WHERE wa_id=${waId}`;
       return reply(`I’ve flagged your ${safe(method)} request for ${safe(deliveryContext.location)} for our team to confirm the final fee and total. You can keep shopping or choose collection instead. No payment has been requested.`);
     }
-    if(!location)return reply(DELIVERY_QUESTION);
+    if(!location){
+      if(!deliveryContext){deliveryContext={location:'Delivery address pending',county:''};await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,updated_at=now() WHERE wa_id=${waId}`;}
+      return reply(DELIVERY_QUESTION);
+    }
     const county=knownCounty(location);
     if(!county){
-      if(location.includes(','))return reply('Please confirm the town or area and its correct county, e.g. Kikuyu, Kiambu. No delivery fee has been confirmed.');
+      if(location.includes(',')){deliveryContext={location:location.split(',')[0].trim(),county:''};await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,updated_at=now() WHERE wa_id=${waId}`;return reply('Please confirm the town or area and its correct county, e.g. Kikuyu, Kiambu. No delivery fee has been confirmed.');}
       deliveryContext={location,county:''};
       await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,updated_at=now() WHERE wa_id=${waId}`;
+      if(/^thika$/i.test(location))return reply('Please confirm the town or area and its correct county: Kiambu or Muranga for Thika.');
       const suggestion=await suggestDeliveryCounty(location,counties);
       return reply(suggestion?`Is your delivery county ${suggestion} County? Please confirm.`:'I couldn’t identify that town confidently. Which county is it in?');
     }
-    deliveryContext={location:location.split(',')[0].trim(),county};
-    await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,staff_review_reason=CASE WHEN staff_review_reason='Delivery quote' THEN NULL ELSE staff_review_reason END,updated_at=now() WHERE wa_id=${waId}`;
+    const resolvedLocation=location.split(',')[0].trim();
+    deliveryContext={location:resolvedLocation,county,...(deliveryContext?.county===county&&deliveryContext.location.toLowerCase()===resolvedLocation.toLowerCase()&&deliveryContext.method?{method:deliveryContext.method}:{})};
+    await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,staff_review_reason=CASE WHEN staff_review_reason='Wholesale enquiry' THEN staff_review_reason WHEN ${!!deliveryContext.method} THEN 'Delivery quote' WHEN staff_review_reason='Delivery quote' THEN NULL ELSE staff_review_reason END,updated_at=now() WHERE wa_id=${waId}`;
     const knowledge=await getPublishedKnowledge();
-    const approved=knowledge.delivery.toLowerCase().replace(/[-’']/g,' ').replace(/\s+/g,' ').includes(county.toLowerCase());
-    let options:ReturnType<typeof deliveryChoices>=[];
-    try{options=deliveryChoices(county,await getActiveDeliveryZones(),approved);}catch{console.warn('DBK167_DELIVERY_RATES_UNAVAILABLE');}
-    const rates=options.map(z=>`${safe(z.label)} — ${z.quoteRequired?'quote required':money(z.fee)}`).join('\n');
+    const fee=countyDeliveryFee(knowledge.delivery,county);
+    const rate=fee===null?'No fixed rate confirmed in our published delivery policy.':`Standard delivery — ${money(fee)}`;
     if(referencedDelivery)await flagReview('Photo and delivery request');
-    return reply((referencedDelivery?'Please confirm the products and quantity of each item so our team can prepare the correct order. No items have been added from the photos alone.\n\n':'')+`Delivery options for ${safe(deliveryContext.location)}${deliveryContext.location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rates?rates+'\n':'No fixed rate confirmed for this location.\n'}Store collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team confirms delivery fees and the final total before payment. ${location.toLowerCase()===county.toLowerCase()?'Please also share your specific town or area and county.':''}`);
+    return reply((referencedDelivery?'Please confirm the products and quantity of each item so our team can prepare the correct order. No items have been added from the photos alone.\n\n':'')+`Delivery options for ${safe(deliveryContext.location)}${deliveryContext.location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rate}\nStore collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team will confirm delivery cost and final total before payment.${location.toLowerCase()===county.toLowerCase()?' Please also share your specific town or area and county.':''}`);
   }
 
   const {products,fresh}=await catalogue();
@@ -542,7 +583,14 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     return addItem(item,qty);
   }
   try{
-    if(deliveryContext&&['PAY','PAY_PHONE'].includes(cmd))return reply('You have requested delivery information. Our team must confirm the delivery cost and final total before payment. You can choose store collection instead. No payment has been requested.');
+    if(deliveryContext&&['PAY','PAY_PHONE','CHECKOUT','CHECK OUT'].includes(cmd)){
+      if(!bsuidOnly){const o=await productionCustomerOrder(waId);if(o&&['starting','prompt_sent','review_required'].includes(String(o.status)))return paymentStatus();}
+      const c=await cart(waId,products),knowledge=await getPublishedKnowledge();
+      const fee=deliveryContext.method&&/rider/i.test(deliveryContext.method)?null:countyDeliveryFee(knowledge.delivery,deliveryContext.county);
+      await flagReview('Delivery quote');
+      const estimate=fresh&&c.lines.length&&!c.invalid&&fee!==null?`\nProducts: ${money(c.totalMinor/100)}\nDelivery: ${money(fee)}\nEstimated total: ${money(c.totalMinor/100+fee)}`:'';
+      return reply(`Your delivery request is for ${safe(deliveryContext.location)}${deliveryContext.county?' ('+safe(deliveryContext.county)+')':''}.${estimate} Our team will confirm the delivery cost and final total before payment. You can choose store collection instead. No new payment has been requested.`);
+    }
     if(cmd==='PAY_PHONE'){
       const o=await productionCustomerOrder(waId);
       if(o&&['starting','prompt_sent','review_required'].includes(String(o.status)))return reply('Your payment is still being checked. Please don’t pay again.');
@@ -578,7 +626,6 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     }
     if(['CHECKOUT','CHECK OUT','PICKUP'].includes(cmd)){
       if(bsuidOnly)return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
-      if(cmd!=='PICKUP'&&deliveryContext){await flagReview('Delivery quote');return reply(`Your delivery request is for ${safe(deliveryContext.location)}${deliveryContext.county?' ('+safe(deliveryContext.county)+')':''}. Our team must confirm the delivery cost and final total. Say “collect from store” if you prefer collection. No payment has been requested.`);}
       if(checkoutWords){
         const o=await productionCustomerOrder(waId);
         if(o&&['starting','prompt_sent','review_required'].includes(String(o.status)))return paymentStatus();
@@ -609,7 +656,12 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       return reply(paymentQuestion(o as {reference:unknown;amount_kes:unknown}));
     }
     if(cmd==='PAY'){
-      const o=await payProductionCheckout(waId);
+      if(!expectedPayment){
+        const current=await productionCustomerOrder(waId);
+        if(current?.status==='quoted'&&current.pickup_confirmed_at)return reply(paymentQuestion(current as {reference:unknown;amount_kes:unknown;payer_phone?:unknown}));
+        return reply('Please confirm your order and payment number first.');
+      }
+      const o=await payProductionCheckout(waId,expectedPayment);
       return reply(`I've requested an M-PESA prompt for ${money(o.amountKes)}. Please check your phone and enter your PIN only in the official M-PESA prompt. I'll only confirm payment once Safaricom verifies it.`);
     }
 
@@ -661,7 +713,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     if(directQuery&&fresh&&(!plan||plan.intent==='clarify'||plan.intent==='information')){const matched=relevantProducts(directQuery,products);if(matched.length)return show(matched);}
     if(plan?.intent==='clarify'||plan?.intent==='information'){
       // Informational answers are model-generated from approved knowledge, not authoritative transaction results.
-      if(plan.message&&!/\b(?:send|request|initiate|trigger)\b.{0,60}\b(?:prompt|stk|push)\b|\b(?:provide|enter|share|confirm)\b.{0,45}\b(?:phone|mobile) number\b|\b(?:cannot|can.t|unable to)\b.{0,45}\b(?:prompt|stk|push)\b/i.test(plan.message)&&!/https?:|\b(?:pin|otp|password|paid|charged|refunded|reserved|added to|payment confirmed)\b|\b(?:KES|KSH)\s*\d/i.test(plan.message))return reply(plan.message);
+      if(plan.message&&!/\b(?:send|request|initiate|trigger)\b.{0,60}\b(?:prompt|stk|push)\b|\b(?:provide|enter|share|confirm|type)\b.{0,60}\b(?:phone|mobile|m[ -]?pesa|payment|whatsapp) number\b|\b(?:cannot|can.t|unable to)\b.{0,45}\b(?:prompt|stk|push)\b/i.test(plan.message)&&!/https?:|\b(?:pin|otp|password|paid|charged|refunded|reserved|added to|payment confirmed)\b|\b(?:KES|KSH)\s*\d/i.test(plan.message))return reply(plan.message);
     }
     // No arbitrary keyword search after a failed/ambiguous plan. Explicit search phrases may use a safe deterministic fallback.
     if(!plan&&fresh&&/^(?:do you have|i(?:'m| am) looking for|show me|find|search for|nataka|mnazo)\b/i.test(text))return show(relevantProducts(text,products));

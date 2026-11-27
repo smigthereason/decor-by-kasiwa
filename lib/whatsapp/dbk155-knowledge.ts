@@ -1,10 +1,11 @@
 import 'server-only';
 import {neon} from '@neondatabase/serverless';
-import {defaultKnowledge,validKnowledge,type KnowledgeSection} from './dbk155-sales-core';
+import {defaultKnowledge,validKnowledge,knowledgeSections,type KnowledgeSection} from './dbk155-sales-core';
 const db=()=>neon(process.env.DATABASE_URL!);
 export async function getPublishedKnowledge(){
   try{const sql=db();const r=await sql`SELECT content,version FROM public.dbk155_knowledge_versions ORDER BY version DESC LIMIT 1`;
-    if(validKnowledge(r[0]?.content)){console.info('DBK172_KNOWLEDGE_LOADED',{version:r[0].version});return r[0].content;}
+    const content=r[0]?.content;
+    if(validKnowledge(content)){console.info('DBK172_KNOWLEDGE_LOADED',{version:r[0].version});console.info('DBK178_KNOWLEDGE_SECTIONS',Object.fromEntries(knowledgeSections.map(k=>[k,content[k].length])));return content;}
     console.warn('DBK172_KNOWLEDGE_DEFAULT','missing_or_invalid');return defaultKnowledge;
   }catch{console.warn('DBK172_KNOWLEDGE_DEFAULT','read_failed');return defaultKnowledge;}
 }

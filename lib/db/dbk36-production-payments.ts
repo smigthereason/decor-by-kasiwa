@@ -113,16 +113,22 @@ export async function productionCustomerOrder(waId:string){
   if(!/^254(?:7|1)\d{8}$/.test(waId))throw new Error('PHONE_INVALID');
   const sql=db();
   const rows=await sql`SELECT reference,status,amount_kes,expires_at,pickup_confirmed_at,
-    receipt,stock_state,cart_snapshot FROM public.dbk36_wa_prod_payment_orders
+    receipt,stock_state,cart_snapshot,payer_phone FROM public.dbk36_wa_prod_payment_orders
     WHERE wa_id=${waId} ORDER BY CASE WHEN status IN ('starting','prompt_sent','review_required') THEN 0 ELSE 1 END,created_at DESC LIMIT 1`;
   return rows[0]||null;
 }
 export async function confirmProductionPickup(waId:string){
   const sql=db();
   const updated=await sql`UPDATE public.dbk36_wa_prod_payment_orders
-    SET pickup_confirmed_at=now(),updated_at=now() WHERE wa_id=${waId}
-    AND status='quoted' AND expires_at>now() RETURNING reference,amount_kes`;
+    SET pickup_confirmed_at=now(),payer_phone=NULL,updated_at=now() WHERE wa_id=${waId}
+    AND status='quoted' AND expires_at>now() RETURNING reference,amount_kes,payer_phone`;
   return updated[0]||null;
+}
+export async function suspendProductionPickup(waId:string,reference:string){
+  const sql=db();
+  const rows=await sql`UPDATE public.dbk36_wa_prod_payment_orders SET pickup_confirmed_at=NULL,payer_phone=NULL,updated_at=now()
+    WHERE reference=${reference} AND wa_id=${waId} AND status='quoted' RETURNING reference`;
+  return rows.length===1;
 }
 export async function cancelProductionQuote(waId:string){
   const sql=db();
@@ -135,7 +141,17 @@ export async function cancelProductionQuote(waId:string){
  * The DB transition to starting occurs before calling Daraja; any uncertainty
  * locks the attempt for staff reconciliation and MUST NOT initiate a second STK.
  */
-export async function payProductionCheckout(waId:string){
+export async function selectProductionPayer(waId:string,reference:string,payer:string){
+  if(!/^254[17]\d{8}$/.test(payer)||!PROD_REF.test(reference))throw new Error('PAYER_INVALID');
+  if(payer!==waId&&process.env.DBK178_ALTERNATE_PAYER_ENABLED!=='YES')throw new Error('ALTERNATE_PAYER_DISABLED');
+  const sql=db();
+  const rows=await sql`UPDATE public.dbk36_wa_prod_payment_orders SET payer_phone=${payer},updated_at=now()
+    WHERE reference=${reference} AND wa_id=${waId} AND status='quoted' AND pickup_confirmed_at IS NOT NULL AND expires_at>now()
+    RETURNING reference,amount_kes,payer_phone`;
+  if(rows.length!==1)throw new Error('PAYER_QUOTE_CHANGED');
+  return rows[0];
+}
+export async function payProductionCheckout(waId:string,expected?:{reference:string;payer:string}){
   const cfg=paymentConfig();
   // Never take a live payment when our callback perimeter is disabled.
   const health=await fetch('https://dbk36-whatsapp-production.victor-dmaina.workers.dev/__dbk36/health',{cache:'no-store',signal:AbortSignal.timeout(5000)});
@@ -143,7 +159,9 @@ export async function payProductionCheckout(waId:string){
   if(readiness?.installed!==true||readiness?.callbackEnabled!==true)throw new Error('PAYMENT_CALLBACK_NOT_READY');
   const order=await productionCustomerOrder(waId);
   if(!order||order.status!=='quoted')throw new Error('NO_UNPAID_QUOTE');
-  const reference=String(order.reference),amount=Number(order.amount_kes);
+  const reference=String(order.reference),amount=Number(order.amount_kes),payer=String(order.payer_phone??waId);
+  if(!/^254[17]\d{8}$/.test(payer)|| (payer!==waId&&(!expected||process.env.DBK178_ALTERNATE_PAYER_ENABLED!=='YES'))||
+    (expected&&(expected.reference!==reference||expected.payer!==payer)))throw new Error('PAYER_QUOTE_CHANGED');
   if(!order.pickup_confirmed_at)throw new Error('PICKUP_CONFIRMATION_REQUIRED');
   if(new Date(String(order.expires_at)).getTime()<=Date.now())throw new Error('QUOTE_EXPIRED');
   const cart=order.cart_snapshot as Array<{productId:string;variantId:string;quantity:number;subtotalMinor:number}>;
@@ -160,13 +178,18 @@ export async function payProductionCheckout(waId:string){
   // Failure here leaves the quote retryable; the STK endpoint was never called.
   const token=await productionToken(reference,cfg);
   const claims=await sql`UPDATE public.dbk36_wa_prod_payment_orders
-    SET status='starting',updated_at=now() WHERE reference=${reference} AND wa_id=${waId}
+    SET status='starting',payer_phone=${payer},updated_at=now() WHERE reference=${reference} AND wa_id=${waId}
     AND status='quoted' AND pickup_confirmed_at IS NOT NULL AND expires_at>now()
+    AND coalesce(payer_phone,wa_id)=${payer} AND amount_kes=${amount}
+    AND NOT EXISTS(SELECT 1 FROM public.dbk36_wa_prod_payment_orders recent
+      WHERE recent.reference<>${reference} AND (coalesce(recent.payer_phone,recent.wa_id)=${payer} OR recent.wa_id=${waId})
+      AND recent.status IN ('starting','prompt_sent','review_required','paid','failed')
+      AND recent.updated_at>now()-interval '60 seconds')
     RETURNING reference`;
   if(claims.length!==1)throw new Error('PAYMENT_ALREADY_IN_PROGRESS_NO_RETRY');
   let accepted:{checkoutId:string;merchantId:string}|undefined;
   try{
-    const result=await initiateProdStk(waId,amount,reference,cfg,token);
+    const result=await initiateProdStk(payer,amount,reference,cfg,token);
     accepted=result;
     const saved=await sql`UPDATE public.dbk36_wa_prod_payment_orders
       SET checkout_id=${result.checkoutId},merchant_id=${result.merchantId},status='prompt_sent',updated_at=now()
@@ -203,7 +226,7 @@ export async function reconcileProductionCheckout(checkoutId:string){
   const sql=db();
   const row=await sql`SELECT * FROM public.dbk36_wa_prod_payment_orders WHERE checkout_id=${checkoutId} LIMIT 1`;
   if(row.length!==1)return {state:'ORDER_NOT_YET_LINKED'};
-  const order=row[0] as unknown as {reference:string;wa_id:string;amount_kes:number;
+  const order=row[0] as unknown as {reference:string;wa_id:string;payer_phone?:string|null;amount_kes:number;
     checkout_id:string;merchant_id:string;status:string;stock_state:string};
   if(order.status==='paid'){
     await safePaymentNotice(order.reference);
@@ -234,6 +257,9 @@ export async function reconcileProductionCheckout(checkoutId:string){
   // or invoking one-time stock mutation. SQL finalization is atomic.
   await sql`UPDATE public.dbk36_wa_prod_callback_inbox SET query_confirmed_at=now()
     WHERE checkout_id=${checkoutId} AND merchant_id=${order.merchant_id}`;
+  // matchedProviderProof verifies the persisted payer, not the WhatsApp owner.
+  // The existing settlement function receives the owner to preserve intake,
+  // fulfilment and sales identity; never pass the alternate payer as wa_id.
   const settled=await sql`SELECT public.dbk36_wa_prod_finalize_paid(${order.reference},${checkoutId},
     ${order.merchant_id},${cb.receiptNumber!},${order.wa_id},${order.amount_kes},
     ${providerTime}::timestamptz) AS value`;
