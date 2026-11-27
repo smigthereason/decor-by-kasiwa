@@ -25,6 +25,12 @@ export async function GET(req:NextRequest){try{
   const staff=await authorized();if(!staff)return out({error:'ACCESS_DENIED'},403);
   if(req.nextUrl.searchParams.get('access')==='1')return out({allowed:true});
   const {admin,queue,transfer,supervise}=staff.access, id=staff.customerId, sql=db();
+  // A lightweight navigation count uses exactly the same visibility boundary as the inbox.
+  if(req.nextUrl.searchParams.get('count')==='1'){
+    const rows=await sql`SELECT count(*)::int AS total FROM public.dbk36_wa_conversations c
+      WHERE (${supervise} OR c.staff_owner_id=${id} OR (${queue} AND c.staff_owner_id IS NULL))`;
+    return out({total:Number(rows[0]?.total||0)});
+  }
   const media=req.nextUrl.searchParams.get('media');
   if(media){
     if(!uuid.test(media))return out({error:'INVALID_MEDIA'},400);
@@ -59,19 +65,19 @@ export async function GET(req:NextRequest){try{
     ]);
     return out({conversation:scope[0],messages:messages.reverse(),cart,orders,audit});
   }
-  const q=(req.nextUrl.searchParams.get('q')||'').slice(0,80);
+  const q=(req.nextUrl.searchParams.get('q')||'').trim().slice(0,80);
   const bucket=req.nextUrl.searchParams.get('bucket')||'all';
-  if(!['all','mine','waiting','attention','unread','ai'].includes(bucket))return out({error:'INVALID_QUEUE_FILTER'},400);
+  if(!['all','mine','waiting','attention','unread','ai','human','image'].includes(bucket))return out({error:'INVALID_QUEUE_FILTER'},400);
   const conversations=await sql`SELECT c.wa_id,c.mode,c.staff_owner_id,c.staff_owner_name,c.staff_review_reason,c.last_inbound_at,c.reply_lock IS NOT NULL AS busy,
     CASE WHEN ${supervise} OR c.staff_owner_id=${id} THEN latest.message_text ELSE left(latest.message_text,120) END AS last_message, latest.id AS latest_inbound_id,
     (latest.id IS NOT NULL AND seen.last_read_message_id IS DISTINCT FROM latest.id) AS unread,
     (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz))) AS needs_reply
     FROM public.dbk36_wa_conversations c
-    LEFT JOIN LATERAL (SELECT m.id::text AS id,m.message_text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) latest ON true
+    LEFT JOIN LATERAL (SELECT m.id::text AS id,m.message_text,m.message_type FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) latest ON true
     LEFT JOIN public.dbk163_wa_staff_read seen ON seen.wa_id=c.wa_id AND seen.staff_id=${id}
-    WHERE (${supervise} OR c.staff_owner_id=${id} OR (${queue} AND c.staff_owner_id IS NULL)) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0)
-    AND (${bucket}='all' OR (${bucket}='mine' AND c.staff_owner_id=${id}) OR (${bucket}='waiting' AND c.staff_owner_id IS NULL) OR (${bucket}='attention' AND (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz)))) OR (${bucket}='unread' AND latest.id IS NOT NULL AND seen.last_read_message_id IS DISTINCT FROM latest.id) OR (${bucket}='ai' AND c.mode='bot'))
-    ORDER BY (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.staff_owner_id IS NULL)) DESC,c.last_inbound_at DESC NULLS LAST LIMIT 100`;
+    WHERE (${supervise} OR c.staff_owner_id=${id} OR (${queue} AND c.staff_owner_id IS NULL)) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0 OR strpos(lower(coalesce(CASE WHEN ${supervise} OR c.staff_owner_id=${id} THEN latest.message_text ELSE left(latest.message_text,120) END,'')),lower(${q}))>0)
+    AND (${bucket}='all' OR (${bucket}='mine' AND c.staff_owner_id=${id}) OR (${bucket}='waiting' AND c.staff_owner_id IS NULL) OR (${bucket}='attention' AND (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz)))) OR (${bucket}='unread' AND latest.id IS NOT NULL AND seen.last_read_message_id IS DISTINCT FROM latest.id) OR (${bucket}='ai' AND c.mode='bot') OR (${bucket}='human' AND c.mode='human') OR (${bucket}='image' AND latest.message_type='image'))
+    ORDER BY (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.staff_owner_id IS NULL)) DESC,c.last_inbound_at DESC NULLS LAST,c.wa_id LIMIT 100`;
   const eligible=transfer?await serverClient.fetch<Array<{_id:string;name:string;role:string}>>(eligibleQuery,{}, {cache:'no-store'}):[];
   return out({conversations,eligible,viewer:{id,admin,queue,transfer,supervise}});
 }catch{return out({error:'INBOX_UNAVAILABLE'},503);}}

@@ -119,7 +119,7 @@ const fulfilmentStaffNavigation: NavigationItem[] = [
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
 ];
 
-function AlertBadge({ count, dark = false }: { count: number; dark?: boolean }) {
+function AlertBadge({ count, dark = false, chats = false }: { count: number; dark?: boolean; chats?: boolean }) {
   if (count <= 0) return null;
   return (
     <span
@@ -127,9 +127,10 @@ function AlertBadge({ count, dark = false }: { count: number; dark?: boolean }) 
         "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums",
         dark ? "bg-[var(--paper)] text-[var(--brand-green)]" : "bg-[var(--brand-green)] !text-soft-cream",
       ].join(" ")}
-      aria-label={`${count} notifications`}
+      aria-label={`${count} ${chats ? "accessible WhatsApp conversations" : "notifications"}`}
+      title={chats ? `${count} accessible WhatsApp conversations (all statuses)` : undefined}
     >
-      {count > 99 ? "99+" : count}
+      {!chats && count > 99 ? "99+" : count}
     </span>
   );
 }
@@ -146,6 +147,26 @@ export default function BackOfficeShell({
   const { notifications } = useBackofficeNotifications();
 
   const [whatsappAllowed,setWhatsappAllowed]=useState(false);
+  const [whatsappChatCount,setWhatsappChatCount]=useState(0);
+  useEffect(()=>{
+    setWhatsappChatCount(0);
+    if(mode!=='admin'&&!whatsappAllowed)return;
+    let active=true,running=false;
+    async function refreshCount(){
+      if(!active||document.hidden||running)return;
+      running=true;
+      try{
+        const r=await fetch('/api/backoffice/whatsapp/inbox?count=1',{cache:'no-store'});
+        const data=r.ok?await r.json():null;
+        if(active)setWhatsappChatCount(typeof data?.total==='number'&&Number.isSafeInteger(data.total)&&data.total>=0?data.total:0);
+      }catch{if(active)setWhatsappChatCount(0);}finally{running=false;}
+    }
+    void refreshCount();
+    const timer=setInterval(()=>void refreshCount(),45000);
+    const onVisible=()=>{if(!document.hidden)void refreshCount();};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{active=false;clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
+  },[mode,whatsappAllowed,staffRole,staffEmail,pathname]);
   const [whatsappFulfilmentAllowed,setWhatsappFulfilmentAllowed]=useState(false);
   useEffect(()=>{
     if(mode!=="store")return;let active=true;setWhatsappFulfilmentAllowed(false);
@@ -182,6 +203,7 @@ export default function BackOfficeShell({
               : "SALES STAFF";
 
   function countFor(item: NavigationItem) {
+    if(item.href==="/admin/whatsapp/inbox"||item.href==="/store/whatsapp/inbox")return whatsappChatCount;
     return item.badge ? notifications[item.badge] : 0;
   }
 
@@ -274,7 +296,7 @@ export default function BackOfficeShell({
                             {item.label}
                             <span className={["absolute bottom-0 left-0 h-[2px] bg-[var(--paper-2)] transition-all duration-300", active ? "w-full" : "w-0 group-hover:w-full"].join(" ")} />
                           </span>
-                          <AlertBadge count={count} dark />
+                          <AlertBadge count={count} dark chats={item.href==="/admin/whatsapp/inbox"||item.href==="/store/whatsapp/inbox"} />
                         </span>
                         <ArrowUpRight
                           size={22}
@@ -339,7 +361,7 @@ export default function BackOfficeShell({
                         {item.label}
                         <span className={["absolute -bottom-1 left-0 h-[2px] transition-all duration-300 ease-out", active ? "w-full bg-white" : "w-0 bg-white/60 group-hover:w-full"].join(" ")} />
                       </span>
-                      <AlertBadge count={count} dark />
+                      <AlertBadge count={count} dark chats={item.href==="/admin/whatsapp/inbox"||item.href==="/store/whatsapp/inbox"} />
                     </span>
                     <ArrowUpRight
                       size={14}
