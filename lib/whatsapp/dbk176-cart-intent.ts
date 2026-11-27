@@ -27,6 +27,6 @@ export function paymentStatusIntent(text:string){
   return /^(?:(?:please )?(?:check|refresh|verify|show|display) (?:the |my |our )?(?:payment(?: status)?|transaction status)(?: for me| please| now)?|(?:what is|what's) (?:the )?status of (?:my |the )?payment|(?:what is|what's) my payment status|payment status|(?:i (?:want|need) to )?(?:reset|clear|cancel) (?:my |the |past |previous |pending |old )?payments?(?: status)?|payment in progress|(?:did my payment go through|have i paid|has my payment gone through)|(?:yes )?check the exact status)$/.test(t);
 }
 export function glueSearchPage(text:string):number|null{
-  const t=norm(text).replace(/^(?:search(?: for)?|find|show(?: me)?|do you have|i want|i need|all|list) /,'').replace(/^(?:all |available )+/, '').replace(/\bgluesticks?\b/g,'glue sticks');
-  const m=/^glue sticks?(?: (?:available|please))?(?: page ([1-9]\d?))?$/.exec(t);return m?Number(m[1]||1):null;
+  const t=norm(text).replace(/^(?:i(?:'m| am) looking for|i(?:'d| would) like to see|are there|search(?: for)?|find|show(?: me)?|do you have|i want|i need|all|list|what about|what other|what of|mnazo) /,'').replace(/^(?:(?:all|available|any|other|more|different) )+/, '').replace(/\bgluesticks?\b/g,'glue sticks');
+  const m=/^glue sticks?(?: (?:available|please|do you have))?(?: page ([1-9]\d?))?$/.exec(t);return m?Number(m[1]||1):null;
 }

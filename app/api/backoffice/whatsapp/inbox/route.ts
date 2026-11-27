@@ -86,6 +86,13 @@ export async function POST(req:NextRequest){try{
   if(req.headers.get('origin')!==req.nextUrl.origin||req.headers.get('content-type')?.split(';')[0].trim()!=='application/json')return out({error:'ORIGIN_DENIED'},403);
   const raw=await req.text();if(raw.length>12000)return out({error:'TOO_LARGE'},413);
   const body=JSON.parse(raw);const wa=body?.wa;
+  if(body?.action==='refresh_catalogue'){
+    if(!staff.access.admin)return out({error:'ACCESS_DENIED'},403);
+    const recent=await db()`SELECT synced_at FROM public.dbk36_wa_catalogue_cache WHERE cache_key='ecommerce' AND synced_at>now()-interval '1 minute' LIMIT 1`;
+    if(recent.length)return out({error:'CATALOGUE_REFRESH_COOLDOWN'},429);
+    const {refreshProductionCatalogue}=await import('@/lib/whatsapp/dbk36-production-chat');
+    return out(await refreshProductionCatalogue());
+  }
   if(typeof wa!=='string'||!waPattern.test(wa))return out({error:'INVALID_CONVERSATION'},400);
   const {queue,transfer,supervise}=staff.access, id=staff.customerId, sql=db();
   if(body.action==='read'){

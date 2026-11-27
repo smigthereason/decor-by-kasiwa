@@ -9,7 +9,7 @@ import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
 import {cleanError} from './dbk36-production-core';
 import {explicitPaperSizes,relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,purchaseFollowup,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping,suggestDeliveryCounty} from './dbk156-shopping-ai';
-import {checkoutIntent,paymentAssent,deliveryLocation,knownCounty,counties,DELIVERY_QUESTION} from './dbk165-checkout-intent';
+import {checkoutIntent,wantsCheckout,wantsSelectedPurchase,paymentAssent,deliveryLocation,knownCounty,counties,DELIVERY_QUESTION} from './dbk165-checkout-intent';
 import {getPublishedKnowledge} from './dbk155-knowledge';
 import {getActiveDeliveryZones} from '@/lib/shipping-server';
 import {namedOrderRequest,namedOrderCandidates,parseDeliveryContext,deliveryChoices,deliveryMethod} from './dbk167-order-context';
@@ -66,6 +66,7 @@ export async function refreshProductionCatalogue(){
     ON CONFLICT(cache_key) DO UPDATE SET products_json=excluded.products_json,synced_at=excluded.synced_at
     RETURNING synced_at`;
   console.info('DBK156_CATALOGUE_REFRESH',{count:products.length,withImages:products.filter(p=>p.imageUrl).length});
+  console.info('DBK177_GLUE_REFRESH',{source:source.filter(p=>/glue\s*sticks?/i.test(p.name)).length, cached:products.filter(p=>/glue\s*sticks?/i.test(p.name)).length, available:relevantProducts('glue sticks',products,products.length).length});
   return {count:products.length,syncedAt:String(result[0]?.synced_at),mainNeon:true};
 }
 async function catalogue():Promise<{products:SaleItem[];fresh:boolean}>{
@@ -111,7 +112,9 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   if(process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED!=='YES'||!(phone.test(waId)||bsuidOnly))
     throw new Error('PRODUCTION_CHAT_GATE_OFF');
   const text=rawText.trim().slice(0,500),db=sql();
-  let cmd=visual?'VISUAL':checkoutIntent(text,waId)||naturalCommand(text);
+  const checkoutWords=!visual&&wantsCheckout(text);
+  const purchaseWords=!visual&&wantsSelectedPurchase(text);
+  let cmd=visual?'VISUAL':checkoutWords?'CHECKOUT':checkoutIntent(text,waId)||naturalCommand(text);
   // Normal language never bypasses the existing quote > pickup > PAY checks.
   // Only explicit requests for a new payment prompt map to PAY.
   if(/^(PLEASE )?(SEND (ME )?(AN? )?)?(M-PESA|MPESA|STK) PUSH( NOW)?$/.test(cmd)||
@@ -196,7 +199,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     if(!bsuidOnly)await cancelProductionQuote(waId);
     await clearDelivery();await resetCartChoices();
     await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}`;
-    return reply('I’ve cleared your cart. It is now empty.'+await paymentCartWarning());
+    return reply('I’ve cleared your cart. It is now empty. Tell me what you’d like to shop for next.'+await paymentCartWarning());
   }
   // Consent is valid only for the current quote and the immediately preceding,
   // server-generated payment question, never an AI-generated offer.
@@ -211,19 +214,20 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   // A yes to the exact server-generated cart question opens a quote, never an STK.
   if(!visual&&!bsuidOnly&&paymentAssent(text)&&cmd!=='PAY'){
     const last=await previousReply();
-    if(last.startsWith("I've added " )&&last.endsWith('Would you like to place your order?'))cmd='CHECKOUT';
+    if(last.startsWith("I've added " )&&last.includes('Would you like to place your order?'))cmd='CHECKOUT';
     else if(last.startsWith('Your order total is '))return reply('Would you prefer store collection or delivery?');
     else if(last.startsWith('Delivery options for '))return reply('Which option would you prefer — collection, matatu delivery or a rider quote?');
   }
   // Delivery is still staff-priced; resolving a town never authorises a payment.
-  const deliveryCommand=/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd);
-  const lastForLocation=!visual&&!deliveryCommand&&/^[\p{L}][\p{L}\s.'’-]{0,69}$/u.test(text)?await previousReply():'';
+  const deliveryCommand=!visual&&(/^(DELIVERY QUOTE|QUOTE DELIVERY)$/.test(cmd)||/^(?:(?:i (?:want|need|prefer|would like)|nataka|naomba) )?delivery(?: please)?[.!]?$/i.test(text));
+  const lastForLocation=!visual&&!deliveryCommand&&/^[\p{L}][\p{L}\s.'’,-]{0,69}$/u.test(text)?await previousReply():'';
   const suggested=/^Is your delivery county (.+) County\? Please confirm\.$/.exec(lastForLocation);
   const confirmedCounty=suggested&&paymentAssent(text)&&counties.includes(suggested[1])?suggested[1]:null;
   const bareLocation=deliveryLocation(text,true);
-  const awaitingCounty=lastForLocation===DELIVERY_QUESTION||lastForLocation.startsWith('I couldn’t identify that town')||!!suggested||((lastForLocation.startsWith('Your order total is ')||lastForLocation==='Would you prefer store collection or delivery?')&&!!bareLocation&&!!knownCounty(bareLocation));
-  const location=visual?null:confirmedCounty||deliveryLocation(text,awaitingCounty&&cmd!=='PICKUP'&&cmd!=='PAY'&&cmd!=='CHECKOUT');
-  const method=!visual&&deliveryContext?deliveryMethod(text):null;
+  const awaitingCounty=lastForLocation===DELIVERY_QUESTION||lastForLocation.startsWith('I couldn’t identify that town')||lastForLocation.startsWith('Please confirm the town or area and its correct county')||lastForLocation.endsWith('Please also share your specific town or area and county.')||!!suggested||((lastForLocation.startsWith('Your order total is ')||lastForLocation==='Would you prefer store collection or delivery?')&&!!bareLocation&&!!knownCounty(bareLocation));
+  let location=visual?null:confirmedCounty||deliveryLocation(text,awaitingCounty&&cmd!=='PICKUP'&&cmd!=='PAY'&&cmd!=='CHECKOUT');
+  if(location&&deliveryContext&&!deliveryContext.county&&!location.includes(',')&&counties.some(c=>c.toLowerCase()===location!.toLowerCase()))location=deliveryContext.location+', '+location;
+  const method=!visual&&deliveryContext?.county?deliveryMethod(text):null;
   const referencedDelivery=!!location&&/^(?:i (?:want|need|would like)|nataka) (?:these|those|this|them|hizi|hizo)\b/i.test(text);
   if(deliveryCommand||location||method){
     if(!bsuidOnly){
@@ -239,10 +243,13 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     if(!location)return reply(DELIVERY_QUESTION);
     const county=knownCounty(location);
     if(!county){
+      if(location.includes(','))return reply('Please confirm the town or area and its correct county, e.g. Kikuyu, Kiambu. No delivery fee has been confirmed.');
+      deliveryContext={location,county:''};
+      await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,updated_at=now() WHERE wa_id=${waId}`;
       const suggestion=await suggestDeliveryCounty(location,counties);
       return reply(suggestion?`Is your delivery county ${suggestion} County? Please confirm.`:'I couldn’t identify that town confidently. Which county is it in?');
     }
-    deliveryContext={location,county};
+    deliveryContext={location:location.split(',')[0].trim(),county};
     await db`UPDATE public.dbk36_wa_conversations SET delivery_context=${JSON.stringify(deliveryContext)}::jsonb,staff_review_reason=CASE WHEN staff_review_reason='Delivery quote' THEN NULL ELSE staff_review_reason END,updated_at=now() WHERE wa_id=${waId}`;
     const knowledge=await getPublishedKnowledge();
     const approved=knowledge.delivery.toLowerCase().replace(/[-’']/g,' ').replace(/\s+/g,' ').includes(county.toLowerCase());
@@ -250,7 +257,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     try{options=deliveryChoices(county,await getActiveDeliveryZones(),approved);}catch{console.warn('DBK167_DELIVERY_RATES_UNAVAILABLE');}
     const rates=options.map(z=>`${safe(z.label)} — ${z.quoteRequired?'quote required':money(z.fee)}`).join('\n');
     if(referencedDelivery)await flagReview('Photo and delivery request');
-    return reply((referencedDelivery?'Please confirm the products and quantity of each item so our team can prepare the correct order. No items have been added from the photos alone.\n\n':'')+`Delivery options for ${safe(location)}${location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rates?rates+'\n':'No fixed rate confirmed for this location.\n'}Store collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team confirms delivery fees and the final total before payment.`);
+    return reply((referencedDelivery?'Please confirm the products and quantity of each item so our team can prepare the correct order. No items have been added from the photos alone.\n\n':'')+`Delivery options for ${safe(deliveryContext.location)}${deliveryContext.location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rates?rates+'\n':'No fixed rate confirmed for this location.\n'}Store collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team confirms delivery fees and the final total before payment. ${location.toLowerCase()===county.toLowerCase()?'Please also share your specific town or area and county.':''}`);
   }
 
   const {products,fresh}=await catalogue();
@@ -264,7 +271,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       const current=await cart(waId,products);
       return entries.length?'Current cart:\n'+entries.map(e=>{const line=current.lines.find(l=>l.item.id===e.id);return `${e.position}. ${e.label} × ${e.quantity}${line&&fresh?' — '+money(line.subtotalMinor/100):' — needs stock/price check'}`;}).join('\n')+(fresh&&!current.invalid?`\nCart total: ${money(current.totalMinor/100)}`:'\nTotal requires current stock and price confirmation.'):'Your cart is empty.';
     };
-    if(basketAction.kind==='view')return reply(await display()+await paymentCartWarning());
+    if(basketAction.kind==='view')return reply(await display()+'\nTo change items, say “remove item 1” or “clear cart”. To buy, say “I want to pay”.'+await paymentCartWarning());
     const selected=cartTarget(basketAction.target||'',entries);
     if(selected===null)return reply('I couldn’t identify one cart item. Please specify its number.\n'+await display());
     const target=entries.find(e=>e.position===selected)!;
@@ -273,7 +280,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     if(basketAction.kind==='keep')await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} AND product_id<>${target.id}`;
     else await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} AND product_id=${target.id}`;
     const updated=await cart(waId,products);
-    return reply((basketAction.kind==='keep'?`I’ve kept only ${target.label} in your cart.`:`I’ve removed ${target.label} from your cart.`)+'\n'+(updated.lines.length?cartSummary(updated):updated.invalid?'Remaining items need a stock check.':'Your cart is empty.')+await paymentCartWarning());
+    return reply((basketAction.kind==='keep'?`I’ve kept only ${target.label} in your cart.`:`I’ve removed ${target.label} from your cart.`)+'\n'+(updated.lines.length?cartSummary(updated):updated.invalid?'Remaining items need a stock check.':'Your cart is empty.')+'\nSay “show my cart” to review it, or “I want to pay” when ready.'+await paymentCartWarning());
   }
   const clearPending=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;};
   const clearPurchase=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=NULL,pending_purchase_stage=NULL WHERE wa_id=${waId} AND pending_purchase_stage IS NOT NULL`;};
@@ -291,7 +298,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     if(!up.length)return reply('That quantity is unavailable, or another option of this product is already in your cart. You can remove the existing item before choosing a different option.');
     await clearPurchase();
     const c=await cart(waId,products);
-    return reply(`I've added ${qty} × ${safe(item.name)}${variant?` (${safe(variant.label)})`:''} to your cart — ${money((variant?.price??item.price)*qty)}.\n\n${cartSummary(c)}\nWould you like to place your order?`);
+    return reply(`I've added ${qty} × ${safe(item.name)}${variant?` (${safe(variant.label)})`:''} to your cart — ${money((variant?.price??item.price)*qty)}.\n\n${cartSummary(c)}\nWould you like to place your order? Say “I want to pay”, “show my cart”, or “remove item 1”.`);
   }
   async function show(items:SaleItem[]):Promise<Answer>{
     await clearPending();
@@ -313,7 +320,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     const images=items.flatMap((p,i)=>p.imageUrl?[{url:p.imageUrl,caption:label(p,i)}]:[]);
     console.info('DBK156_PRODUCT_MEDIA',{matched:items.length,withImages:images.length});
     const introduction=items.length===1?'I found this for you:':'These are the closest matches I found:';
-    return {reply:introduction+'\n\n'+items.map(label).join('\n\n')+'\n\n'+(items.length===1?'Is this what you had in mind?':'Which one catches your eye?')+(images.length<items.length?'\nI don’t have a catalogue photo for every item right now.':''),images};
+    return {reply:introduction+'\n\n'+items.map(label).join('\n\n')+'\n\n'+(items.length===1?'Is this what you had in mind? To buy, say “I want this” or tell me the quantity.':'Which one catches your eye? Reply with its number or name to choose.')+(images.length<items.length?'\nI don’t have a catalogue photo for every item right now.':''),images};
   }
   async function showSearch(query:string):Promise<Answer>{
     const {items,missing,groups}=groupedMatches(query,products);
@@ -381,7 +388,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   // A named payment request is a purchase enquiry, not permission to charge
   // an existing quote for an unrelated item.
   const namedPayment=/^(?:i (?:want|would like|need) to|i['’]d like to|let me) pay for (?:the |a |an )?(.+?)[.!]?$/i.exec(text);
-  if(namedPayment&&cmd!=='PAY'&&!text.includes('?')){
+  if(namedPayment&&!['PAY','CHECKOUT'].includes(cmd)&&!text.includes('?')){
     if(!fresh)return reply('I’m refreshing the catalogue before confirming your order. No payment has been requested.');
     const matched=relevantProducts(namedPayment[1],products);
     if(matched.length!==1)return show(matched);
@@ -389,14 +396,15 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId} AND pending_purchase_product_id=${matched[0].id}`;
     return {reply:`${safe(matched[0].name)} — ${money(matched[0].price)}. How many would you like? I’ll confirm the order total before requesting payment.`,images:result.images};
   }
-  const gluePage=glueSearchPage(text);
+  const gluePage=visual?null:glueSearchPage(text);
   if(gluePage!==null){
     if(!fresh)return reply('Our catalogue is refreshing. Please try again shortly.');
     const all=relevantProducts('glue sticks',products,products.length).filter(p=>p.variants?(p.variantOptions||[]).some(v=>v.stockQuantity!==null&&v.stockQuantity>0):p.stockQuantity!==null&&p.stockQuantity>0);
     const size=10,pages=Math.max(1,Math.ceil(all.length/size));
     if(gluePage>pages)return reply(`There are ${pages} page(s) of glue sticks. Reply “glue sticks” to start again.`);
     const result=await show(all.slice((gluePage-1)*size,gluePage*size));
-    return all.length?{...result,reply:`Available glue sticks (${all.length} catalogue products, page ${gluePage}/${pages}):\n\n`+result.reply+(gluePage<pages?`\nReply “glue sticks page ${gluePage+1}” for more.`:'')}:result;
+    if(all.length<=1)console.info('DBK177_GLUE_CATALOGUE_COVERAGE',{matching:all.length,cached:products.length});
+    return all.length?{...result,reply:`Available glue sticks (${all.length} catalogue products, page ${gluePage}/${pages}):\n\n`+result.reply+(all.length===1?'\nThis is the only matching in-stock item in my current shopping catalogue. Our team can check other stock.':'')+(gluePage<pages?`\nReply “glue sticks page ${gluePage+1}” for more.`:'')}:result;
   }
   // Explicit catalogue and budget lookups are read-only, not payment commands.
   const sku=catalogueSku(text);
@@ -464,6 +472,18 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   }
   // Confirmation and quantity are separate states, scoped to the last displayed product.
   // An affirmative response never enters checkout or PAY.
+  if(purchaseWords&&cmd!=='PAY'){
+    const c=await cart(waId,products);
+    const options=(await shortlist()).filter((p):p is SaleItem=>!!p&&p.stockQuantity!==0);
+    if(c.lines.length&&(!options.length||options.length===1&&c.lines.some(l=>l.item.id===options[0].id))){cmd='CHECKOUT';}
+    else if(options.length===1&&fresh){
+      await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=${options[0].id},pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId}`;
+      return reply(`How many ${safe(options[0].name)} would you like?`);
+    }
+    else if(options.length>1)return reply('Which product would you like to buy? Reply with its number or name.');
+    else if(c.lines.length)cmd='CHECKOUT';
+    else return reply('Tell me the product you would like to buy and the quantity.');
+  }
   const purchase=['PAY','CHECKOUT','CHECK OUT','PICKUP'].includes(cmd)?null:purchaseFollowup(text);
   if(purchase){
     const rows=await db`SELECT pending_purchase_product_id,pending_purchase_stage FROM public.dbk155_wa_shortlists WHERE wa_id=${waId} AND pending_purchase_stage IS NOT NULL AND updated_at>now()-interval '15 minutes'`;
@@ -557,6 +577,15 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       }
     }
     if(['CHECKOUT','CHECK OUT','PICKUP'].includes(cmd)){
+      if(bsuidOnly)return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
+      if(cmd!=='PICKUP'&&deliveryContext){await flagReview('Delivery quote');return reply(`Your delivery request is for ${safe(deliveryContext.location)}${deliveryContext.county?' ('+safe(deliveryContext.county)+')':''}. Our team must confirm the delivery cost and final total. Say “collect from store” if you prefer collection. No payment has been requested.`);}
+      if(checkoutWords){
+        const o=await productionCustomerOrder(waId);
+        if(o&&['starting','prompt_sent','review_required'].includes(String(o.status)))return paymentStatus();
+        if(o?.status==='quoted'&&o.pickup_confirmed_at&&new Date(String(o.expires_at)).getTime()>Date.now())return reply(paymentQuestion(o as {reference:unknown;amount_kes:unknown}));
+        const c=await cart(waId,products);
+        if(!c.lines.length){const options=(await shortlist()).filter((p):p is SaleItem=>!!p&&p.stockQuantity!==0);if(fresh&&options.length===1){await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=${options[0].id},pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId}`;return reply(`How many ${safe(options[0].name)} would you like? I’ll confirm your order before payment.`);}return reply('What would you like to buy? Tell me the product and quantity first.');}
+      }
       await clearPurchase();
       if(!fresh)return reply('Checkout is paused until the product catalogue refreshes. No payment requested.');
       const c=await cart(waId,products);
@@ -571,7 +600,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
         cart:c.lines.map(l=>({productId:l.item.id,variantId:l.variantId,quantity:l.quantity,subtotalMinor:l.subtotalMinor})),
         fulfillment:'pickup'});
       if(order.status!=='quoted'){await flagReview('Payment initiation');return reply(`Payment for ${order.reference} is awaiting confirmation. Please do not pay again. Reply PAYMENT STATUS for the latest recorded status. I’ve flagged this for our team.`);}
-      if(cmd!=='PICKUP')return reply(`Your order total is ${money(Number(order.amountKes))} (${order.reference}). Would you like to collect from our store? If you prefer delivery, our team can confirm the cost first.\n\n${cartSummary(c)}`);
+      if(cmd!=='PICKUP')return reply(`Your order total is ${money(Number(order.amountKes))} (${order.reference}). Would you like to collect from our store? If you prefer delivery, tell me your town or area and county (e.g. Kikuyu, Kiambu). Our team can confirm the cost first.\n\n${cartSummary(c)}`);
     }
     if(cmd==='PICKUP'){
       const o=await confirmProductionPickup(waId);
@@ -636,7 +665,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     }
     // No arbitrary keyword search after a failed/ambiguous plan. Explicit search phrases may use a safe deterministic fallback.
     if(!plan&&fresh&&/^(?:do you have|i(?:'m| am) looking for|show me|find|search for|nataka|mnazo)\b/i.test(text))return show(relevantProducts(text,products));
-    return reply(options.length===1?`Are you asking about ${safe(options[0].name)}? I can show you the photo, price or help you choose.`:'What would you like to find? I can also help you speak to our team.');
+    return reply(options.length===1?`Are you asking about ${safe(options[0].name)}? Tell me how many you want, or ask about a different product.`:'What would you like to find? I can also help you speak to our team.');
   }
   return reply("What product are you looking for, or would you like to speak to our team?");
 }

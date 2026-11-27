@@ -118,3 +118,31 @@ test('DBK176 broad glue stick search returns all in-stock matching sizes, not un
 test('DBK176 named add and quantity typo advance the pending product only',async()=>{
  const h=harness([dbk176Battery]);await h.say('SEARCH batteries');assert.match(await h.say('Add the batteries to my cart'),/How many/);assert.match(await h.say('Ome'),/added 1 × Tocebal Batteries/);assert.equal(h.cart()[0].quantity,1);assert.equal(h.stats().calls,0);assert.equal(h.stats().modelCalls,0);
 });
+
+test('DBK177 natural checkout synonyms quote the cart and never charge until explicit confirmation',async()=>{
+ for(const phrase of ['I want to pay for this','I want to pay','Nataka kulipia','Lipa','Lipia','Buy','Checkout','I want to buy','I want to get this']){
+  const h=harness();h.setCart();const quote=await h.say(phrase);assert.match(quote,/Your order total is KES 20/,phrase);assert.equal(h.stats().calls,0);
+  await h.say('Collect from store');assert.equal(h.stats().calls,0);assert.match(await h.say('I want to pay for this'),/Collection confirmed/);assert.equal(h.stats().calls,0);
+  assert.match(await h.say('Send M-PESA prompt'),/requested/);assert.equal(h.stats().calls,1);
+ }
+});
+test('DBK177 natural purchase after one photo asks quantity, not another photo or payment',async()=>{
+ for(const phrase of ['I want to buy this','I want to get this','Nataka kununua hii']){const h=harness();await h.say('SEARCH donut vase');assert.match(await h.say(phrase),/How many Donut Vase/);assert.match(await h.say('One'),/added 1/);assert.equal(h.stats().calls,0);assert.equal(h.stats().modelCalls,0);}
+});
+test('DBK177 complete customer glue search phrases enumerate both matches',async()=>{
+ const h=harness([{...product,id:'small',name:'7 mm Gluestick',price:10,stockQuantity:18648},{...product,id:'gun',name:'Glue Gun'}]);
+ for(const phrase of ["I'm looking for Glue Sticks",'Are there any other glue sticks?','Show me all available glue sticks','What other glue sticks do you have?']){const r=await h.say(phrase);assert.match(r,/7 mm Gluestick/,phrase);assert.match(r,/Big Hot Melt/,phrase);assert.doesNotMatch(r,/Glue Gun/);}
+ assert.equal(h.stats().modelCalls,0);
+});
+test('DBK177 customer delivery area and county retained, mismatched county not quoted, no STK',async()=>{
+ const h=harness();h.setCart();await h.say('Place order');assert.match(await h.say('I want delivery'),/town or area and county/);assert.match(await h.say('Kikuyu, Kiambu'),/Kikuyu \(Kiambu County\)/);assert.deepEqual(h.context(),{location:'Kikuyu',county:'Kiambu'});assert.match(await h.say('I want to pay'),/delivery cost and final total/);assert.equal(h.stats().calls,0);
+ const other=harness();assert.match(await other.say('Deliver to Kikuyu, Mombasa'),/correct county/);assert.equal(other.context(),null);assert.equal(other.stats().calls,0);
+});
+test('DBK177 fresh cart after removing batteries and old paid history opens a new quote, not a repeat charge',async()=>{
+ const h=harness([dbk176Battery]);h.setCart([{product_id:'glue',quantity:1,variant_id:''},{product_id:'battery',quantity:1,variant_id:''}]);h.setOrder({reference:'DBKWAOLDPAID',status:'paid',amount_kes:27});
+ assert.match(await h.say('Remove the batteries'),/removed Tocebal Batteries/);assert.match(await h.say('I want to pay for this'),/Your order total is KES 20/);assert.equal(h.stats().calls,0);
+ await h.say('Collect from store');assert.match(await h.say('Send M-PESA prompt'),/requested/);assert.equal(h.stats().calls,1);
+});
+test('DBK177 generic payment words preserve an uncertain historical payment lock',async()=>{
+ const h=harness();h.setCart();h.setOrder({reference:'DBKWA1234567',status:'review_required',amount_kes:63});assert.match(await h.say('Nataka kulipia'),/DBKWA1234567.*awaiting confirmation/);assert.equal(h.stats().calls,0);assert.equal(h.order().status,'review_required');
+});

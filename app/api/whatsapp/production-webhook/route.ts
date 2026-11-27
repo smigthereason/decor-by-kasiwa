@@ -15,10 +15,11 @@ export async function POST(req:Request){
     return NextResponse.json({error:'SERVICE_AUTH_DENIED'},{status:403,headers});
   try{
     const result=await recordProductionWhatsAppInbound(JSON.parse(raw));
+    console.info('DBK177_INBOUND_STORED',{accepted:result.accepted});
     if(result.accepted>0)after(async()=>{
       // Human-owned chats never enter the bot queue, but their images still need preservation.
       await Promise.all([processProductionWhatsAppQueue(2),...result.humanImages.map(id=>ensureInboundImage(id))]);
     });
     return NextResponse.json({accepted:result.accepted},{headers});
-  }catch{return NextResponse.json({error:'PRODUCTION_MESSAGE_NOT_DURABLE'},{status:503,headers});}
+  }catch{console.warn('DBK177_INBOUND_STORE_FAILED');return NextResponse.json({error:'PRODUCTION_MESSAGE_NOT_DURABLE'},{status:503,headers});}
 }
