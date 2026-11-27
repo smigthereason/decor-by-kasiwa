@@ -1,7 +1,7 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const ts=require('typescript');
 const root=path.resolve(__dirname,'..');const wa='254716000000';const product={id:'glue',name:'Big Hot Melt Glue Sticks',slug:'glue-sticks',price:20,stockQuantity:50,variants:false};
 const products=[product,{id:'rose35',name:'3.5 Cm Rose Petals',slug:'rose-35',price:9,stockQuantity:72,variants:true,variantOptions:[{id:'white',label:'White',price:9,stockQuantity:40},{id:'pink',label:'Hot Pink',price:9,stockQuantity:32}]},{id:'rose55',name:'5.5 Cm Rose Petals',slug:'rose-55',price:15,stockQuantity:4,variants:false},{id:'pampas',name:'55 Cm Artificial Pampas Grass',slug:'pampas',price:50,stockQuantity:10,variants:false},{id:'vase',name:'Donut Vase',slug:'donut-vase',price:700,stockQuantity:3,variants:false},{id:'pillow',name:'Knot Pillow',slug:'knot-pillow',price:800,stockQuantity:4,variants:false},{id:'natural',name:'Natural Pampas Grass',slug:'natural-pampas',price:50,stockQuantity:10,variants:false}];
-function harness(){let order=null,cartRows=[],shortlist=[],viewed=null,pending=null,pendingVariant=null,deliveryContext=null,review=null,last='',mode='bot',calls=0,quotes=0,modelCalls=0;const cache=new Map();
+function harness(extra=[]){const catalogue=[...products,...extra];let order=null,cartRows=[],shortlist=[],viewed=null,pending=null,pendingVariant=null,deliveryContext=null,review=null,last='',mode='bot',calls=0,quotes=0,modelCalls=0;const cache=new Map();
   const db=async(parts,...v)=>{const q=parts.join('?');
     if(q.includes('SELECT mode'))return [{mode,delivery_context:deliveryContext,staff_review_reason:review}];
     if(q.includes('SET delivery_context=NULL')){deliveryContext=null;if(review==='Delivery quote')review=null;return [];}
@@ -12,7 +12,7 @@ function harness(){let order=null,cartRows=[],shortlist=[],viewed=null,pending=n
     if(q.includes('FROM public.dbk159_wa_outbound'))return last?[{message_text:last}]:[];
     if(q.includes('SELECT content'))return [{content:Object.fromEntries(['tone','business','delivery','returns','payments','products','examples','handover'].map(k=>[k,k==='delivery'?'Tharaka-Nithi: staff quote required':'test']))}];
     if(q.includes("SET mode='human'")){mode='human';return [];}
-    if(q.includes('SELECT products_json'))return [{products_json:products,synced_at:new Date().toISOString()}];
+    if(q.includes('SELECT products_json'))return [{products_json:catalogue,synced_at:new Date().toISOString()}];
     if(q.includes('SELECT product_id,quantity,variant_id'))return cartRows;
     if(q.includes('SELECT pending_variant_product_id'))return pendingVariant?[pendingVariant]:[];
     if(q.includes('SELECT pending_purchase_product_id'))return pending?[pending]:[];
@@ -76,3 +76,5 @@ test('DBK167 wholesale review can browse but cannot initiate retail charge witho
 
 test('DBK167 existing shortlist purchase wording is preserved',async()=>{const h=harness();await h.say('SEARCH glue sticks');const r=await h.say('I want to buy this one');assert.match(r,/added 1|How many/);assert.equal(h.stats().calls,0);});
 test('DBK167 explicit human request still stops automation',async()=>{const h=harness();await h.say('I want to talk to a real person');assert.equal(h.stats().mode,'human');assert.match(await h.say('SEARCH glue sticks'),/staff member will assist/);assert.equal(h.stats().calls,0);});
+
+test('DBK168 size-specific glue lookup handles spelling and does not substitute other sizes',async()=>{const fixture=[{id:'glue7',name:'7 Mm Gluestick',slug:'7mm-gluestick',price:12,stockQuantity:50,variants:false},{id:'glue11',name:'11 Mm Glue Stick',slug:'11mm-glue-stick',price:18,stockQuantity:50,variants:false}];for(const q of ['7 mm glue stick','7mm gluestick','Do you have 7 mm glue sticks?','SEARCH 7 mm glue stick']){const h=harness(fixture);const r=await h.say(q);assert.match(r,/7 Mm Gluestick/);assert.doesNotMatch(r,/11 Mm|Big Hot Melt/);assert.equal(h.stats().calls,0);}const h=harness(fixture);assert.match(await h.say('8 mm glue stick'),/couldn’t find/i);});

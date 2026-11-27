@@ -3,7 +3,9 @@ export type SalesProduct={id:string;name:string;slug:string;sku?:string;price:nu
 const stop=new Set('hi hello hey kasiwa do you have any is are there some available please could would can i me my want need looking for to buy purchase get show find see photos photo pictures picture images image of the a an in on with what your sell stock bei gani mna mnazo nataka tafuta na ya za bedroom living room bathroom house home decorative decor beautiful nice modern like'.split(' '));
 const normalize=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,' ').trim();
 const stem=(s:string)=>['donuts','doughnut','doughnuts'].includes(s)?'donut':s==='vace'||s==='vaces'?'vase':s==='knotted'?'knot':s.length>4&&s.endsWith('ies')?s.slice(0,-3)+'y':s.length>4&&s.endsWith('s')&&!s.endsWith('ss')?s.slice(0,-1):s;
-const words=(s:string)=>normalize(s).split(' ').filter(Boolean).map(stem);
+// Join dimensions before tokenization so 7mm and 7 mm match, but 7mm and 11mm do not.
+const searchText=(s:string)=>normalize(s.toLowerCase().replace(/\bgluesticks?\b/g,m=>m.endsWith('s')?'glue sticks':'glue stick').replace(/\b(\d+(?:\.\d+)?)\s*(mm|cm)\b/g,(_,n,u)=>` ${n.replace('.','point')}${u} `));
+const words=(s:string)=>searchText(s).split(' ').filter(Boolean).map(stem);
 export function catalogueSku(query:string):string|undefined{
   const match=query.match(/\bDBK-[A-Z0-9]+(?:-[A-Z0-9]+)+\b/i);
   return match?.[0].toUpperCase();
@@ -25,7 +27,7 @@ export function budgetProducts(products:SalesProduct[],budget:{maximum:number;in
 export function relevantProducts(query:string,products:SalesProduct[],limit=3){
   const sku=catalogueSku(query);
   if(sku)return products.filter(p=>p.stockQuantity!==0&&p.sku?.toUpperCase()===sku).slice(0,limit);
-  const terms=[...new Set(normalize(query).split(' ').filter(w=>w.length>2&&!stop.has(w)).map(stem))];
+  const terms=[...new Set(searchText(query).split(' ').filter(w=>w.length>2&&!stop.has(w)).map(stem))];
   if(!terms.length)return [];
   const queryIsMirror=terms.includes('mirror')&&!terms.some(w=>['clock','sticker','letter','acrylic','decal'].includes(w));
   return products.filter(p=>p.stockQuantity===null||p.stockQuantity>0).map(p=>{

@@ -328,6 +328,8 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       return show(found);
     }
   }
+  // Size-specific glue stick requests must never substitute an unrelated size.
+  if(fresh&&!visual&&/\b\d+(?:\.\d+)?\s*mm\b/i.test(text)&&/\bglue\s*sticks?\b/i.test(text)&&!/\b(?:pay|payment|mpesa|stk|cart|checkout|order|cancel|deliver|delivery|refund|remove|add|not|don't|dont|no|except)\b/i.test(text))return showSearch(directQuery||text.replace(/^search\s+/i,''));
   if(directQuery&&fresh&&/^(?:what (?:of|about)|i(?:['’])?d like to (?:purchase|buy)|i (?:want|would like) to (?:purchase|buy))\s+/i.test(text)){
     const matched=relevantProducts(directQuery,products);if(matched.length)return show(matched);
   }
@@ -515,8 +517,8 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   }catch(e){
     const code=cleanError(e);
     if(code.includes('ACTIVE_QUOTE_MISMATCH')){await cancelProductionQuote(waId);return reply('Your cart or promotion price has changed since the earlier quote. Please review your cart and place the order again. No new payment has been requested.');}
-    if(code.includes('OUTCOME_UNCERTAIN')||code.includes('ALREADY_IN_PROGRESS'))
-      return reply('M-PESA status uncertain. Do not retry PAY. Reply PAYMENT STATUS or STAFF.');
+    if(code==='DARAJA_AUTH_NOT_READY_NO_STK'){await flagReview('Payment initiation');return reply('M-PESA is temporarily unavailable. No payment prompt was sent for this attempt. Your order is saved; you can ask me to send the prompt again when ready.');}
+    if(code.includes('OUTCOME_UNCERTAIN')||code.includes('ALREADY_IN_PROGRESS')){await flagReview('Payment initiation');return reply('I couldn’t confirm whether M-PESA received the request. I’ve flagged this for our team. Please do not pay again until we verify it. You can still ask me about other products.');}
     console.warn('DBK155_CHECKOUT_REVIEW',code);
     return reply('I couldn’t complete that step safely. Please do not send another payment request until our team checks it.');
   }

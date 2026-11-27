@@ -34,24 +34,40 @@ function kenyaStamp(){
   const get=(name:string)=>parts.find(x=>x.type===name)?.value||'';
   return `${get('year')}${get('month')}${get('day')}${get('hour')}${get('minute')}${get('second')}`;
 }
-async function initiateProdStk(phone:string,amount:number,reference:string){
-  const cfg=paymentConfig();
-  const auth=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
-    headers:{Authorization:'Basic '+Buffer.from(cfg.consumer+':'+cfg.secret).toString('base64')},cache:'no-store'});
-  if(!auth.ok)throw new Error('DARAJA_AUTHENTICATION_FAILED');
-  const token=(await auth.json()) as {access_token?:string};
-  if(!token.access_token)throw new Error('DARAJA_TOKEN_MISSING');
+// Never log credentials, phone numbers, request bodies or provider descriptions.
+function providerCode(value:unknown){
+  const code=String(value??'');
+  return /^\d{1,8}(?:\.\d{1,8}){0,4}$/.test(code)?code:undefined;
+}
+async function productionToken(reference:string,cfg:ReturnType<typeof paymentConfig>){
+  try{
+    const auth=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
+      headers:{Authorization:'Basic '+Buffer.from(cfg.consumer+':'+cfg.secret).toString('base64')},cache:'no-store',signal:AbortSignal.timeout(12000)});
+    const token=await auth.json().catch(()=>null) as {access_token?:string;errorCode?:string}|null;
+    if(!auth.ok||typeof token?.access_token!=='string'||!token.access_token){
+      console.warn('DBK168_DARAJA_AUTH_REJECTED',{reference,httpStatus:auth.status,providerCode:providerCode(token?.errorCode)});
+      throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
+    }
+    return token.access_token;
+  }catch{
+    console.warn('DBK168_DARAJA_AUTH_FAILED',{reference});
+    throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
+  }
+}
+async function initiateProdStk(phone:string,amount:number,reference:string,cfg:ReturnType<typeof paymentConfig>,token:string){
   const stamp=kenyaStamp();
   const response=await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',{
-    method:'POST',cache:'no-store',headers:{Authorization:`Bearer ${token.access_token}`,'Content-Type':'application/json'},
+    method:'POST',cache:'no-store',signal:AbortSignal.timeout(18000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
     body:JSON.stringify({BusinessShortCode:cfg.shortcode,
       Password:Buffer.from(cfg.shortcode+cfg.passkey+stamp).toString('base64'),Timestamp:stamp,
       TransactionType:cfg.type,Amount:amount,PartyA:phone,PartyB:cfg.partyB,PhoneNumber:phone,
       CallBackURL:CALLBACK,AccountReference:reference.slice(0,12),TransactionDesc:'Decor By Kasiwa WhatsApp'}),
   });
-  const output=(await response.json()) as {ResponseCode?:string;CheckoutRequestID?:string;MerchantRequestID?:string};
-  if(!response.ok||output.ResponseCode!=='0'||!output.CheckoutRequestID||!output.MerchantRequestID)
+  const output=await response.json().catch(()=>null) as {ResponseCode?:string|number;CheckoutRequestID?:string;MerchantRequestID?:string;errorCode?:string}|null;
+  if(!response.ok||String(output?.ResponseCode)!=='0'||!output?.CheckoutRequestID||!output.MerchantRequestID){
+    console.warn('DBK168_DARAJA_STK_UNCONFIRMED',{reference,httpStatus:response.status,providerCode:providerCode(output?.errorCode??output?.ResponseCode),json:output!==null});
     throw new Error('DARAJA_STK_REQUEST_NOT_CONFIRMED');
+  }
   if(!CALLBACK_ID.test(output.CheckoutRequestID)||!CALLBACK_ID.test(output.MerchantRequestID))
     throw new Error('DARAJA_STK_RESPONSE_INVALID');
   return {checkoutId:output.CheckoutRequestID,merchantId:output.MerchantRequestID};
@@ -118,7 +134,7 @@ export async function cancelProductionQuote(waId:string){
  * locks the attempt for staff reconciliation and MUST NOT initiate a second STK.
  */
 export async function payProductionCheckout(waId:string){
-  paymentConfig();
+  const cfg=paymentConfig();
   // Never take a live payment when our callback perimeter is disabled.
   const health=await fetch('https://dbk36-whatsapp-production.victor-dmaina.workers.dev/__dbk36/health',{cache:'no-store',signal:AbortSignal.timeout(5000)});
   const readiness=health.ok?await health.json():null;
@@ -138,19 +154,25 @@ export async function payProductionCheckout(waId:string){
     {reference,amountKes:amount,lines},whatsappPromotionCatalogue(catalogue),storeStock))
     throw new Error('LIVE_STOCK_CHANGED_NO_CHARGE');
   const sql=db();
+  // OAuth is read-only: do it before claiming the irreversible STK attempt.
+  // Failure here leaves the quote retryable; the STK endpoint was never called.
+  const token=await productionToken(reference,cfg);
   const claims=await sql`UPDATE public.dbk36_wa_prod_payment_orders
     SET status='starting',updated_at=now() WHERE reference=${reference} AND wa_id=${waId}
     AND status='quoted' AND pickup_confirmed_at IS NOT NULL AND expires_at>now()
     RETURNING reference`;
   if(claims.length!==1)throw new Error('PAYMENT_ALREADY_IN_PROGRESS_NO_RETRY');
+  let accepted:{checkoutId:string;merchantId:string}|undefined;
   try{
-    const result=await initiateProdStk(waId,amount,reference);
+    const result=await initiateProdStk(waId,amount,reference,cfg,token);
+    accepted=result;
     const saved=await sql`UPDATE public.dbk36_wa_prod_payment_orders
       SET checkout_id=${result.checkoutId},merchant_id=${result.merchantId},status='prompt_sent',updated_at=now()
       WHERE reference=${reference} AND status='starting' RETURNING reference`;
     if(saved.length!==1)throw new Error('STK_ACCEPTED_STORAGE_REVIEW_REQUIRED');
     return {reference,status:'STK_PROMPT_SENT',amountKes:amount};
-  }catch{
+  }catch(error){
+    console.error('DBK168_STK_REVIEW',{reference,stage:accepted?'storage':'dispatch',code:cleanError(error),...(accepted||{})});
     try{await sql`UPDATE public.dbk36_wa_prod_payment_orders
       SET status='review_required',last_error_code='STK_INITIATION_OUTCOME_UNCERTAIN',updated_at=now()
       WHERE reference=${reference} AND status='starting'`;}catch{/* preserved as starting; no replay */}
