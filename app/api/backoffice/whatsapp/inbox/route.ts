@@ -35,7 +35,7 @@ export async function GET(req:NextRequest){try{
   const wa=req.nextUrl.searchParams.get('wa');
   if(wa){
     if(!waPattern.test(wa))return out({error:'INVALID_CONVERSATION'},400);
-    const scope=await sql`SELECT wa_id,mode,staff_owner_id,staff_owner_name,reply_lock IS NOT NULL AS busy,last_inbound_at, (SELECT m.id::text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) AS latest_inbound_id FROM public.dbk36_wa_conversations c WHERE wa_id=${wa} AND (${admin} OR staff_owner_id=${id})`;
+    const scope=await sql`SELECT wa_id,mode,staff_owner_id,staff_owner_name,staff_review_reason,delivery_context,reply_lock IS NOT NULL AS busy,last_inbound_at, (SELECT m.id::text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) AS latest_inbound_id FROM public.dbk36_wa_conversations c WHERE wa_id=${wa} AND (${admin} OR staff_owner_id=${id})`;
     if(!scope.length)return out({error:'ACCESS_DENIED'},403);
     const [messages,cart,orders,audit]=await Promise.all([
       sql`SELECT * FROM (
@@ -50,15 +50,15 @@ export async function GET(req:NextRequest){try{
     return out({conversation:scope[0],messages:messages.reverse(),cart,orders,audit});
   }
   const q=(req.nextUrl.searchParams.get('q')||'').slice(0,80);
-  const conversations=await sql`SELECT c.wa_id,c.mode,c.staff_owner_id,c.staff_owner_name,c.last_inbound_at,c.reply_lock IS NOT NULL AS busy,
+  const conversations=await sql`SELECT c.wa_id,c.mode,c.staff_owner_id,c.staff_owner_name,c.staff_review_reason,c.last_inbound_at,c.reply_lock IS NOT NULL AS busy,
     latest.message_text AS last_message, latest.id AS latest_inbound_id,
     (latest.id IS NOT NULL AND seen.last_read_message_id IS DISTINCT FROM latest.id) AS unread,
-    (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz)) AS needs_reply
+    (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.last_inbound_at>COALESCE((SELECT max(o.created_at) FROM public.dbk159_wa_outbound o WHERE o.wa_id=c.wa_id AND o.actor_id NOT IN ('AI','SYSTEM_PAYMENT') AND o.status='accepted'),'-infinity'::timestamptz))) AS needs_reply
     FROM public.dbk36_wa_conversations c
     LEFT JOIN LATERAL (SELECT m.id::text AS id,m.message_text FROM public.dbk36_wa_messages m WHERE m.wa_id=c.wa_id AND m.direction='in' ORDER BY m.created_at DESC,m.id DESC LIMIT 1) latest ON true
     LEFT JOIN public.dbk163_wa_staff_read seen ON seen.wa_id=c.wa_id AND seen.staff_id=${id}
     WHERE (${admin} OR c.staff_owner_id=${id}) AND (${q}='' OR strpos(lower(c.wa_id),lower(${q}))>0 OR strpos(lower(coalesce(c.staff_owner_name,'')),lower(${q}))>0)
-    ORDER BY (c.mode='human' AND c.staff_owner_id IS NULL) DESC,c.last_inbound_at DESC NULLS LAST LIMIT 100`;
+    ORDER BY (c.staff_review_reason IS NOT NULL OR (c.mode='human' AND c.staff_owner_id IS NULL)) DESC,c.last_inbound_at DESC NULLS LAST LIMIT 100`;
   const eligible=admin?await serverClient.fetch<Array<{_id:string;name:string;role:string}>>(`*[_type=='customerUser' && !(_id in path('drafts.**')) && status=='ACTIVE' && (role=='ADMIN' || (role in ['MANAGER','STORE','STORE_STAFF'] && 'WHATSAPP_SALES' in permissions))] | order(name asc){_id,name,role}`,{}, {cache:'no-store'}):[];
   return out({conversations,eligible,viewer:{id,admin}});
 }catch{return out({error:'INBOX_UNAVAILABLE'},503);}}
@@ -88,7 +88,7 @@ export async function POST(req:NextRequest){try{
     return rows.length?out({ok:true}):out({error:'BUSY_OR_NOT_FOUND'},409);
   }
   if(body.action==='resume'){
-    const rows=await sql`WITH changed AS (UPDATE public.dbk36_wa_conversations SET mode='bot',staff_owner_id=NULL,staff_owner_name=NULL,updated_at=now() WHERE wa_id=${wa} AND reply_lock IS NULL AND (${admin} OR staff_owner_id=${id}) RETURNING wa_id),
+    const rows=await sql`WITH changed AS (UPDATE public.dbk36_wa_conversations SET mode='bot',staff_owner_id=NULL,staff_owner_name=NULL,staff_review_reason=NULL,updated_at=now() WHERE wa_id=${wa} AND reply_lock IS NULL AND (${admin} OR staff_owner_id=${id}) RETURNING wa_id),
       drained AS (UPDATE public.dbk36_wa_messages m SET status='done',updated_at=now() FROM changed WHERE m.wa_id=changed.wa_id AND m.direction='in' AND m.status='pending' RETURNING m.id)
       INSERT INTO public.dbk159_wa_assignment_audit(wa_id,actor_id,action) SELECT wa_id,${id},'resume' FROM changed RETURNING id`;
     return rows.length?out({ok:true}):out({error:'BUSY_OR_NOT_ASSIGNED'},409);

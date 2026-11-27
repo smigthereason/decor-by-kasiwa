@@ -2,16 +2,16 @@
 const norm=(text:string)=>text.toLowerCase().replace(/[’‘]/g,"'").replace(/\bm[\s-]?pesa\b/g,'mpesa').replace(/[.,!?]+/g,' ').replace(/\s+/g,' ').trim();
 export const paymentAssent=(text:string)=>/^(?:yes(?: please| go ahead| send it| sure)?|yeah|yep|sure|go ahead|ndio|ndiyo|sawa)$/.test(norm(text));
 export function checkoutIntent(text:string,waId:string):'CHECKOUT'|'PICKUP'|'PAY'|'PAY_OTHER_PHONE'|'PAY_PHONE'|null{
-  const t=norm(text);
+  const t=norm(text).replace(/^(?:hi|hello|hey)(?: kasiwa)? (?=i |please |send |pay )/,'');
   const numbers=t.match(/(?:\+?254|0)[17](?:[ -]?\d){8}\b/g)||[];
   const normalized=numbers.map(n=>n.replace(/\D/g,'').replace(/^0/,'254'));
   const stripped=t.replace(/(?:\+?254|0)[17](?:[ -]?\d){8}\b/g,'').replace(/\s+/g,' ').trim();
   if(numbers.length&&/^(?:\+?254|0)[17](?:[ -]?\d){8}$/.test(t))return normalized.every(n=>n===waId)?'PAY_PHONE':'PAY_OTHER_PHONE';
   if(/^(?:please )?(?:place|confirm|complete|submit|finali[sz]e) (?:my |the |this )?order(?: please| now)?$/.test(t)||/^(?:i (?:want|would like|need) to|i'd like to|let's) (?:place (?:my |the |this )?order|checkout|check out)(?: please| now)?$/.test(t)||/^(?:checkout|check out|proceed to payment)(?: please| now)$/.test(t))return 'CHECKOUT';
-  if(/^(?:(?:i (?:will|want to|would like to)|i'll|i'd like to) )?(?:collect|pick up|pickup|collection)(?: it| from (?:the |your )?store)?(?: please)?$/.test(t))return 'PICKUP';
+  if(/^(?:(?:i (?:will|want to|would like to)|will|i'll|i'd like to) )?(?:collect|pick up|pickup|collection)(?: it| from (?:the |your )?store)?(?: please)?$/.test(t))return 'PICKUP';
   // Questions, negation and arbitrary text must never count as an instruction to charge.
   if(/[?]/.test(text)||/\b(?:not|don't|dont|never|cancel|stop|if|how|why|can you|could you|what)\b/.test(t))return null;
-  const request=/^(?:(?:yes|okay|ok|please) )*(?:send(?: me)? (?:the |an? )?|request (?:the |an? )?|tuma )?(?:mpesa(?: payment)? (?:prompt(?:\s*\/\s*stk push)?|push|request)|stk (?:push|prompt|request))(?: (?:now|please))*(?: (?:to|on) my (?:whatsapp |phone |mpesa )?number)?(?: (?:now|please))*$/.test(stripped)||/^(?:i (?:want|would like) to pay|i'd like to pay|pay now|pay via mpesa|pay with mpesa)(?: please)?$/.test(stripped);
+  const request=/^(?:(?:yes|okay|ok|please) )*(?:send(?: me)? (?:the |an? )?|request (?:the |an? )?|tuma )?(?:mpesa(?: payment)? (?:prompt(?:\s*\/\s*stk push)?|push|request)|stk (?:push|prompt|request))(?: (?:now|please))*(?: (?:to|on) my (?:whatsapp |phone |mpesa )?number)?(?: (?:now|please))*$/.test(stripped)||/^(?:i (?:want|would like) to pay|i'd like to pay|pay now|pay via mpesa|pay with mpesa)(?: for (?:my|the|this) order)?(?: please)?$/.test(stripped);
   if(request)return normalized.some(n=>n!==waId)?'PAY_OTHER_PHONE':'PAY';
   return null;
 }
