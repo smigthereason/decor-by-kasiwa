@@ -1,12 +1,12 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const fs=require('node:fs');const path=require('node:path');const ts=require('typescript');
 const root=path.resolve(__dirname,'..');
-function harness(rows,products=[]){
+function harness(rows,products=[],stores=[]){
  const calls=[];const modules=new Map();
  const real=new Set(['lib/db/dbk64-online-neon.ts','lib/db/dbk64-online-core.ts','lib/paystack/server.ts','lib/inventory/stock.ts','lib/product-pricing.ts']);
  const mocks={
   '@/lib/db/dbk62-pos-cutover':{dbk62GetProductionSql:()=>async(parts,...args)=>{calls.push({query:parts.join('?'),args});return rows;}},
-  '@/sanity/lib/serverClient':{serverClient:{fetch:async()=>products}},
+  '@/sanity/lib/serverClient':{serverClient:{fetch:async(query)=>query.includes('"storeLocation"')?stores:products}},
   '@/lib/stores/main-store':{getMainStore:async()=>({id:'tumaini',name:'Tumaini'})},
   '@/lib/dbk164-promotion-server':{configuredBulkPromotion:()=>undefined},
   '@/lib/operations/workflow':{workflowForProducts:()=>{throw Error('STOCK_CHECK_PASSED');}},
@@ -42,4 +42,18 @@ test('actual checkout stops before workflow, pending order or Paystack on unmana
 }));
 test('actual Neon checkout uses live variant balance despite stale zero catalogue stock',()=>withEnv(async()=>{
  const h=harness([row('green',4)],[{_id:'p1',name:'Plant',price:100,variants:[{_key:'green',stockQuantity:0}]}]);await assert.rejects(h.load('lib/paystack/server.ts').initializePaystackCheckout(input([{productId:'p1',variantId:'green',quantity:1}])),/STOCK_CHECK_PASSED/);assert.equal(h.calls.length,1);
+}));
+
+const otcId='storeLocation.4fcbd28b74494e7da7176525e63d73f4';
+async function withOverride(id,fn){const old=process.env.DBK64_ONLINE_FULFILMENT_STORE_ID;process.env.DBK64_ONLINE_FULFILMENT_STORE_ID=id;try{await withEnv(fn);}finally{if(old===undefined)delete process.env.DBK64_ONLINE_FULFILMENT_STORE_ID;else process.env.DBK64_ONLINE_FULFILMENT_STORE_ID=old;}}
+test('DBK174B explicit online store selects OTC rather than historical Main store',()=>withOverride(otcId,async()=>{
+ const h=harness([row('',4)],[{_id:'p1',name:'Plant',price:100}],[{_id:otcId,name:'OTC Mall Branch'}]);
+ await assert.rejects(h.load('lib/paystack/server.ts').initializePaystackCheckout(input([{productId:'p1',quantity:1}])),/STOCK_CHECK_PASSED/);
+ assert.equal(h.calls[0].args[1],otcId);
+}));
+test('DBK174B missing or wrong configured store fails before payment and does not fall back',()=>withOverride(otcId,async()=>{
+ for(const stores of [[],[{_id:'storeLocation.other',name:'Wrong'}]]){
+  const h=harness([row('',4)],[{_id:'p1',name:'Plant',price:100}],stores);
+  await assert.rejects(h.load('lib/paystack/server.ts').initializePaystackCheckout(input([{productId:'p1',quantity:1}])),/Configured online fulfilment store is unavailable/);assert.equal(h.calls.length,0);
+ }
 }));

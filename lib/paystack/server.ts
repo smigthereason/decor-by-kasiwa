@@ -466,6 +466,18 @@ function decrementVariantStock(
   return changed ? nextVariants : undefined;
 }
 
+async function resolveOnlineFulfilmentStore(id: string) {
+  if (!/^storeLocation\.[A-Za-z0-9_-]{1,160}$/.test(id)) throw new Error('Online fulfilment store configuration is invalid.');
+  const rows = await serverClient.fetch<Array<{ _id: string; name: string; code?: string }>>(
+    `*[_type == "storeLocation" && _id == $id && active != false && locationType in ["MAIN", "BRANCH"]]{_id,name,code}`,
+    { id }, { cache: "no-store" },
+  );
+  if (rows.length !== 1 || rows[0]._id !== id || !rows[0].name?.trim()) {
+    throw new Error('Configured online fulfilment store is unavailable.');
+  }
+  return { id: rows[0]._id, name: rows[0].name, code: rows[0].code };
+}
+
 export async function initializePaystackCheckout({
   email,
   address,
@@ -495,7 +507,12 @@ export async function initializePaystackCheckout({
     throw new Error("Your bag is empty.");
   }
 
-  const mainStore = await getMainStore();
+  // Online routing is independent of the historical Main-store reporting default.
+  // An explicit invalid/inactive override must fail closed, never silently fall back.
+  const onlineStoreId = dbk64OnlineRequested() ? process.env.DBK64_ONLINE_FULFILMENT_STORE_ID?.trim() : undefined;
+  const mainStore = onlineStoreId
+    ? await resolveOnlineFulfilmentStore(onlineStoreId)
+    : await getMainStore();
   if (!mainStore) {
     throw new Error("Online checkout requires an active Main store. When multiple Main stores exist, configure DBK_MAIN_STORE_ID on the server.");
   }
