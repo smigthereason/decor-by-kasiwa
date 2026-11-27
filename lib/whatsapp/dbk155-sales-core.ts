@@ -116,9 +116,9 @@ export function selectVariant(text:string,options:SalesVariant[]):SalesVariant|u
 export function purchaseFollowup(text:string):{kind:'accept'|'reject'|'quantity';quantity?:number}|null{
   const t=text.trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'').replace(/[,]+/g,' ').replace(/\s+/g,' ');
   if(/^(?:no(?: thanks| thank you| it is not| it's not| its not| that's not it| that's not what i want| this is not what i want| not what i want)?|not this one|not these|not what i want|never mind|hapana)$/.test(t))return {kind:'reject'};
-  if(/^(?:yes(?: please| i want (?:these|those|it|this|that|this one)| (?:this|that|it) (?:is|s) what i want| (?:these|those) are (?:the ones|what i want)| that's what i want| that's it| this is what i was looking for)?|yeah|yep|correct|that's it|this is what i want|i want these|i want this|i(?:'d| would) like to buy|id like to buy|i want to buy|ndio|ndiyo)$/.test(t))return {kind:'accept'};
-  const m=/^(?:(?:just|only|i want|i need|give me|make it|i'll take|i'd like|nataka) )?(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|moja|mbili|tatu)(?: (?:pieces?|units?|items?|batteries|please))?(?: please)?$/.exec(t);
+  if(/^(?:add to (?:my |the )?(?:cart|art)|yes(?: please| i want (?:these|those|it|this|that|this one)| (?:this|that|it) (?:is|s) what i want| (?:these|those) are (?:the ones|what i want)| that's what i want| that's it| this is what i was looking for)?|yeah|yep|correct|that's it|this is what i want|i want these|i want this|i(?:'d| would) like to buy|id like to buy|i want to buy|ndio|ndiyo)$/.test(t))return {kind:'accept'};
+  const m=/^(?:(?:just|only|i want|i need|give me|make it|i'll take|i'd like|nataka) )?(\d{1,3}|one|ome|two|three|four|five|six|seven|eight|nine|ten|moja|mbili|tatu)(?: (?:pieces?|units?|items?|batteries|please))?(?: please)?$/.exec(t);
   if(!m)return null;
-  const words:Record<string,number>={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,moja:1,mbili:2,tatu:3};
+  const words:Record<string,number>={one:1,ome:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,moja:1,mbili:2,tatu:3};
   return {kind:'quantity',quantity:words[m[1]]??Number(m[1])};
 }

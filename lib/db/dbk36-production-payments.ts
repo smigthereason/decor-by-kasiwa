@@ -93,7 +93,7 @@ export async function createProductionCheckout(raw:unknown){
     WHERE wa_id=${input.waId} AND status='quoted' AND expires_at<=now()`;
   const existing=await sql`SELECT reference,status,amount_kes,cart_snapshot FROM public.dbk36_wa_prod_payment_orders
     WHERE wa_id=${input.waId} AND status IN ('quoted','starting','prompt_sent','review_required')
-    ORDER BY created_at DESC LIMIT 1`;
+    ORDER BY CASE WHEN status IN ('starting','prompt_sent','review_required') THEN 0 ELSE 1 END,created_at DESC LIMIT 1`;
   if(existing.length){
     const previous=existing[0];
     if(previous.status==='quoted'){
@@ -114,7 +114,7 @@ export async function productionCustomerOrder(waId:string){
   const sql=db();
   const rows=await sql`SELECT reference,status,amount_kes,expires_at,pickup_confirmed_at,
     receipt,stock_state,cart_snapshot FROM public.dbk36_wa_prod_payment_orders
-    WHERE wa_id=${waId} ORDER BY created_at DESC LIMIT 1`;
+    WHERE wa_id=${waId} ORDER BY CASE WHEN status IN ('starting','prompt_sent','review_required') THEN 0 ELSE 1 END,created_at DESC LIMIT 1`;
   return rows[0]||null;
 }
 export async function confirmProductionPickup(waId:string){
@@ -219,12 +219,12 @@ export async function reconcileProductionCheckout(checkoutId:string){
   if(process.env.MPESA_ENV!=='production')throw new Error('PRODUCTION_DARAJA_REQUIRED');
   const provider=await queryDarajaStkStatus(checkoutId);
   if(!matchedProviderProof(order,cb,provider)){
-    if(cb.resultCode!==0&&Number(provider.ResultCode)===cb.resultCode&&
-       provider.CheckoutRequestID===checkoutId){
-      await sql`UPDATE public.dbk36_wa_prod_payment_orders
+    if(Number.isInteger(cb.resultCode)&&cb.resultCode>0&&Number(provider.ResultCode)===cb.resultCode&&
+       provider.CheckoutRequestID===checkoutId&&(!provider.MerchantRequestID||provider.MerchantRequestID===order.merchant_id)){
+      const changed=await sql`UPDATE public.dbk36_wa_prod_payment_orders
         SET status='failed',last_error_code='DARAJA_DECLINED',updated_at=now()
-        WHERE reference=${order.reference} AND status='prompt_sent'`;
-      return {state:'PROVIDER_DECLINED'};
+        WHERE reference=${order.reference} AND status IN ('prompt_sent','review_required') AND checkout_id=${checkoutId} AND merchant_id=${order.merchant_id} RETURNING reference`;
+      return {state:changed.length===1?'PROVIDER_DECLINED':'STATE_CHANGED'};
     }
     return {state:'PROVIDER_CONFIRMATION_PENDING'};
   }
@@ -275,9 +275,10 @@ async function safeAutoStock(reference:string,sql:ReturnType<typeof db>){
 }
 export async function recoverProductionPayments(){
   const sql=db();
-  const rows=await sql`SELECT checkout_id FROM public.dbk36_wa_prod_payment_orders
-    WHERE checkout_id IS NOT NULL AND (status IN ('prompt_sent','review_required') OR
-      (status='paid' AND stock_state='PENDING')) ORDER BY updated_at ASC LIMIT 8`;
+  const rows=await sql`SELECT o.checkout_id FROM public.dbk36_wa_prod_payment_orders o
+    WHERE o.checkout_id IS NOT NULL AND ((o.status IN ('prompt_sent','review_required') AND EXISTS(
+      SELECT 1 FROM public.dbk36_wa_prod_callback_inbox c WHERE c.checkout_id=o.checkout_id AND c.merchant_id=o.merchant_id)) OR
+      (o.status='paid' AND o.stock_state='PENDING')) ORDER BY o.updated_at ASC LIMIT 8`;
   const outcomes=[];
   // Prioritize durable payment notices even when older reconciliation work is queued.
   try{const {recoverVerifiedPaymentNotices}=await import('@/lib/whatsapp/dbk160-payment-notices');await recoverVerifiedPaymentNotices();}catch{console.warn('DBK160_PAYMENT_NOTICE_RECOVERY_REVIEW');}

@@ -23,17 +23,18 @@ function harness(extra=[]){const catalogue=[...products,...extra];let order=null
     if(q.includes("SET pending_purchase_product_id=")&&q.includes("pending_purchase_stage='quantity'")){pending={pending_purchase_product_id:v[0],pending_purchase_stage:'quantity'};return [];}
     if(q.includes("SET pending_purchase_product_id=")&&q.includes("pending_purchase_stage='offer'")){pending={pending_purchase_product_id:v[0],pending_purchase_stage:'offer'};return [];}
     if(q.includes('INSERT INTO public.dbk155_wa_shortlists')){shortlist=JSON.parse(v[1]);return [];}
-    if(q.includes('DELETE FROM public.dbk155_wa_shortlists')){shortlist=[];pending=null;return [];}
+    if(q.includes('DELETE FROM public.dbk155_wa_shortlists')){shortlist=[];pending=null;pendingVariant=null;return [];}
     if(q.includes('SELECT product_ids'))return [{product_ids:shortlist}];
     if(q.includes('INSERT INTO public.dbk36_wa_carts')){viewed=v[1];return [];}
     if(q.includes('UPDATE public.dbk36_wa_carts')){viewed=v[0];return [];}
     if(q.includes('SELECT last_viewed_product_id'))return [{last_viewed_product_id:viewed}];
+    if(q.includes('DELETE FROM public.dbk36_wa_cart_items')){cartRows=q.includes('product_id<>')?cartRows.filter(r=>r.product_id===v[1]):q.includes('product_id=')?cartRows.filter(r=>r.product_id!==v[1]):[];return [];}
     if(q.includes('INSERT INTO public.dbk36_wa_cart_items')){const existing=cartRows.find(r=>r.product_id===v[1]);if(existing){if(existing.variant_id!==v[3])return [];existing.quantity+=v[2];return [{quantity:existing.quantity}];}cartRows.push({product_id:v[1],quantity:v[2],variant_id:v[3]});return [{quantity:v[2]}];}
     throw Error('Unexpected SQL: '+q);
   };
   const payments={productionCustomerOrder:async()=>order,cancelProductionQuote:async()=>{if(order?.status==='quoted')order=null;return false;},createProductionCheckout:async input=>{if(order&&['starting','prompt_sent','review_required'].includes(order.status))return {reference:order.reference,status:order.status,amountKes:order.amount_kes};if(order?.status==='quoted'&&Date.parse(order.expires_at)>Date.now()){if(order.amount_kes!==input.amountKes||JSON.stringify(order.cart_snapshot)!==JSON.stringify(input.cart))throw Error('ACTIVE_QUOTE_MISMATCH');return {reference:order.reference,status:'quoted',amountKes:order.amount_kes};}quotes++;order={reference:input.reference,amount_kes:input.amountKes,status:'quoted',expires_at:new Date(Date.now()+600000).toISOString(),pickup_confirmed_at:null,cart_snapshot:input.cart};return {reference:order.reference,status:'quoted',amountKes:order.amount_kes};},confirmProductionPickup:async()=>{if(order?.status!=='quoted')return null;order.pickup_confirmed_at=new Date().toISOString();return order;},payProductionCheckout:async()=>{assert.equal(order.status,'quoted');assert.ok(order.pickup_confirmed_at);calls++;order.status='prompt_sent';return {amountKes:order.amount_kes};}};
   function load(file){if(cache.has(file))return cache.get(file);const m={exports:{}};cache.set(file,m.exports);const out=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},reportDiagnostics:true});assert.equal(out.diagnostics.filter(d=>d.category===ts.DiagnosticCategory.Error).length,0);const req=id=>{if(id==='server-only')return {};if(id==='@neondatabase/serverless')return {neon:()=>db};if(id==='@/sanity/lib/catalog')return {getStoreProducts:async()=>products};if(id==='@/lib/db/dbk36-production-payments')return payments;if(id==='@/lib/shipping-server')return {getActiveDeliveryZones:async()=>[{id:'within-cbd',label:'Within CBD',fee:100,active:true},{id:'outside-cbd-matatu',label:'Outside CBD via Matatu',fee:150,active:true},{id:'long-distance-matatu',label:'Long Distance Matatu',fee:350,active:true}]};if(id==='./dbk156-shopping-ai')return {planShopping:async(text)=>{modelCalls++;return {intent:'search',query:text,option:0,message:''};},suggestDeliveryCounty:async()=>{modelCalls++;return 'Tharaka Nithi';}};if(id.startsWith('.'))return load(path.resolve(path.dirname(file),id+'.ts'));return require(id);};new Function('require','module','exports',out.outputText)(req,m,m.exports);return m.exports;}
-  const {handleProductionChat}=load(path.join(root,'lib/whatsapp/dbk36-production-chat.ts'));return {say:async (text,visual)=>{const a=await handleProductionChat(wa,text,visual);last=a.reply;return a.reply;},setCart:()=>{cartRows=[{product_id:'glue',quantity:1,variant_id:''}];},stats:()=>({calls,quotes,modelCalls,mode}),review:()=>review,context:()=>deliveryContext,cart:()=>cartRows,setLast:v=>{last=v;},setOrder:v=>{order=v;}};
+  const {handleProductionChat}=load(path.join(root,'lib/whatsapp/dbk36-production-chat.ts'));return {say:async (text,visual)=>{const a=await handleProductionChat(wa,text,visual);last=a.reply;return a.reply;},setCart:(rows)=>{cartRows=rows||[{product_id:'glue',quantity:1,variant_id:''}];},stats:()=>({calls,quotes,modelCalls,mode}),review:()=>review,context:()=>deliveryContext,cart:()=>cartRows,setLast:v=>{last=v;},setOrder:v=>{order=v;},order:()=>order};
 }
 process.env.DBK36_WA_PRODUCTION_CHAT_ENABLED='YES';process.env.DBK100_WA_AI_ENABLED='YES';process.env.DBK164_PROMOTION_ENABLED='NO';
 
@@ -81,3 +82,39 @@ test('DBK168 size-specific glue lookup handles spelling and does not substitute 
 
 test('DBK172 exact A3 search never falls back to A1 or A2',async()=>{const h=harness(['A1','A2','A3'].map(size=>({id:size,name:`${size} Picture Frame`,slug:size.toLowerCase(),price:100,stockQuantity:5,variants:false})));const result=await h.say('Do you have A3?');assert.match(result,/A3 Picture Frame/);assert.doesNotMatch(result,/A1 Picture Frame|A2 Picture Frame/);assert.equal(h.stats().modelCalls,0);assert.equal(h.stats().calls,0);});
 test('DBK172 photo delivery request keeps Kitengela context and requires product confirmation',async()=>{const h=harness();const result=await h.say('I want these kindly delivered to kitengela');assert.match(result,/confirm the products and quantity/);assert.match(result,/kitengela/);assert.equal(h.context().county,'Kajiado');assert.equal(h.review(),'Photo and delivery request');assert.equal(h.stats().calls,0);assert.equal(h.cart().length,0);});
+
+// DBK176: reproduce the customer's live cart and payment-status transcripts.
+const dbk176Battery={id:'battery',name:'Tocebal Batteries',slug:'tocebal-batteries',price:27,stockQuantity:20,variants:false};
+const dbk176Rows=()=>[{product_id:'glue',quantity:4,variant_id:''},{product_id:'rose35',quantity:1,variant_id:'white'},{product_id:'battery',quantity:2,variant_id:''}];
+test('DBK176 display and named remove execute without model or repeated confirmation',async()=>{
+ const h=harness([dbk176Battery]);h.setCart(dbk176Rows());
+ assert.match(await h.say('Display my cart'),/Rose Petals \(White\).*× 1/);
+ const removed=await h.say('Remove from cart the 3.5 cm rose petal');assert.match(removed,/removed 3.5 Cm Rose Petals/);assert.equal(h.cart().length,2);
+ assert.doesNotMatch(await h.say('Display my cart'),/Rose Petals/);assert.equal(h.stats().modelCalls,0);assert.equal(h.stats().calls,0);
+});
+test('DBK176 keep only batteries preserves quantity and ambiguous target cannot delete',async()=>{
+ const h=harness([dbk176Battery]);h.setCart(dbk176Rows());
+ assert.match(await h.say('Remove from cart a missing item'),/couldn’t identify/);assert.equal(h.cart().length,3);
+ assert.match(await h.say('Remove all products from my cart and leave only the batteries'),/kept only Tocebal Batteries/);
+ assert.deepEqual(h.cart(),[{product_id:'battery',quantity:2,variant_id:''}]);assert.equal(h.stats().modelCalls,0);
+});
+test('DBK176 clear-all followup never resets an uncertain payment; status is factual and flags review',async()=>{
+ const h=harness([dbk176Battery]);h.setCart(dbk176Rows());const order={reference:'DBKWA1234567',amount_kes:63,status:'review_required'};h.setOrder(order);
+ assert.match(await h.say('Cancel my items in cart'),/clear the entire cart/);
+ const cleared=await h.say('All');assert.match(cleared,/cart.*empty/);assert.match(cleared,/DBKWA1234567/);assert.equal(h.cart().length,0);assert.equal(h.order().status,'review_required');
+ for(const phrase of ['What is the status of my payment?','Refresh payment status','Reset my payment','Clear past payments'])assert.match(await h.say(phrase),/DBKWA1234567.*awaiting confirmation/);
+ assert.equal(h.review(),'Payment initiation');assert.equal(h.stats().calls,0);assert.equal(h.stats().modelCalls,0);
+});
+test('DBK176 clear all items keeps paid history and can proceed with a verified failed old payment',async()=>{
+ const h=harness([dbk176Battery]);h.setCart(dbk176Rows());h.setOrder({reference:'DBKWA1234567',amount_kes:63,status:'failed'});
+ assert.match(await h.say('Cancel all items'),/cart.*empty/);assert.equal(h.order().status,'failed');assert.match(await h.say('Payment status'),/failed.*new order/);
+ await h.say('SEARCH glue sticks');await h.say('Add to cart');await h.say('One');assert.match(await h.say('Place order'),/Your order total/);assert.equal(h.stats().calls,0);
+});
+test('DBK176 broad glue stick search returns all in-stock matching sizes, not unrelated glue or out-of-stock items',async()=>{
+ const h=harness([{...product,id:'7mm',name:'7 mm Glue Stick'},{...product,id:'11mm',name:'11 mm Gluestick'},{...product,id:'5mm',name:'5 mm Glue Stick'},{...product,id:'sold',name:'9 mm Glue Sticks',stockQuantity:0},{...product,id:'gun',name:'Glue Gun'}]);
+ const r=await h.say('Glue sticks');for(const name of ['Big Hot Melt','7 mm Glue Stick','11 mm Gluestick','5 mm Glue Stick'])assert.ok(r.includes(name),name);assert.doesNotMatch(r,/9 mm|Glue Gun/);assert.equal(h.stats().modelCalls,0);
+ assert.match(await h.say('7 mm glue stick'),/7 mm Glue Stick/);assert.equal(h.stats().calls,0);
+});
+test('DBK176 named add and quantity typo advance the pending product only',async()=>{
+ const h=harness([dbk176Battery]);await h.say('SEARCH batteries');assert.match(await h.say('Add the batteries to my cart'),/How many/);assert.match(await h.say('Ome'),/added 1 × Tocebal Batteries/);assert.equal(h.cart()[0].quantity,1);assert.equal(h.stats().calls,0);assert.equal(h.stats().modelCalls,0);
+});

@@ -13,6 +13,7 @@ import {checkoutIntent,paymentAssent,deliveryLocation,knownCounty,counties,DELIV
 import {getPublishedKnowledge} from './dbk155-knowledge';
 import {getActiveDeliveryZones} from '@/lib/shipping-server';
 import {namedOrderRequest,namedOrderCandidates,parseDeliveryContext,deliveryChoices,deliveryMethod} from './dbk167-order-context';
+import {cartIntent,cartTarget,CART_CHOICE,paymentStatusIntent,glueSearchPage} from './dbk176-cart-intent';
 import {compareCataloguePhotos,type VisualLookup} from './dbk166-inbound-media';
 import {wantsHuman,frustratedAutomation,wholesaleEnquiry,pointerOnly,NO_MATCH,previousMiss,cleanProductQuery,groupedMatches,visualCatalogueMatches} from './dbk166-sales-recovery';
 
@@ -90,7 +91,7 @@ async function variantOptions(item:SaleItem):Promise<SalesVariant[]>{
 }
 async function cart(waId:string,products:SaleItem[]){
   const db=sql();const rows=await db`SELECT product_id,quantity,variant_id FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}
-    ORDER BY created_at ASC LIMIT 12`;
+    ORDER BY created_at ASC,product_id ASC LIMIT 12`;
   const byId=new Map(products.map(p=>[p.id,p]));const lines: Array<{item:SaleItem;variantId:string;label:string;quantity:number;subtotalMinor:number}>=[];
   let invalid=0;
   for(const r of rows){const p=byId.get(String(r.product_id)),quantity=Number(r.quantity);
@@ -156,6 +157,47 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     try{const rows=await db`SELECT message_text FROM public.dbk159_wa_outbound WHERE wa_id=${waId} AND actor_id='AI' AND status='accepted' AND image_url IS NULL AND created_at>now()-interval '15 minutes' ORDER BY created_at DESC,request_id DESC LIMIT 1`;
     return String(rows[0]?.message_text||'');}catch{return '';}
   };
+  // Payment status reads durable state only. Do not turn a status request into
+  // provider polling or an STK. A draft cancellation cannot cancel a submitted payment.
+  const paymentStatus=async():Promise<Answer>=>{
+    if(bsuidOnly)return reply('Payment status requires phone verification. Our team can assist.');
+    const o=await productionCustomerOrder(waId);
+    if(!o)return reply('No payment order found. You can place a new order.');
+    const status=String(o.status),ref=String(o.reference),amount=money(Number(o.amount_kes));
+    if(status==='paid')return reply(`Payment of ${amount} for ${ref} has been verified. Our team will handle fulfilment.`);
+    if(['starting','prompt_sent','review_required'].includes(status)){
+      await flagReview('Payment initiation');
+      return reply(`Payment for ${ref} (${amount}) is awaiting confirmation. Please do not pay again until we verify it. I’ve flagged it for our team. Clearing your cart does not cancel this payment.`);
+    }
+    if(status==='quoted'){
+      if(new Date(String(o.expires_at)).getTime()<=Date.now()){await cancelProductionQuote(waId);return reply(`Unpaid quote ${ref} has expired and is cancelled. You can place a new order.`);}
+      return reply(`Order ${ref} (${amount}) is an unpaid quote. No payment prompt has been sent for this quote. Reply CANCEL CHECKOUT to cancel it or continue checkout.`);
+    }
+    if(status==='failed'||status==='cancelled')return reply(`Order ${ref} is ${status}. You can review your cart and place a new order. No new payment has been requested.`);
+    return reply(`Payment for ${ref} requires staff review. Please do not pay again.`);
+  };
+  if(!visual&&(cmd==='PAYMENT STATUS'||cmd==='MY ORDERS'||paymentStatusIntent(text)||(/^check it for me[.!]?$/i.test(text)&&(await previousReply()).startsWith('Payment for '))))return paymentStatus();
+  if(!visual&&cmd==='CANCEL CHECKOUT'){
+    await clearDelivery();
+    if(await cancelProductionQuote(waId))return reply('Unpaid quote cancelled. Your cart is unchanged.');
+    return paymentStatus();
+  }
+  let basketAction=!visual?cartIntent(text):null;
+  if(!visual&&!basketAction&&/^(?:all|all items|everything|all of them)[.!]?$/i.test(text))basketAction=cartIntent(text,await previousReply());
+  if(basketAction?.kind==='choose')return reply(CART_CHOICE);
+  const resetCartChoices=async()=>{await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;};
+  const paymentCartWarning=async()=>{
+    if(bsuidOnly)return '';
+    const o=await productionCustomerOrder(waId);
+    if(o&&['starting','prompt_sent','review_required'].includes(String(o.status))){await flagReview('Payment initiation');return `\nExisting payment ${o.reference} (${money(Number(o.amount_kes))}) is still being checked. Cart changes do not alter that payment.`;}
+    return '';
+  };
+  if(basketAction?.kind==='clear'){
+    if(!bsuidOnly)await cancelProductionQuote(waId);
+    await clearDelivery();await resetCartChoices();
+    await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}`;
+    return reply('I’ve cleared your cart. It is now empty.'+await paymentCartWarning());
+  }
   // Consent is valid only for the current quote and the immediately preceding,
   // server-generated payment question, never an AI-generated offer.
   const paymentQuestion=(o:{reference:unknown;amount_kes:unknown})=>`Collection confirmed for ${o.reference}. Shall I send an M-PESA payment prompt for ${money(Number(o.amount_kes))} to your WhatsApp number? Please say “send M-PESA prompt” to confirm.`;
@@ -212,6 +254,27 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   }
 
   const {products,fresh}=await catalogue();
+  if(basketAction){
+    const rows=await db`SELECT product_id,quantity,variant_id FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} ORDER BY created_at ASC,product_id ASC LIMIT 12`;
+    const entries=rows.map((r,i)=>{
+      const p=products.find(x=>x.id===r.product_id),v=p?.variantOptions?.find(x=>x.id===r.variant_id);
+      return {position:i+1,id:String(r.product_id),label:p?`${safe(p.name)}${v?` (${safe(v.label)})`:r.variant_id?' (option unavailable)':''}`:'Unavailable catalogue item',quantity:Number(r.quantity)};
+    });
+    const display=async()=>{
+      const current=await cart(waId,products);
+      return entries.length?'Current cart:\n'+entries.map(e=>{const line=current.lines.find(l=>l.item.id===e.id);return `${e.position}. ${e.label} × ${e.quantity}${line&&fresh?' — '+money(line.subtotalMinor/100):' — needs stock/price check'}`;}).join('\n')+(fresh&&!current.invalid?`\nCart total: ${money(current.totalMinor/100)}`:'\nTotal requires current stock and price confirmation.'):'Your cart is empty.';
+    };
+    if(basketAction.kind==='view')return reply(await display()+await paymentCartWarning());
+    const selected=cartTarget(basketAction.target||'',entries);
+    if(selected===null)return reply('I couldn’t identify one cart item. Please specify its number.\n'+await display());
+    const target=entries.find(e=>e.position===selected)!;
+    if(!bsuidOnly)await cancelProductionQuote(waId);
+    await resetCartChoices();
+    if(basketAction.kind==='keep')await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} AND product_id<>${target.id}`;
+    else await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} AND product_id=${target.id}`;
+    const updated=await cart(waId,products);
+    return reply((basketAction.kind==='keep'?`I’ve kept only ${target.label} in your cart.`:`I’ve removed ${target.label} from your cart.`)+'\n'+(updated.lines.length?cartSummary(updated):updated.invalid?'Remaining items need a stock check.':'Your cart is empty.')+await paymentCartWarning());
+  }
   const clearPending=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_variant_product_id=NULL,pending_variant_quantity=NULL,pending_variant_ids=NULL WHERE wa_id=${waId} AND pending_variant_product_id IS NOT NULL`;};
   const clearPurchase=async()=>{await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_product_id=NULL,pending_purchase_stage=NULL WHERE wa_id=${waId} AND pending_purchase_stage IS NOT NULL`;};
   const describe=(item:SaleItem,options:SalesVariant[])=>({reply:`Great choice! ${safe(item.name)} has options:\n\n${options.map((v,i)=>`${i+1}. ${safe(v.label)} — ${money(v.price)}`).join('\n')}\n\nWhich would you like?`,images:options.flatMap((v,i)=>v.imageUrl?[{url:v.imageUrl,caption:`${i+1}. ${safe(v.label)} — ${money(v.price)}`}]:[])});
@@ -284,6 +347,16 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     return reply('Retail pricing confirmed. What would you like to order?');
   }
   if(wholesaleReview&&!visual&&(namedOrder||['PAY','PAY_PHONE','PICKUP','CHECKOUT','CHECK OUT'].includes(cmd)||/^ADD(?: |$)/.test(cmd)||purchaseFollowup(text)?.kind==='quantity'||purchaseFollowup(text)?.kind==='accept'))return reply('Our team needs to confirm your wholesale rate and quantities first. I can still show catalogue products at retail prices. If you want to order at retail instead, tell me “retail please”. No payment has been requested.');
+  const namedAdd=/^(?:please )?add (?:the |a |an )?(.+?) to (?:my |the )?cart[.!]?$/i.exec(text);
+  if(namedAdd&&!visual){
+    if(wholesaleReview)return reply('Our team needs to confirm wholesale pricing first. Reply “retail please” if you want retail prices.');
+    if(!fresh)return reply('I need to refresh the catalogue before adding items.');
+    const candidates=relevantProducts(namedAdd[1],products,products.length);
+    if(candidates.length!==1)return show(candidates.slice(0,3));
+    const selected=await show(candidates);
+    await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId} AND pending_purchase_product_id=${candidates[0].id}`;
+    return {...selected,reply:`How many ${safe(candidates[0].name)} would you like?`};
+  }
   if(namedOrder){
     if(!fresh)return reply('I need to refresh the catalogue before confirming your order. No payment has been requested.');
     const matches=namedOrderCandidates(namedOrder.query,products);
@@ -315,6 +388,15 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     const result=await show(matched);
     await db`UPDATE public.dbk155_wa_shortlists SET pending_purchase_stage='quantity',updated_at=now() WHERE wa_id=${waId} AND pending_purchase_product_id=${matched[0].id}`;
     return {reply:`${safe(matched[0].name)} — ${money(matched[0].price)}. How many would you like? I’ll confirm the order total before requesting payment.`,images:result.images};
+  }
+  const gluePage=glueSearchPage(text);
+  if(gluePage!==null){
+    if(!fresh)return reply('Our catalogue is refreshing. Please try again shortly.');
+    const all=relevantProducts('glue sticks',products,products.length).filter(p=>p.variants?(p.variantOptions||[]).some(v=>v.stockQuantity!==null&&v.stockQuantity>0):p.stockQuantity!==null&&p.stockQuantity>0);
+    const size=10,pages=Math.max(1,Math.ceil(all.length/size));
+    if(gluePage>pages)return reply(`There are ${pages} page(s) of glue sticks. Reply “glue sticks” to start again.`);
+    const result=await show(all.slice((gluePage-1)*size,gluePage*size));
+    return all.length?{...result,reply:`Available glue sticks (${all.length} catalogue products, page ${gluePage}/${pages}):\n\n`+result.reply+(gluePage<pages?`\nReply “glue sticks page ${gluePage+1}” for more.`:'')}:result;
   }
   // Explicit catalogue and budget lookups are read-only, not payment commands.
   const sku=catalogueSku(text);
@@ -439,21 +521,6 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     }
     return addItem(item,qty);
   }
-  if(cmd==='CLEAR CART'){
-    await clearDelivery();
-    await clearPurchase();await clearPending();await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;
-    if(!bsuidOnly)await cancelProductionQuote(waId);
-    await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}`;
-    return reply('I’ve cleared your cart. What would you like to look for next?');
-  }
-  const rm=/^REMOVE (\d{1,2})$/.exec(cmd);
-  if(rm){const c=await db`SELECT product_id FROM public.dbk36_wa_cart_items WHERE wa_id=${waId}
-    ORDER BY created_at ASC LIMIT 12`;const index=Number(rm[1])-1;
-    if(index<0||index>=c.length)return reply('That cart item does not exist. Reply CART.');
-    if(!bsuidOnly)await cancelProductionQuote(waId);
-    await db`DELETE FROM public.dbk36_wa_cart_items WHERE wa_id=${waId} AND product_id=${String(c[index].product_id)}`;
-    return reply('I’ve removed that item. Would you like to review your cart?');
-  }
   try{
     if(deliveryContext&&['PAY','PAY_PHONE'].includes(cmd))return reply('You have requested delivery information. Our team must confirm the delivery cost and final total before payment. You can choose store collection instead. No payment has been requested.');
     if(cmd==='PAY_PHONE'){
@@ -503,7 +570,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       const order=await createProductionCheckout({reference:ref,waId,amountKes:c.totalMinor/100,
         cart:c.lines.map(l=>({productId:l.item.id,variantId:l.variantId,quantity:l.quantity,subtotalMinor:l.subtotalMinor})),
         fulfillment:'pickup'});
-      if(order.status!=='quoted')return reply('You already have a payment in progress. Please check its status before starting another order.');
+      if(order.status!=='quoted'){await flagReview('Payment initiation');return reply(`Payment for ${order.reference} is awaiting confirmation. Please do not pay again. Reply PAYMENT STATUS for the latest recorded status. I’ve flagged this for our team.`);}
       if(cmd!=='PICKUP')return reply(`Your order total is ${money(Number(order.amountKes))} (${order.reference}). Would you like to collect from our store? If you prefer delivery, our team can confirm the cost first.\n\n${cartSummary(c)}`);
     }
     if(cmd==='PICKUP'){
@@ -516,14 +583,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       const o=await payProductionCheckout(waId);
       return reply(`I've requested an M-PESA prompt for ${money(o.amountKes)}. Please check your phone and enter your PIN only in the official M-PESA prompt. I'll only confirm payment once Safaricom verifies it.`);
     }
-    if(cmd==='PAYMENT STATUS'||cmd==='MY ORDERS'){
-      const o=await productionCustomerOrder(waId);
-      if(!o)return reply('No order found. Reply CHECKOUT.');
-      const status=String(o.status);
-      if(status==='review_required')await flagReview('Payment initiation');
-      return reply(status==='paid'?`Payment of ${money(Number(o.amount_kes))} for ${o.reference} has been verified. Our team will handle fulfilment.`:status==='prompt_sent'||status==='starting'||status==='review_required'?`Payment for ${o.reference} is awaiting confirmation. Please do not pay again until we verify it.`:status==='quoted'?`Your order ${o.reference} is awaiting payment. No payment has been confirmed.`:`Order ${o.reference} has no confirmed payment. Our team can help you check the next step.`);
-    }
-    if(cmd==='CANCEL CHECKOUT'){await clearDelivery();return reply(await cancelProductionQuote(waId)?'Unpaid quote cancelled.':'No unpaid quote to cancel.');}
+
   }catch(e){
     const code=cleanError(e);
     if(code.includes('ACTIVE_QUOTE_MISMATCH')){await cancelProductionQuote(waId);return reply('Your cart or promotion price has changed since the earlier quote. Please review your cart and place the order again. No new payment has been requested.');}
@@ -540,6 +600,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     return reply('Which item do you mean? I can’t identify it from that message alone. Please send its name, or I can connect you with our sales team.');
   }
   if(/\b(?:place|make|confirm)\s+(?:an? |my |the |this )?order\b/i.test(text))return reply('Please tell me the exact product and quantity you want to order. I’ll confirm the selected options and cart total before payment.');
+  if(/\b(?:cart|basket)\b/i.test(text)&&/\b(?:remove|delete|cancel|clear|empty|display|view|show|keep|leave)\b/i.test(text))return reply('To change your cart, reply CLEAR CART, CART, or REMOVE ITEM followed by its number.');
   const local=contextualRequest(text);
   if(local||process.env.DBK100_WA_AI_ENABLED==='YES'){
     const stored=await shortlist();
