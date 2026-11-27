@@ -103,7 +103,8 @@ export async function processProductionWhatsAppQueue(limit=3){
       if(m.mode==='bot'){
         const text=String(m.message_text);
         // Never interpret an image caption or vision output as payment consent.
-        const visual=m.message_type==='image'?{query:await describeInboundImage(await ensureInboundImage(id),text)}:
+        const image=m.message_type==='image'?await ensureInboundImage(id):null;
+        const visual=m.message_type==='image'?{query:await describeInboundImage(image,text),...(image?{image}:{})}:
           m.context_provider_id&&referenceQuestion(text)?(await referencedVisual(wa,String(m.context_provider_id))||{query:null}):undefined;
         const answer=await handleProductionChat(wa,text,visual);
         await sendRecordedWhatsApp(wa,lock+':0','AI','Kasiwa',answer.reply);

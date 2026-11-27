@@ -21,12 +21,14 @@ function paymentConfig(){
   if(e.DBK36_WA_PRODUCTION_CHECKOUT_ENABLED!=='YES'||e.DBK36_WA_STORE_LOCATION_ID!==PINNED_STORE||
     e.MPESA_ENV!=='production'||e.DBK36_WA_PRODUCTION_MPESA_CALLBACK_URL!==CALLBACK)
     throw new Error('PRODUCTION_CHECKOUT_DISABLED');
-  const shortcode=e.MPESA_SHORTCODE||'',passkey=e.MPESA_PASSKEY||'';
-  const consumer=e.MPESA_CONSUMER_KEY||'',secret=e.MPESA_CONSUMER_SECRET||'';
+  const shortcode=e.MPESA_SHORTCODE?.trim()||'',passkey=e.MPESA_PASSKEY?.trim()||'';
+  const consumer=e.MPESA_CONSUMER_KEY?.trim()||'',secret=e.MPESA_CONSUMER_SECRET?.trim()||'';
+  const transactionType=e.MPESA_TRANSACTION_TYPE?.trim()||'CustomerBuyGoodsOnline';
+  if(transactionType!=='CustomerBuyGoodsOnline'&&transactionType!=='CustomerPayBillOnline')throw new Error('PRODUCTION_DARAJA_CONFIGURATION_INVALID');
   if(!/^\d{5,9}$/.test(shortcode)||!passkey||!consumer||!secret)
     throw new Error('PRODUCTION_DARAJA_CONFIGURATION_MISSING');
-  return {shortcode,passkey,consumer,secret,partyB:e.MPESA_PARTY_B||shortcode,
-    type:e.MPESA_TRANSACTION_TYPE==='CustomerPayBillOnline'?'CustomerPayBillOnline':'CustomerBuyGoodsOnline'};
+  return {shortcode,passkey,consumer,secret,partyB:e.MPESA_PARTY_B?.trim()||shortcode,
+    type:transactionType};
 }
 function kenyaStamp(){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',
@@ -39,6 +41,12 @@ function providerCode(value:unknown){
   const code=String(value??'');
   return /^\d{1,8}(?:\.\d{1,8}){0,4}$/.test(code)?code:undefined;
 }
+function networkFailure(error:unknown){
+  const e=error as {name?:unknown;cause?:{code?:unknown}}|null;
+  const name=typeof e?.name==='string'&&/^[A-Za-z]{1,40}$/.test(e.name)?e.name:'Unknown';
+  const code=typeof e?.cause?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(e.cause.code)?e.cause.code:undefined;
+  return {name,code};
+}
 async function productionToken(reference:string,cfg:ReturnType<typeof paymentConfig>){
   try{
     const auth=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
@@ -49,8 +57,8 @@ async function productionToken(reference:string,cfg:ReturnType<typeof paymentCon
       throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
     }
     return token.access_token;
-  }catch{
-    console.warn('DBK168_DARAJA_AUTH_FAILED',{reference});
+  }catch(error){
+    console.warn('DBK168_DARAJA_AUTH_FAILED',{reference,...networkFailure(error)});
     throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
   }
 }
@@ -172,7 +180,7 @@ export async function payProductionCheckout(waId:string){
     if(saved.length!==1)throw new Error('STK_ACCEPTED_STORAGE_REVIEW_REQUIRED');
     return {reference,status:'STK_PROMPT_SENT',amountKes:amount};
   }catch(error){
-    console.error('DBK168_STK_REVIEW',{reference,stage:accepted?'storage':'dispatch',code:cleanError(error),...(accepted||{})});
+    console.error('DBK168_STK_REVIEW',{reference,stage:accepted?'storage':'dispatch',code:cleanError(error),network:networkFailure(error),...(accepted||{})});
     try{await sql`UPDATE public.dbk36_wa_prod_payment_orders
       SET status='review_required',last_error_code='STK_INITIATION_OUTCOME_UNCERTAIN',updated_at=now()
       WHERE reference=${reference} AND status='starting'`;}catch{/* preserved as starting; no replay */}
@@ -252,6 +260,12 @@ async function safeAutoStock(reference:string,sql:ReturnType<typeof db>){
     if(result.stockState==='COMMITTED'){
       await sql`UPDATE public.dbk36_wa_prod_payment_orders SET stock_state='COMMITTED',
         updated_at=now() WHERE reference=${reference} AND stock_state<>'COMMITTED'`;
+      // Register verified, stock-committed orders with the existing workflow.
+      // A workflow failure must never change payment or stock state.
+      if(process.env.DBK136_WA_UNIFIED_WORKFLOW==='YES'){
+        try{const {dbk136SyncWhatsappJobs}=await import('./dbk136-whatsapp-workflow');await dbk136SyncWhatsappJobs();}
+        catch{console.warn('DBK172_WORKFLOW_SYNC_REVIEW',{reference});}
+      }
     } else if(result.stockState!=='AUTO_GATE_OFF'){
       await sql`UPDATE public.dbk36_wa_prod_payment_orders
         SET stock_state='REVIEW_REQUIRED',last_error_code='STOCK_CLAIM_NOT_COMMITTED',updated_at=now()

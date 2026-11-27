@@ -17,7 +17,7 @@ type Permission = typeof permissions[number][0];
 const whatsappPermissions = ["WHATSAPP_SALES","WHATSAPP_QUEUE","WHATSAPP_TRANSFER","WHATSAPP_SUPERVISE"] as const;
 const whatsappDescriptions: Record<typeof whatsappPermissions[number],string> = {
   WHATSAPP_SALES: "Access the Centre, reply to assigned customers, view their photos and payment status, and resume Kasiwa.",
-  WHATSAPP_QUEUE: "See unassigned conversations and claim them without an administrator.",
+  WHATSAPP_QUEUE: "Included with WhatsApp Sales: see unassigned conversations and claim them.",
   WHATSAPP_TRANSFER: "Transfer conversations you own to another eligible employee.",
   WHATSAPP_SUPERVISE: "View team conversations and assignment activity; assign or reassign chats. Includes queue and transfer rights. Does not grant Admin or stock approval rights.",
 };
@@ -218,7 +218,7 @@ export default function StaffManagerPage() {
                 <h4 className="font-semibold text-sm">WhatsApp conversation rights</h4>
                 <p className="text-xs text-[var(--muted)]">For active Sales Staff, Managers and Store Managers. Admins already have all conversation rights. Changes must be saved.</p>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setWhatsAppProfile(false)} className="rounded-lg border hairline px-3 py-2 text-xs font-semibold">Sales staff profile</button><button type="button" onClick={()=>setWhatsAppProfile(true)} className="rounded-lg border hairline px-3 py-2 text-xs font-semibold">Sales supervisor profile</button></div>
-                {whatsappPermissions.map(value=><label key={value} className="flex items-start gap-3 rounded-lg border hairline p-3"><input className="mt-1" type="checkbox" checked={editor.permissions.includes(value)} disabled={value!=='WHATSAPP_SALES'&&!editor.permissions.includes('WHATSAPP_SALES')} onChange={()=>toggle(value)}/><span><span className="block text-sm font-semibold">{permissions.find(([key])=>key===value)?.[1]}</span><span className="block text-xs text-[var(--muted)] mt-1">{whatsappDescriptions[value]}</span></span></label>)}
+                {whatsappPermissions.map(value=><label key={value} className="flex items-start gap-3 rounded-lg border hairline p-3"><input className="mt-1" type="checkbox" checked={value==='WHATSAPP_QUEUE'?editor.permissions.includes('WHATSAPP_SALES'):editor.permissions.includes(value)} disabled={value==='WHATSAPP_QUEUE'||(value!=='WHATSAPP_SALES'&&!editor.permissions.includes('WHATSAPP_SALES'))} onChange={()=>toggle(value)}/><span><span className="block text-sm font-semibold">{permissions.find(([key])=>key===value)?.[1]}</span><span className="block text-xs text-[var(--muted)] mt-1">{whatsappDescriptions[value]}</span></span></label>)}
               </div>
               <p className="mt-5 text-xs text-[var(--muted)]">Other module rights below are a read-only preview and are not changed by saving WhatsApp rights.</p>
               <div className="mt-4 overflow-x-auto rounded-xl border hairline">

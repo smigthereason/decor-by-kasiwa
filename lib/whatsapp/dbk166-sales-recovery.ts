@@ -37,14 +37,14 @@ export function groupedMatches(query:string,products:SalesProduct[]){
 
 // For visual descriptors only: try an exact query first, then remove common
 // colour/material adjectives while preserving the product type and design.
-export function visualCatalogueMatches(query:string,products:SalesProduct[]){
+export function visualCatalogueMatches(query:string,products:SalesProduct[],limit=3){
   const cleaned=shoppingGroups(query);
   const items:SalesProduct[]=[];
   for(const group of cleaned){
-    const exact=relevantProducts(group,products,3);
+    const exact=relevantProducts(group,products,limit);
     const simpler=group.replace(/\b(?:white|black|cream|beige|brown|grey|gray|gold|golden|silver|red|pink|green|blue|yellow|purple|orange|ceramic|glass|wooden|metal|plastic|velvet|fabric|cotton|shaped)\b/g,' ').replace(/\s+/g,' ').trim();
-    const candidates=exact.length?exact:simpler.split(' ').filter(Boolean).length>=2?relevantProducts(simpler,products,3):[];
-    for(const item of candidates)if(!items.some(x=>x.id===item.id)&&items.length<3)items.push(item);
+    const candidates=exact.length?exact:simpler.split(' ').filter(Boolean).length>=2?relevantProducts(simpler,products,limit):[];
+    for(const item of candidates)if(!items.some(x=>x.id===item.id)&&items.length<limit)items.push(item);
   }
   return items;
 }

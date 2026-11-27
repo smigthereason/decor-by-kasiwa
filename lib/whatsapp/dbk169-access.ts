@@ -6,5 +6,5 @@ export function whatsappAccess(role:string,status:string,permissions:readonly st
   const admin=role==='ADMIN';
   if(!admin&&!permissions.includes('WHATSAPP_SALES'))return null;
   const supervise=admin||permissions.includes('WHATSAPP_SUPERVISE');
-  return {admin,supervise,queue:supervise||permissions.includes('WHATSAPP_QUEUE'),transfer:supervise||permissions.includes('WHATSAPP_TRANSFER')};
+  return {admin,supervise,queue:true,transfer:supervise||permissions.includes('WHATSAPP_TRANSFER')};
 }

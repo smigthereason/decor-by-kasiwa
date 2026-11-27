@@ -28,7 +28,7 @@ export async function GET(req:NextRequest){try{
  const employees=access.manager?await serverClient.fetch<Array<FulfilmentEmployee&{_id:string;name:string}>>(`*[_type=='customerUser' && !(_id in path('drafts.**')) && status=='ACTIVE' && assignedStore._ref==$store] | order(name asc){_id,name,role,status,permissions,"assignedStore":assignedStore->{_id}}`,{store:WA_FULFILMENT_STORE},{cache:'no-store'}):[];
  const availableStaff=employees.filter(e=>WA_STAGES.some(stage=>canPackStage(e,stage))).map(e=>({_id:e._id,name:e.name,role:e.role,permissions:e.permissions,assignedStoreId:WA_FULFILMENT_STORE}));
  return out({...base,whatsappOrders,availableStaff});
-}catch{ return out({message:'WhatsApp fulfilment could not be loaded. No payment or stock has been changed.'},503);}}
+}catch(error){ console.warn('DBK172_WORKFLOW_LOAD_FAILED',{code:typeof (error as {code?:unknown})?.code==='string'?(error as {code:string}).code.slice(0,12):'UNKNOWN'});return out({message:'WhatsApp fulfilment could not be loaded. No payment or stock has been changed.'},503);}}
 export async function POST(req:NextRequest){try{
  const viewer=await authorized();if(!viewer)return out({message:'Access denied.'},403);
  if(req.headers.get('origin')!==req.nextUrl.origin||req.headers.get('content-type')?.split(';')[0].trim()!=='application/json')return out({message:'Invalid request origin.'},403);

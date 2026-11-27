@@ -3,9 +3,10 @@ import {neon} from '@neondatabase/serverless';
 import {defaultKnowledge,validKnowledge,type KnowledgeSection} from './dbk155-sales-core';
 const db=()=>neon(process.env.DATABASE_URL!);
 export async function getPublishedKnowledge(){
-  try{const sql=db();const r=await sql`SELECT content FROM public.dbk155_knowledge_versions ORDER BY version DESC LIMIT 1`;
-    return validKnowledge(r[0]?.content)?r[0].content:defaultKnowledge;
-  }catch{return defaultKnowledge;}
+  try{const sql=db();const r=await sql`SELECT content,version FROM public.dbk155_knowledge_versions ORDER BY version DESC LIMIT 1`;
+    if(validKnowledge(r[0]?.content)){console.info('DBK172_KNOWLEDGE_LOADED',{version:r[0].version});return r[0].content;}
+    console.warn('DBK172_KNOWLEDGE_DEFAULT','missing_or_invalid');return defaultKnowledge;
+  }catch{console.warn('DBK172_KNOWLEDGE_DEFAULT','read_failed');return defaultKnowledge;}
 }
 export async function knowledgeHistory(){const sql=db();return sql`SELECT version,content,created_at FROM public.dbk155_knowledge_versions ORDER BY version DESC LIMIT 20`;}
 export async function publishKnowledge(content:Record<KnowledgeSection,string>,actor:string){const sql=db();const rows=await sql`INSERT INTO public.dbk155_knowledge_versions(content,created_by) VALUES(${JSON.stringify(content)}::jsonb,${actor}) RETURNING version`;return rows[0].version;}

@@ -7,13 +7,13 @@ import {whatsappPromotionPrice,type PriceableProduct} from '../product-pricing';
 import {createProductionCheckout,payProductionCheckout,productionCustomerOrder,
   confirmProductionPickup,cancelProductionQuote} from '@/lib/db/dbk36-production-payments';
 import {cleanError} from './dbk36-production-core';
-import {relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,purchaseFollowup,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
+import {explicitPaperSizes,relevantProducts,catalogueSku,shoppingBudget,budgetProducts,productImage,naturalCommand,contextualRequest,resolveShoppingProduct,selectVariant,purchaseFollowup,type SalesProduct,type SalesVariant} from './dbk155-sales-core';
 import {planShopping,suggestDeliveryCounty} from './dbk156-shopping-ai';
 import {checkoutIntent,paymentAssent,deliveryLocation,knownCounty,counties,DELIVERY_QUESTION} from './dbk165-checkout-intent';
 import {getPublishedKnowledge} from './dbk155-knowledge';
 import {getActiveDeliveryZones} from '@/lib/shipping-server';
 import {namedOrderRequest,namedOrderCandidates,parseDeliveryContext,deliveryChoices,deliveryMethod} from './dbk167-order-context';
-import type {VisualLookup} from './dbk166-inbound-media';
+import {compareCataloguePhotos,type VisualLookup} from './dbk166-inbound-media';
 import {wantsHuman,frustratedAutomation,wholesaleEnquiry,pointerOnly,NO_MATCH,previousMiss,cleanProductQuery,groupedMatches,visualCatalogueMatches} from './dbk166-sales-recovery';
 
 /** Native production-Neon WhatsApp chat. It deliberately does NOT import
@@ -124,7 +124,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   if(bsuidOnly&&['CHECKOUT','CHECK OUT','PICKUP','PAY','PAYMENT STATUS','MY ORDERS',
     'CANCEL CHECKOUT','PAY_PHONE','PAY_OTHER_PHONE'].includes(cmd))
     return reply('Checkout and M-PESA require phone verification. Reply STAFF and our team will assist you.');
-  if(wantsHuman(text)||/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)||/^(?:CAN I|COULD I|MAY I|I WANT TO|I'D LIKE TO) (?:SPEAK|TALK) (?:TO|WITH) (?:A |THE )?(?:HUMAN|PERSON|STAFF|TEAM|SALES PERSON|AGENT|SOMEONE)$/.test(cmd)){
+  if(!visual&&(wantsHuman(text)||/^(STAFF|HUMAN|HELP FROM STAFF)$/.test(cmd)||/^(?:CAN I|COULD I|MAY I|I WANT TO|I'D LIKE TO) (?:SPEAK|TALK) (?:TO|WITH) (?:A |THE )?(?:HUMAN|PERSON|STAFF|TEAM|SALES PERSON|AGENT|SOMEONE)$/.test(cmd))){
     await db`UPDATE public.dbk36_wa_conversations SET mode='human',updated_at=now() WHERE wa_id=${waId}`;
     return reply('Of course. I’ve handed this chat to our sales team. They’ll pick up from here when available.');
   }
@@ -137,11 +137,11 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     return reply("Welcome back! What can I help you find today?");
   }
   if(conversation[0]?.mode==='human')return reply('A staff member will assist you. Reply BOT to return to automated shopping.');
-  if(frustratedAutomation(text)){
+  if(!visual&&frustratedAutomation(text)){
     await flagReview('Customer needs assistance');
     return reply('Yes, I’m Kasiwa, the automated shopping assistant. Sorry for the back and forth. I’ve flagged this chat for our sales team, and I can still help with other enquiries while you wait.');
   }
-  if(wholesaleEnquiry(text)){
+  if(!visual&&wholesaleEnquiry(text)){
     await flagReview('Wholesale enquiry');
     return reply('Absolutely, our sales team can confirm wholesale pricing for resale. I’ve flagged this chat for them. How many pieces are you looking for? You can keep asking me about our products while you wait.');
   }
@@ -182,6 +182,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   const awaitingCounty=lastForLocation===DELIVERY_QUESTION||lastForLocation.startsWith('I couldn’t identify that town')||!!suggested||((lastForLocation.startsWith('Your order total is ')||lastForLocation==='Would you prefer store collection or delivery?')&&!!bareLocation&&!!knownCounty(bareLocation));
   const location=visual?null:confirmedCounty||deliveryLocation(text,awaitingCounty&&cmd!=='PICKUP'&&cmd!=='PAY'&&cmd!=='CHECKOUT');
   const method=!visual&&deliveryContext?deliveryMethod(text):null;
+  const referencedDelivery=!!location&&/^(?:i (?:want|need|would like)|nataka) (?:these|those|this|them|hizi|hizo)\b/i.test(text);
   if(deliveryCommand||location||method){
     if(!bsuidOnly){
       const o=await productionCustomerOrder(waId);
@@ -206,7 +207,8 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
     let options:ReturnType<typeof deliveryChoices>=[];
     try{options=deliveryChoices(county,await getActiveDeliveryZones(),approved);}catch{console.warn('DBK167_DELIVERY_RATES_UNAVAILABLE');}
     const rates=options.map(z=>`${safe(z.label)} — ${z.quoteRequired?'quote required':money(z.fee)}`).join('\n');
-    return reply(`Delivery options for ${safe(location)}${location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rates?rates+'\n':'No fixed rate confirmed for this location.\n'}Store collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team confirms delivery fees and the final total before payment.`);
+    if(referencedDelivery)await flagReview('Photo and delivery request');
+    return reply((referencedDelivery?'Please confirm the products and quantity of each item so our team can prepare the correct order. No items have been added from the photos alone.\n\n':'')+`Delivery options for ${safe(location)}${location.toLowerCase()===county.toLowerCase()?'':` (${county} County)`}:\n${rates?rates+'\n':'No fixed rate confirmed for this location.\n'}Store collection — free\nYou can also ask our team for a rider quote. Which would you prefer? Our team confirms delivery fees and the final total before payment.`);
   }
 
   const {products,fresh}=await catalogue();
@@ -263,12 +265,14 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
   // Visual suggestions are strictly read-only. Never pass model output or an
   // image caption through the normal cart or payment command parser.
   if(visual){
-    const matched=visual.imageUrl?products.filter(p=>p.stockQuantity!==0&&(p.imageUrl===visual.imageUrl||p.variantOptions?.some(v=>v.imageUrl===visual.imageUrl))).slice(0,3):visual.query?visualCatalogueMatches(visual.query,products):[];
+    let matched=visual.imageUrl?products.filter(p=>p.stockQuantity!==0&&(p.imageUrl===visual.imageUrl||p.variantOptions?.some(v=>v.imageUrl===visual.imageUrl))).slice(0,3):visual.query?visualCatalogueMatches(visual.query,products,8):[];
+    if(visual.image&&fresh)matched=await compareCataloguePhotos(visual.image,matched);
+    else matched=matched.slice(0,3);
     if(!fresh||!matched.length){
       await clearPending();await clearPurchase();
       await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;
       await flagReview('Photo matching');
-      return reply('I couldn’t confirm the item from the photo or referenced message, so I’ve flagged this chat for our sales team. You can keep asking about other products while you wait.');
+      return reply('I couldn’t confirm the item from the photo or referenced message. Could you share its product name or size? I’ve flagged this chat for our sales team. You can keep asking about other products while you wait.');
     }
     const result=await show(matched);
     return {...result,reply:'Here are catalogue options that may match the photo. Please confirm the exact product before we add anything to your cart.\n\n'+result.reply};
@@ -327,6 +331,11 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       if(!found.length){await clearPending();await db`DELETE FROM public.dbk155_wa_shortlists WHERE wa_id=${waId}`;return reply('I couldn’t find a confirmed in-stock item matching that budget. Would you like to try another amount or product?');}
       return show(found);
     }
+  }
+  // Exact paper sizes are never dropped by the language model.
+  if(fresh&&!visual&&explicitPaperSizes(text).length&&!/\b(?:pay|payment|mpesa|stk|cart|checkout|order|cancel|deliver|delivery|refund|remove|add|not|don't|dont|no|except)\b/i.test(text)){
+    const query=(directQuery||text).replace(/^(?:show me|show|search|find|i want|i need|nataka|do you have)\s+/i,'').replace(/\b(?:please|ones?)\b/gi,' ').trim();
+    return showSearch(query);
   }
   // Size-specific glue stick requests must never substitute an unrelated size.
   if(fresh&&!visual&&/\b\d+(?:\.\d+)?\s*mm\b/i.test(text)&&/\bglue\s*sticks?\b/i.test(text)&&!/\b(?:pay|payment|mpesa|stk|cart|checkout|order|cancel|deliver|delivery|refund|remove|add|not|don't|dont|no|except)\b/i.test(text))return showSearch(directQuery||text.replace(/^search\s+/i,''));

@@ -113,6 +113,9 @@ export async function POST(request: Request) {
     // A generic 500 causes cashiers to retry a real payment with a new ID.
     // Surface a reconciliation instruction rather than suggesting a new sale.
     const detail = cause instanceof Error ? cause.message : "";
+    if (detail === 'Neon Direct M-PESA currently supports in-store POS only') {
+      return NextResponse.json({code:'POS_DARAJA_DELIVERY_NOT_SUPPORTED',retryable:false,message:'Direct M-PESA delivery is not supported yet. For delivery, use Manual Payment only after receiving and verifying the actual customer payment, or ask a supervisor. No new STK request was initiated for this attempt.'},{status:409,headers:{'Cache-Control':'private, no-store'}});
+    }
     if (/Neon sale committed but receipt readback failed|STK accepted but database reconciliation required|STK accepted; pending record requires reconciliation/i.test(detail)) {
       return NextResponse.json({
         message: "Payment or sale may already have been recorded. Reconcile the original POS request before retrying; do not create a new payment request.",

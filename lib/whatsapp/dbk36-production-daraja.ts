@@ -34,8 +34,8 @@ const stamp=()=>{
 export async function queryDarajaStkStatus(checkoutId:string):Promise<DarajaQuery>{
   if(process.env.MPESA_ENV!=='production'||!/^[-A-Za-z0-9._:]{6,150}$/.test(checkoutId))
     throw new Error('PRODUCTION_DARAJA_QUERY_DISABLED');
-  const shortcode=process.env.MPESA_SHORTCODE||'',passkey=process.env.MPESA_PASSKEY||'',
-    key=process.env.MPESA_CONSUMER_KEY||'',secret=process.env.MPESA_CONSUMER_SECRET||'';
+  const shortcode=process.env.MPESA_SHORTCODE?.trim()||'',passkey=process.env.MPESA_PASSKEY?.trim()||'',
+    key=process.env.MPESA_CONSUMER_KEY?.trim()||'',secret=process.env.MPESA_CONSUMER_SECRET?.trim()||'';
   if(!/^\d{5,9}$/.test(shortcode)||!passkey||!key||!secret)throw new Error('DARAJA_SECRETS_MISSING');
   const a=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
     cache:'no-store',signal:AbortSignal.timeout(15000),headers:{Authorization:'Basic '+Buffer.from(`${key}:${secret}`).toString('base64')}});
