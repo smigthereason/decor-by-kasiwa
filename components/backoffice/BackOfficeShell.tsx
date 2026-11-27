@@ -65,7 +65,7 @@ const adminNavigation: NavigationItem[] = [
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag, badge: "newOrders" },
   { label: "WhatsApp Centre", href: "/admin/whatsapp/inbox", icon: MessageCircle },
   { label: "WhatsApp Paid Orders", href: "/admin/whatsapp/paid-intake", icon: MessageCircle },
-  { label: "WhatsApp Fulfilment", href: "/admin/whatsapp/paid-intake/fulfillment", icon: PackageCheck },
+  { label: "WhatsApp Fulfilment", href: "/admin/whatsapp/fulfillment", icon: PackageCheck },
   { label: "Kasiwa Adviser", href: "/admin/whatsapp/ai-demo", icon: Bot },
   { label: "Kasiwa Knowledge", href: "/admin/whatsapp/knowledge", icon: Bot },
   { label: "Products", href: "/admin/products", icon: Boxes, badge: "restockRequests" },
@@ -84,6 +84,7 @@ const adminNavigation: NavigationItem[] = [
 const storeManagerNavigation: NavigationItem[] = [
   { label: "Store Overview", href: "/store", icon: Warehouse },
   { label: "WhatsApp Order Summary", href: "/store/whatsapp", icon: MessageCircle },
+  { label: "WhatsApp Fulfilment", href: "/store/whatsapp/fulfillment", icon: PackageCheck },
   { label: "WhatsApp Centre", href: "/store/whatsapp/inbox", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
@@ -100,6 +101,7 @@ const storeManagerNavigation: NavigationItem[] = [
 const salesStaffNavigation: NavigationItem[] = [
   { label: "Sales Overview", href: "/store", icon: Warehouse },
   { label: "WhatsApp Order Summary", href: "/store/whatsapp", icon: MessageCircle },
+  { label: "WhatsApp Fulfilment", href: "/store/whatsapp/fulfillment", icon: PackageCheck },
   { label: "WhatsApp Centre", href: "/store/whatsapp/inbox", icon: MessageCircle },
   { label: "Point of Sale", href: "/store/pos", icon: ShoppingCart },
   { label: "Sales Operations", href: "/store/pos/operations", icon: ReceiptText },
@@ -113,6 +115,7 @@ const salesStaffNavigation: NavigationItem[] = [
 
 const fulfilmentStaffNavigation: NavigationItem[] = [
   { label: "WhatsApp Order Summary", href: "/store/whatsapp", icon: MessageCircle },
+  { label: "WhatsApp Fulfilment", href: "/store/whatsapp/fulfillment", icon: PackageCheck },
   { label: "Fulfilment Workflow", href: "/store/workflow", icon: GitBranch, badge: "workflowJobs" },
 ];
 
@@ -143,6 +146,12 @@ export default function BackOfficeShell({
   const { notifications } = useBackofficeNotifications();
 
   const [whatsappAllowed,setWhatsappAllowed]=useState(false);
+  const [whatsappFulfilmentAllowed,setWhatsappFulfilmentAllowed]=useState(false);
+  useEffect(()=>{
+    if(mode!=="store")return;let active=true;setWhatsappFulfilmentAllowed(false);
+    void fetch("/api/backoffice/whatsapp/workflow?access=1",{cache:"no-store"}).then(async r=>r.ok&&(await r.json()).allowed===true).then(allowed=>{if(active)setWhatsappFulfilmentAllowed(allowed);}).catch(()=>{});
+    return()=>{active=false;};
+  },[mode,staffRole,staffEmail]);
   useEffect(()=>{
     if(mode!=="store"||!["STORE","MANAGER","STORE_STAFF"].includes(staffRole))return;
     let active=true;setWhatsappAllowed(false);
@@ -158,7 +167,7 @@ export default function BackOfficeShell({
         : staffRole === "STORE_STAFF"
           ? salesStaffNavigation
           : storeManagerNavigation;
-  const navigation=navigationItems.filter(item=>item.href!=="/store/whatsapp/inbox"||staffRole==="ADMIN"||whatsappAllowed);
+  const navigation=navigationItems.filter(item=>(item.href!=="/store/whatsapp/inbox"||staffRole==="ADMIN"||whatsappAllowed)&&(item.href!=="/store/whatsapp/fulfillment"||whatsappFulfilmentAllowed));
 
   const title = mode === "admin" ? "Admin Office" : fulfilmentOnly ? "Fulfilment Operations" : staffRole === "STORE_STAFF" ? "Sales & Delivery" : staffRole === "MANAGER" ? "Manager Operations" : "Store Operations";
   const rootHref = mode === "admin" ? "/admin" : "/store";
@@ -178,7 +187,7 @@ export default function BackOfficeShell({
 
   function isActive(href: string) {
     // A legacy WhatsApp workspace must not also highlight the live inbox.
-    if(href==='/store/whatsapp'&&pathname.startsWith('/store/whatsapp/inbox'))return false;
+    if(href==='/store/whatsapp'&&(pathname.startsWith('/store/whatsapp/inbox')||pathname.startsWith('/store/whatsapp/fulfillment')))return false;
     // Use the most specific WhatsApp route for the fulfillment submenu.
     if (href === "/admin/whatsapp/paid-intake" && pathname.startsWith("/admin/whatsapp/paid-intake/fulfillment")) return false;
     return pathname === href || (href !== rootHref && pathname.startsWith(`${href}/`));

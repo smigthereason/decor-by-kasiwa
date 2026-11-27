@@ -511,6 +511,7 @@ export async function handleProductionChat(waId:string,rawText:string,visual?:Vi
       const o=await productionCustomerOrder(waId);
       if(!o)return reply('No order found. Reply CHECKOUT.');
       const status=String(o.status);
+      if(status==='review_required')await flagReview('Payment initiation');
       return reply(status==='paid'?`Payment of ${money(Number(o.amount_kes))} for ${o.reference} has been verified. Our team will handle fulfilment.`:status==='prompt_sent'||status==='starting'||status==='review_required'?`Payment for ${o.reference} is awaiting confirmation. Please do not pay again until we verify it.`:status==='quoted'?`Your order ${o.reference} is awaiting payment. No payment has been confirmed.`:`Order ${o.reference} has no confirmed payment. Our team can help you check the next step.`);
     }
     if(cmd==='CANCEL CHECKOUT'){await clearDelivery();return reply(await cancelProductionQuote(waId)?'Unpaid quote cancelled.':'No unpaid quote to cancel.');}

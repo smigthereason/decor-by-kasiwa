@@ -21,7 +21,7 @@ export async function dbk136ListWhatsappJobs(storeId?:string) {
     JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=w.reference
     JOIN public.dbk36_wa_paid_intake p ON p.reference=w.reference
     JOIN public.dbk36_wa_prod_payment_orders o ON o.reference=w.reference
-    WHERE w.stage IN ('PRODUCTION','PACKAGING','DELIVERY')
+    WHERE f.store_id=${MAIN_STORE} AND w.stage IN ('PRODUCTION','PACKAGING','DELIVERY')
       AND f.stock_state='COMMITTED' AND p.verification_mode='daraja_api_verified'
       AND o.status='paid' AND o.stock_state='COMMITTED'
       AND f.fulfillment_state NOT IN ('HANDED_OVER','REFUND_REVIEW')
@@ -41,7 +41,7 @@ export async function dbk136ListWhatsappJobs(storeId?:string) {
         quantity:Number(line.quantity||1),
       })),
       stage,assignedStaffId:String(r.assigned_staff_id||''),assignedStaffName:String(r.assigned_staff_name||''),
-      channel:'WHATSAPP' as const,
+      channel:'WHATSAPP' as const,cartSnapshot:r.cart_snapshot,
     };
   });
 }
@@ -63,3 +63,9 @@ export async function dbk136AdvanceWhatsapp(input:{reference:string;stage:DBK136
   return rows[0]?.result;
 }
 export const dbk136MainStoreId=MAIN_STORE;
+
+export async function dbk136JobState(reference:string){
+  const sql=db();
+  const rows=await sql`SELECT w.stage,w.assigned_staff_id FROM public.dbk136_wa_workflow w JOIN public.dbk36_wa_stock_fulfillment f ON f.reference=w.reference WHERE w.reference=${reference} AND f.store_id=${MAIN_STORE} LIMIT 1`;
+  return rows[0]||null;
+}

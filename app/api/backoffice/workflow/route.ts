@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
     }
   }
   return NextResponse.json({
-    orders, onlineOrders, whatsappOrders, whatsappWarning, whatsappEnabled:dbk136Enabled(),
+    orders, onlineOrders, whatsappOrders:whatsappOrders.map(({cartSnapshot,...job})=>job), whatsappWarning, whatsappEnabled:dbk136Enabled(),
     onlineWarning, onlineAssignmentsEnabled:dbk134Enabled(),
     availableStaff,
     storeLocations,

@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, LoaderCircle, PackageCheck, RefreshCcw, Search, UserCheck, X } from "lucide-react";
 import { formatMoney } from "@/lib/money";
+import WhatsAppPackingItems from "./WhatsAppPackingItems";
+import type {PackingLine} from "@/lib/whatsapp/dbk162-packing";
 
 type Stage = "PRODUCTION" | "PACKAGING" | "DELIVERY";
 type Job = {
@@ -33,7 +35,7 @@ type OnlineJob = {
   paymentStatus: string; status: string; stockReady: boolean;
   total: number; items: Array<{name:string;quantity:number}>;
   stage:Stage|null;assignedStaffId:string;assignedStaffName:string;
-  channel?:'ONLINE'|'WHATSAPP';
+  channel?:'ONLINE'|'WHATSAPP'; packingItems?:PackingLine[];
 };
 const onlineTransitions: Record<string, {status:string;label:string}> = {
   paid: {status: "processing", label: "Start processing"},
@@ -71,7 +73,8 @@ function kenyaDateKey(value?: string) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-export default function FulfilmentWorkflowPage() {
+export default function FulfilmentWorkflowPage({whatsappOnly=false}:{whatsappOnly?:boolean}={}) {
+  const waApi=whatsappOnly?"/api/backoffice/whatsapp/workflow":"/api/backoffice/workflow/whatsapp";
   const [jobs, setJobs] = useState<Job[]>([]);
   const [onlineJobs, setOnlineJobs] = useState<OnlineJob[]>([]);
   const [whatsappJobs, setWhatsappJobs] = useState<OnlineJob[]>([]);
@@ -94,14 +97,14 @@ export default function FulfilmentWorkflowPage() {
   const [appliedDateRange, setAppliedDateRange] = useState({ from: "", to: "" });
   const [storeLocations, setStoreLocations] = useState<StoreLocation[]>([]);
   const [storeFilter, setStoreFilter] = useState("");
-  const [channelFilter, setChannelFilter] = useState<"ALL"|"ONLINE"|"POS"|"WHATSAPP">("ALL");
+  const [channelFilter, setChannelFilter] = useState<"ALL"|"ONLINE"|"POS"|"WHATSAPP">(whatsappOnly?"WHATSAPP":"ALL");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (storeFilter) params.set("store", storeFilter);
-      const response = await fetch(`/api/backoffice/workflow${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
+      const response = await fetch(`${whatsappOnly?waApi:"/api/backoffice/workflow"}${params.size ? `?${params.toString()}` : ""}`, { cache: "no-store" });
       const payload = await response.json() as { orders?: Job[]; onlineOrders?: OnlineJob[]; whatsappOrders?: OnlineJob[]; whatsappEnabled?:boolean; whatsappWarning?:string; onlineWarning?: string; onlineAssignmentsEnabled?:boolean; availableStaff?: Staff[]; storeLocations?: StoreLocation[]; viewer?: Viewer; message?: string };
       if (!response.ok) throw new Error(payload.message || "Unable to load workflow.");
       setJobs(payload.orders || []);
@@ -122,7 +125,7 @@ export default function FulfilmentWorkflowPage() {
     } finally {
       setLoading(false);
     }
-  }, [storeFilter]);
+  }, [storeFilter,whatsappOnly,waApi]);
 
   useEffect(() => { void load(); }, [load]);
   // Idempotent workflow-number registration, only for already provider-verified
@@ -130,7 +133,7 @@ export default function FulfilmentWorkflowPage() {
   useEffect(() => {
     if (!whatsappEnabled || !viewer?.manager || whatsappSynced) return;
     setWhatsappSynced(true);
-    void fetch('/api/backoffice/workflow/whatsapp',{
+    void fetch(waApi,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'sync'}),
     }).then(async response=>{
@@ -138,8 +141,16 @@ export default function FulfilmentWorkflowPage() {
       if(!response.ok)throw Error(result.message || 'Unable to load WhatsApp orders');
       await load();
     }).catch(error=>setMessage(error instanceof Error?error.message:'WhatsApp orders could not be synchronized'));
-  },[whatsappEnabled,viewer?.manager,whatsappSynced,load]);
+  },[whatsappEnabled,viewer?.manager,whatsappSynced,load,waApi]);
 
+  async function refreshWorkspace(){
+    if(whatsappOnly&&whatsappEnabled&&viewer?.manager){
+      setLoading(true);
+      try{const r=await fetch(waApi,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sync'})});if(!r.ok)throw new Error('WhatsApp order registration could not be confirmed.');}
+      catch(error){setMessage(error instanceof Error?error.message:'Unable to refresh WhatsApp orders');}
+    }
+    await load();
+  }
   function nextStage(job: Job) {
     const index = order.indexOf(job.currentFulfilmentStage);
     return order.slice(index + 1).find((stage) => job.fulfilmentStages.includes(stage));
@@ -229,7 +240,7 @@ export default function FulfilmentWorkflowPage() {
     setSaving(`online-assign-${job.id}`);setMessage('');
     try {
       const response=await fetch(job.channel==='WHATSAPP'
-        ? '/api/backoffice/workflow/whatsapp' : '/api/backoffice/workflow/online',{
+        ? waApi : '/api/backoffice/workflow/online',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'assign',orderId:job.id,stage:job.stage,staffId})
       });
@@ -245,7 +256,7 @@ export default function FulfilmentWorkflowPage() {
     const next=job.channel==='WHATSAPP'
       ? (job.stage==='PRODUCTION' ? {status:'PACKAGING',label:'Complete production'}
         : job.stage==='PACKAGING' ? {status:'DELIVERY',label:'Complete packing'}
-        : job.stage==='DELIVERY' ? {status:'DONE',label:'Complete delivery'} : undefined)
+        : job.stage==='DELIVERY' ? {status:'DONE',label:'Confirm collection / handover'} : undefined)
       : onlineTransitions[job.status];
     if (!next || !job.stockReady) return;
     if ((next.status === "dispatched" || next.status==='DONE') &&
@@ -254,7 +265,7 @@ export default function FulfilmentWorkflowPage() {
     setMessage("");
     try {
       const response=await fetch(job.channel==='WHATSAPP'
-        ? '/api/backoffice/workflow/whatsapp' : '/api/backoffice/workflow/online',{
+        ? waApi : '/api/backoffice/workflow/online',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'advance',orderId:job.id,stage:job.stage}),
       });
@@ -278,7 +289,7 @@ export default function FulfilmentWorkflowPage() {
     if (channelFilter === "POS") return /POS|IN.STORE|STORE/.test(channel);
     return /ONLINE|ECOM|WEB|PAYSTACK/.test(channel);
   };
-  const visibleOnlineJobs = [...onlineJobs,...whatsappJobs].filter((job) =>
+  const visibleOnlineJobs = (whatsappOnly?whatsappJobs:[...onlineJobs,...whatsappJobs]).filter((job) =>
     (channelFilter === "ALL" || channelFilter === (job.channel||'ONLINE')) &&
     (!normalizedOrderSearch || `${job.orderNumber} ${job.reference} ${job.customerName}`.toLowerCase().includes(normalizedOrderSearch)) &&
     (!appliedDateRange.from || !appliedDateRange.to || (() => {
@@ -306,12 +317,12 @@ export default function FulfilmentWorkflowPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <p className="kicker text-[var(--muted)]">Operations</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">Fulfilment Workflow</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">{whatsappOnly?"WhatsApp Fulfilment":"Fulfilment Workflow"}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-              Website, store and WhatsApp orders share one stage-based workflow. Select a channel to focus on a particular source.
+              {whatsappOnly?"Verified, stock-committed WhatsApp orders only. Assign, prepare, pack and hand over from this dedicated workspace.":"Website and store orders share one stage-based workflow. WhatsApp has a dedicated workspace; existing orders remain visible here for compatibility."}
             </p>
           </div>
-          <button onClick={() => void load()} className="inline-flex min-h-10 w-fit shrink-0 items-center gap-2 rounded-full border hairline bg-white px-4 py-2 text-xs">
+          <button onClick={() => void refreshWorkspace()} disabled={loading||Boolean(saving)} className="inline-flex min-h-10 w-fit shrink-0 items-center gap-2 rounded-full border hairline bg-white px-4 py-2 text-xs">
             <RefreshCcw size={14} />Refresh
           </button>
         </div>
@@ -322,7 +333,7 @@ export default function FulfilmentWorkflowPage() {
             <div>
               <p className="text-xs font-semibold">How a workflow starts</p>
               <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                {viewer?.manager
+                {whatsappOnly?"Only verified, stock-committed WhatsApp orders enter this workflow. Supervisors assign each stage; assigned employees complete their own jobs. Collection or dispatch must be confirmed before completion.":viewer?.manager
                   ? "A paid POS or online sale enters this queue automatically when its product category has fulfilment stages. Assign the first active stage to a staff member; after that, each team completes its stage and assigns the next team."
                   : "A paid sale enters the workflow automatically. A manager assigns the first required stage, and only jobs assigned to you appear here. Complete your stage, then assign the next required team when prompted."}
               </p>
@@ -365,15 +376,15 @@ export default function FulfilmentWorkflowPage() {
                 <ChevronDown size={14} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
               </span>
             </label>
-            <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Sales channel
+            {!whatsappOnly&&<label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">Sales channel
               <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value as typeof channelFilter)}
                 className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]">
                 <option value="ALL">All channels</option>
                 <option value="POS">In-store / POS</option>
                 <option value="ONLINE">Online</option>
-                <option value="WHATSAPP">WhatsApp</option>
+                <option value="WHATSAPP">WhatsApp (legacy view)</option>
               </select>
-            </label>
+            </label>}
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">From<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <label className="grid gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted)]">To<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="min-h-11 rounded-lg border hairline bg-[var(--paper)] px-3 text-xs font-normal normal-case text-[var(--ink)]" /></label>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={applyDateRange} className="min-h-11 rounded-full bg-[var(--brand-green)] px-4 text-[9px] font-semibold uppercase tracking-[0.05em] text-white">Apply dates</button>{(appliedDateRange.from || appliedDateRange.to) && <button type="button" onClick={clearDateRange} className="min-h-11 rounded-full border hairline px-4 text-[9px] font-semibold uppercase tracking-[0.05em]">Clear dates</button>}</div>
@@ -388,7 +399,7 @@ export default function FulfilmentWorkflowPage() {
         {message && <p className="mt-5 break-words rounded-xl border hairline bg-white p-3 text-xs">{message}</p>}
 
         {onlineWarning && <p role="alert" className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">{onlineWarning}</p>}
-        {whatsappWarning && <p role="alert" className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">{whatsappWarning}</p>}
+        {whatsappOnly && whatsappWarning && <p role="alert" className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs">{whatsappWarning}</p>}
 
         {loading ? (
           <div className="mt-8"><LoaderCircle className="animate-spin" /></div>
@@ -487,14 +498,14 @@ export default function FulfilmentWorkflowPage() {
                 const next = job.channel==='WHATSAPP'
                   ? (job.stage==='PRODUCTION' ? {status:'PACKAGING',label:'Complete production'}
                     : job.stage==='PACKAGING' ? {status:'DELIVERY',label:'Complete packing'}
-                    : job.stage==='DELIVERY' ? {status:'DONE',label:'Complete delivery'} : undefined)
+                    : job.stage==='DELIVERY' ? {status:'DONE',label:'Confirm collection / handover'} : undefined)
                   : onlineTransitions[job.status];
                 return <article key={job.id} className="rounded-xl border hairline bg-[var(--paper)] p-4">
                   <p className="break-all text-sm font-semibold">{job.orderNumber} <span className="text-[10px] font-normal">· {job.channel==='WHATSAPP'?'WhatsApp':'Online'}</span></p>
                   <p className="mt-1 break-all text-[10px] text-[var(--muted)]">Payment reference: {job.reference}</p>
                   <p className="mt-2 text-xs">{job.customerName} · {job.storeLocationName || "Unassigned store"}</p>
                   <p className="mt-1 text-xs font-semibold">{formatMoney(job.total)} · {onlineStatusLabel(job.status)}</p>
-                  <div className="mt-2 text-xs text-[var(--muted)]">{job.items.map((item, i) => <p key={i}>{item.quantity}× {item.name}</p>)}</div>
+                  <div className="mt-2 text-xs text-[var(--muted)]">{whatsappOnly?<WhatsAppPackingItems items={job.packingItems} compact/>:job.items.map((item, i) => <p key={i}>{item.quantity}× {item.name}</p>)}</div>
                   {job.stage && <p className="mt-2 text-xs font-semibold">{stageLabel(job.stage)} · {job.assignedStaffName || 'Unassigned'}</p>}
                   {viewer?.manager && job.stage && (job.channel==='WHATSAPP'?whatsappEnabled:onlineAssignmentsEnabled) && job.stockReady && <div className="mt-3 flex flex-wrap items-center gap-2">
                     <select aria-label={`Assign ${job.stage.toLowerCase()} staff`} value={onlineSelectedStaff[job.id] || job.assignedStaffId || ''}
