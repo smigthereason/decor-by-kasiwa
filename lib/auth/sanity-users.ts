@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@sanity/client";
 
 export type CustomerRole = "CUSTOMER" | "STORE_STAFF" | "PRODUCTION_STAFF" | "PACKAGING_STAFF" | "DELIVERY_STAFF" | "MANAGER" | "STORE" | "ADMIN";
-export type StaffPermission = "POS_SALES" | "WHATSAPP_SALES" | "TIKTOK_SALES" | "GROUND_SALES" | "PRODUCTION" | "PRINTING" | "PACKAGING" | "DELIVERY";
+export type StaffPermission = "POS_SALES" | "WHATSAPP_SALES" | "WHATSAPP_QUEUE" | "WHATSAPP_TRANSFER" | "WHATSAPP_SUPERVISE" | "TIKTOK_SALES" | "GROUND_SALES" | "PRODUCTION" | "PRINTING" | "PACKAGING" | "DELIVERY";
 export type CustomerStatus = "ACTIVE" | "SUSPENDED";
 export type CustomerSource = "GOOGLE" | "EMAIL_PASSWORD" | "GUEST_CHECKOUT" | "ADMIN" | "POS";
 

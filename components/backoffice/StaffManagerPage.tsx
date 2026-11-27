@@ -8,12 +8,19 @@ const roles = [
   ["DELIVERY_STAFF", "Delivery"], ["MANAGER", "Manager"], ["STORE", "Store Manager"], ["ADMIN", "Admin / Owner"],
 ] as const;
 const permissions = [
-  ["POS_SALES", "POS Sales"], ["WHATSAPP_SALES", "WhatsApp Sales"], ["TIKTOK_SALES", "TikTok Sales"],
+  ["POS_SALES", "POS Sales"], ["WHATSAPP_SALES", "WhatsApp Sales"], ["WHATSAPP_QUEUE", "WhatsApp shared queue / claim"], ["WHATSAPP_TRANSFER", "WhatsApp transfer own chats"], ["WHATSAPP_SUPERVISE", "WhatsApp team supervisor"], ["TIKTOK_SALES", "TikTok Sales"],
   ["GROUND_SALES", "Ground Sales"], ["PRODUCTION", "Production"], ["PRINTING", "Printing"],
   ["PACKAGING", "Packaging"], ["DELIVERY", "Delivery"],
 ] as const;
 type Role = typeof roles[number][0];
 type Permission = typeof permissions[number][0];
+const whatsappPermissions = ["WHATSAPP_SALES","WHATSAPP_QUEUE","WHATSAPP_TRANSFER","WHATSAPP_SUPERVISE"] as const;
+const whatsappDescriptions: Record<typeof whatsappPermissions[number],string> = {
+  WHATSAPP_SALES: "Access the Centre, reply to assigned customers, view their photos and payment status, and resume Kasiwa.",
+  WHATSAPP_QUEUE: "See unassigned conversations and claim them without an administrator.",
+  WHATSAPP_TRANSFER: "Transfer conversations you own to another eligible employee.",
+  WHATSAPP_SUPERVISE: "View team conversations and assignment activity; assign or reassign chats. Includes queue and transfer rights. Does not grant Admin or stock approval rights.",
+};
 type StoreLocation = { _id: string; name: string; code: string; active?: boolean };
 type Staff = { _id: string; name: string; email: string; role: Role; permissions?: Permission[]; assignedStore?: StoreLocation | null; status: "ACTIVE" | "SUSPENDED"; lastLoginAt?: string };
 type Editor = { name: string; email: string; role: Role; permissions: Permission[]; assignedStoreId: string; status: "ACTIVE" | "SUSPENDED" };
@@ -125,7 +132,15 @@ export default function StaffManagerPage() {
   }
 
   function toggle(permission: Permission) {
-    setEditor((current) => ({ ...current, permissions: current.permissions.includes(permission) ? current.permissions.filter((item) => item !== permission) : [...current.permissions, permission] }));
+    setEditor((current) => {
+      if(permission==='WHATSAPP_SALES' && current.permissions.includes(permission))return {...current,permissions:current.permissions.filter(item=>!whatsappPermissions.some(p=>p===item))};
+      if(permission!=='WHATSAPP_SALES'&&whatsappPermissions.some(p=>p===permission)&&!current.permissions.includes('WHATSAPP_SALES'))return current;
+      return {...current,permissions:current.permissions.includes(permission)?current.permissions.filter(item=>item!==permission):[...current.permissions,permission]};
+    });
+  }
+
+  function setWhatsAppProfile(supervisor:boolean){
+    setEditor(current=>({...current,permissions:[...current.permissions.filter(item=>!whatsappPermissions.some(p=>p===item)), 'WHATSAPP_SALES','WHATSAPP_QUEUE','WHATSAPP_TRANSFER',...(supervisor?['WHATSAPP_SUPERVISE' as const]:[])]}));
   }
 
   async function save(event: FormEvent) {
@@ -193,12 +208,19 @@ export default function StaffManagerPage() {
               <p className="text-xs font-semibold">Additional responsibilities</p>
               <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">Use these when one employee works across more than one operational area.</p>
               <div className="mt-3 grid gap-2 min-[420px]:grid-cols-2 lg:grid-cols-3">
-                {permissions.map(([value, label]) => <label key={value} className="inline-flex min-h-10 items-center gap-2 rounded-lg border hairline bg-white px-3 text-xs"><input type="checkbox" checked={editor.permissions.includes(value)} onChange={() => toggle(value)}/><span>{label}</span></label>)}
+                {permissions.filter(([value])=>value==='WHATSAPP_SALES'||!whatsappPermissions.some(p=>p===value)).map(([value, label]) => <label key={value} className="inline-flex min-h-10 items-center gap-2 rounded-lg border hairline bg-white px-3 text-xs"><input type="checkbox" checked={editor.permissions.includes(value)} onChange={() => toggle(value)}/><span>{label}</span></label>)}
               </div>
             </div>
             </>}
             {staffPanel === "rights" && <section role="tabpanel" aria-label="Rights" className="mt-5">
               <h3 className="text-base font-semibold">Rights overview{selected ? ` · ${selected.name}` : ""}</h3>
+              <div className="mt-4 rounded-xl border hairline p-4 space-y-3">
+                <h4 className="font-semibold text-sm">WhatsApp conversation rights</h4>
+                <p className="text-xs text-[var(--muted)]">For active Sales Staff, Managers and Store Managers. Admins already have all conversation rights. Changes must be saved.</p>
+                <div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setWhatsAppProfile(false)} className="rounded-lg border hairline px-3 py-2 text-xs font-semibold">Sales staff profile</button><button type="button" onClick={()=>setWhatsAppProfile(true)} className="rounded-lg border hairline px-3 py-2 text-xs font-semibold">Sales supervisor profile</button></div>
+                {whatsappPermissions.map(value=><label key={value} className="flex items-start gap-3 rounded-lg border hairline p-3"><input className="mt-1" type="checkbox" checked={editor.permissions.includes(value)} disabled={value!=='WHATSAPP_SALES'&&!editor.permissions.includes('WHATSAPP_SALES')} onChange={()=>toggle(value)}/><span><span className="block text-sm font-semibold">{permissions.find(([key])=>key===value)?.[1]}</span><span className="block text-xs text-[var(--muted)] mt-1">{whatsappDescriptions[value]}</span></span></label>)}
+              </div>
+              <p className="mt-5 text-xs text-[var(--muted)]">Other module rights below are a read-only preview and are not changed by saving WhatsApp rights.</p>
               <div className="mt-4 overflow-x-auto rounded-xl border hairline">
                 <table className="w-full min-w-[590px] text-left text-xs">
                   <thead className="bg-[var(--paper)]"><tr><th className="px-3 py-3">Module</th>{["View", "Add", "Edit", "Delete"].map((right) => <th key={right} className="px-3 py-3 text-center">{right}</th>)}<th className="px-3 py-3">Other rights</th></tr></thead>
@@ -218,9 +240,9 @@ export default function StaffManagerPage() {
               </div>
             </section>}
             {message && <p className="mt-5 break-words rounded-lg bg-[var(--paper)] p-3 text-xs">{message}</p>}
-            {staffPanel === "details" && <button disabled={saving} className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 py-3 text-xs font-semibold text-white disabled:opacity-50 sm:w-auto">
+            <button disabled={saving} className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--brand-green)] px-5 py-3 text-xs font-semibold text-white disabled:opacity-50 sm:w-auto">
               {saving ? <LoaderCircle size={14} className="animate-spin"/> : <Save size={14}/>}Save staff member
-            </button>}
+            </button>
           </form>
 
           {selected && (

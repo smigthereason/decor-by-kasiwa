@@ -47,6 +47,9 @@ export const customerUser = defineType({
       options: { list: [
         { title: "POS Sales", value: "POS_SALES" },
         { title: "WhatsApp Sales", value: "WHATSAPP_SALES" },
+        { title: "WhatsApp shared queue / claim", value: "WHATSAPP_QUEUE" },
+        { title: "WhatsApp transfer own chats", value: "WHATSAPP_TRANSFER" },
+        { title: "WhatsApp team supervisor", value: "WHATSAPP_SUPERVISE" },
         { title: "TikTok Sales", value: "TIKTOK_SALES" },
         { title: "Ground Sales", value: "GROUND_SALES" },
         { title: "Production", value: "PRODUCTION" },

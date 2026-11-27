@@ -9,11 +9,11 @@ import { serverClient } from "@/sanity/lib/serverClient";
 export const dynamic = "force-dynamic";
 
 const staffRoles: CustomerRole[] = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "MANAGER", "STORE", "ADMIN"];
-const permissionValues: StaffPermission[] = ["POS_SALES", "WHATSAPP_SALES", "TIKTOK_SALES", "GROUND_SALES", "PRODUCTION", "PRINTING", "PACKAGING", "DELIVERY"];
+const permissionValues: StaffPermission[] = ["POS_SALES", "WHATSAPP_SALES", "WHATSAPP_QUEUE", "WHATSAPP_TRANSFER", "WHATSAPP_SUPERVISE", "TIKTOK_SALES", "GROUND_SALES", "PRODUCTION", "PRINTING", "PACKAGING", "DELIVERY"];
 
 type StaffInput = { name?: string; email?: string; role?: CustomerRole; permissions?: StaffPermission[]; assignedStoreId?: string; status?: "ACTIVE" | "SUSPENDED" };
 function emailId(email: string) { return `customerUser.staff.${createHash("sha256").update(email).digest("hex").slice(0, 32)}`; }
-function normalizePermissions(value: unknown): StaffPermission[] { return Array.isArray(value) ? permissionValues.filter((permission) => value.includes(permission)) : []; }
+function normalizePermissions(value: unknown): StaffPermission[] { const selected = Array.isArray(value) ? permissionValues.filter((permission) => value.includes(permission)) : []; return selected.filter(permission => !["WHATSAPP_QUEUE", "WHATSAPP_TRANSFER", "WHATSAPP_SUPERVISE"].includes(permission) || selected.includes("WHATSAPP_SALES")); }
 
 async function listStaff() {
   return serverClient.fetch(

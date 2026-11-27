@@ -5,10 +5,10 @@ import type { CustomerRole, StaffPermission } from "@/lib/auth/sanity-users";
 import { serverClient } from "@/sanity/lib/serverClient";
 
 const staffRoles: CustomerRole[] = ["STORE_STAFF", "PRODUCTION_STAFF", "PACKAGING_STAFF", "DELIVERY_STAFF", "MANAGER", "STORE", "ADMIN"];
-const permissionValues: StaffPermission[] = ["POS_SALES", "WHATSAPP_SALES", "TIKTOK_SALES", "GROUND_SALES", "PRODUCTION", "PRINTING", "PACKAGING", "DELIVERY"];
+const permissionValues: StaffPermission[] = ["POS_SALES", "WHATSAPP_SALES", "WHATSAPP_QUEUE", "WHATSAPP_TRANSFER", "WHATSAPP_SUPERVISE", "TIKTOK_SALES", "GROUND_SALES", "PRODUCTION", "PRINTING", "PACKAGING", "DELIVERY"];
 
 type StaffInput = { name?: string; email?: string; role?: CustomerRole; permissions?: StaffPermission[]; assignedStoreId?: string; status?: "ACTIVE" | "SUSPENDED" };
-function normalizePermissions(value: unknown): StaffPermission[] { return Array.isArray(value) ? permissionValues.filter((permission) => value.includes(permission)) : []; }
+function normalizePermissions(value: unknown): StaffPermission[] { const selected = Array.isArray(value) ? permissionValues.filter((permission) => value.includes(permission)) : []; return selected.filter(permission => !["WHATSAPP_QUEUE", "WHATSAPP_TRANSFER", "WHATSAPP_SUPERVISE"].includes(permission) || selected.includes("WHATSAPP_SALES")); }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await getApiStaff(["ADMIN"]);

@@ -2,6 +2,7 @@ import "server-only";
 
 import { neon } from "@neondatabase/serverless";
 import { requireStaffAccess } from "@/lib/auth/authorization";
+import { whatsappAccess } from "@/lib/whatsapp/dbk169-access";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export default async function StoreWhatsAppSalesPage() {
     (role === "STORE_STAFF" && customer.permissions?.includes("WHATSAPP_SALES") === true)
   );
   const summary = canReadSummary ? await productionOrderSummary() : null;
+  const canUseInbox = !!whatsappAccess(role,customer.status,customer.permissions);
 
   const cards = summary ? [
     ["Awaiting payment", summary.awaitingPayment],
@@ -100,8 +102,9 @@ export default async function StoreWhatsAppSalesPage() {
         <article className="rounded-xl border border-[var(--ink)]/10 bg-[var(--paper)] p-5">
           <h2 className="font-semibold">Customer conversations</h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Public WhatsApp messaging remains restricted until the official business number and Meta credentials are connected.
+            {canUseInbox ? "Open the live WhatsApp Centre to manage customer conversations and review your customers' payment status." : "Ask an administrator for WhatsApp Sales permission to manage customer conversations."}
           </p>
+          {canUseInbox&&<a href="/store/whatsapp/inbox" className="mt-4 inline-block rounded-lg bg-[var(--brand-green)] px-4 py-2 text-sm font-semibold text-white">Open WhatsApp Centre</a>}
         </article>
         <article className="rounded-xl border border-[var(--ink)]/10 bg-[var(--paper)] p-5">
           <h2 className="font-semibold">Payments and stock</h2>
