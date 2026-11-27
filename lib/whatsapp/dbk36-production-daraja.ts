@@ -1,4 +1,5 @@
 import 'server-only';
+import {darajaFetch,getDarajaToken} from '@/lib/mpesa/dbk173-transport';
 /** Production bridge's self-contained Daraja verifier. No staging gateway imports. */
 export type DarajaStkCallbackPayload={Body?:{stkCallback?:{
   CheckoutRequestID?:string;MerchantRequestID?:string;ResultCode?:number;ResultDesc?:string;
@@ -37,15 +38,12 @@ export async function queryDarajaStkStatus(checkoutId:string):Promise<DarajaQuer
   const shortcode=process.env.MPESA_SHORTCODE?.trim()||'',passkey=process.env.MPESA_PASSKEY?.trim()||'',
     key=process.env.MPESA_CONSUMER_KEY?.trim()||'',secret=process.env.MPESA_CONSUMER_SECRET?.trim()||'';
   if(!/^\d{5,9}$/.test(shortcode)||!passkey||!key||!secret)throw new Error('DARAJA_SECRETS_MISSING');
-  const a=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
-    cache:'no-store',signal:AbortSignal.timeout(15000),headers:{Authorization:'Basic '+Buffer.from(`${key}:${secret}`).toString('base64')}});
-  if(!a.ok)throw new Error('DARAJA_TOKEN_UNAVAILABLE');
-  const tok=(await a.json()) as {access_token?:string};
-  if(!tok.access_token)throw new Error('DARAJA_TOKEN_UNAVAILABLE');
+  const config={baseUrl:'https://api.safaricom.co.ke',consumerKey:key,consumerSecret:secret};
+  const token=await getDarajaToken(config);
   const time=stamp();
-  const res=await fetch('https://api.safaricom.co.ke/mpesa/stkpushquery/v1/query',{
+  const res=await darajaFetch(config,'/mpesa/stkpushquery/v1/query',{
     method:'POST',cache:'no-store',signal:AbortSignal.timeout(18000),
-    headers:{Authorization:`Bearer ${tok.access_token}`,'Content-Type':'application/json'},
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
     body:JSON.stringify({BusinessShortCode:shortcode,Password:Buffer.from(shortcode+passkey+time).toString('base64'),
       Timestamp:time,CheckoutRequestID:checkoutId})});
   if(!res.ok)throw new Error('DARAJA_QUERY_NOT_CONFIRMED');

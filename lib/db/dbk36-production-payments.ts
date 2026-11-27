@@ -1,4 +1,5 @@
 import 'server-only';
+import {darajaFetch,getDarajaToken} from '@/lib/mpesa/dbk173-transport';
 import {neon} from '@neondatabase/serverless';
 import {getStoreProducts} from '@/sanity/lib/catalog';
 import {whatsappPromotionCatalogue} from '@/lib/product-pricing';
@@ -47,24 +48,17 @@ function networkFailure(error:unknown){
   const code=typeof e?.cause?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(e.cause.code)?e.cause.code:undefined;
   return {name,code};
 }
+function transportConfig(cfg:ReturnType<typeof paymentConfig>){return {baseUrl:'https://api.safaricom.co.ke',consumerKey:cfg.consumer,consumerSecret:cfg.secret};}
 async function productionToken(reference:string,cfg:ReturnType<typeof paymentConfig>){
-  try{
-    const auth=await fetch('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',{
-      headers:{Authorization:'Basic '+Buffer.from(cfg.consumer+':'+cfg.secret).toString('base64')},cache:'no-store',signal:AbortSignal.timeout(12000)});
-    const token=await auth.json().catch(()=>null) as {access_token?:string;errorCode?:string}|null;
-    if(!auth.ok||typeof token?.access_token!=='string'||!token.access_token){
-      console.warn('DBK168_DARAJA_AUTH_REJECTED',{reference,httpStatus:auth.status,providerCode:providerCode(token?.errorCode)});
-      throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
-    }
-    return token.access_token;
-  }catch(error){
+  try{return await getDarajaToken(transportConfig(cfg));}
+  catch(error){
     console.warn('DBK168_DARAJA_AUTH_FAILED',{reference,...networkFailure(error)});
     throw new Error('DARAJA_AUTH_NOT_READY_NO_STK');
   }
 }
 async function initiateProdStk(phone:string,amount:number,reference:string,cfg:ReturnType<typeof paymentConfig>,token:string){
   const stamp=kenyaStamp();
-  const response=await fetch('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest',{
+  const response=await darajaFetch(transportConfig(cfg),'/mpesa/stkpush/v1/processrequest',{
     method:'POST',cache:'no-store',signal:AbortSignal.timeout(18000),headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
     body:JSON.stringify({BusinessShortCode:cfg.shortcode,
       Password:Buffer.from(cfg.shortcode+cfg.passkey+stamp).toString('base64'),Timestamp:stamp,

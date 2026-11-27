@@ -2,7 +2,7 @@ import 'server-only';
 import { dbk62GetProductionSql, dbk62CutoverRequested } from '@/lib/db/dbk62-pos-cutover';
 import { prepareDBK68MpesaSale, type PosSaleInput, type PosSeller } from '@/lib/pos/server';
 import { callbackMetadata, darajaAccountReference, darajaTransactionDate,
-  initiateDarajaStkPush, queryDarajaStkStatus, type DarajaStkCallbackPayload } from '@/lib/mpesa/daraja';
+  initiateDarajaStkPush, prepareDarajaStkPush, queryDarajaStkStatus, type DarajaStkCallbackPayload } from '@/lib/mpesa/daraja';
 import { dbk68Kes, dbk68Summary, dbk68ValidReference, dbk68IsOrderId, dbk68PaymentProofMatches, dbk68ReplayCartMatches,
   type DBK68Order } from '@/lib/db/dbk68-daraja-core';
 
@@ -65,6 +65,9 @@ export async function dbk68CreateSale(input:PosSaleInput,seller:PosSeller) {
   }
   const snapshot=await prepareDBK68MpesaSale(input,seller);
   const sql=sqlFor('create');
+  // Authenticate before creating/claiming an irreversible attempt.
+  const dispatch=await prepareDarajaStkPush({phone:snapshot.customerPhone,amount:snapshot.totalMinor/100,
+    accountReference:darajaAccountReference(reference)});
   await sql`SELECT public.dbk68_create_pending(${JSON.stringify(snapshot)}::jsonb)`;
   const claim=await sql`SELECT public.dbk68_claim_stk(${reference}) AS claimed`;
   if (claim[0]?.claimed!==true) {
@@ -76,10 +79,7 @@ export async function dbk68CreateSale(input:PosSaleInput,seller:PosSeller) {
   // This prevents duplicate customer prompts on a retry of the same requestId.
   let stk:Awaited<ReturnType<typeof initiateDarajaStkPush>>;
   try {
-    stk=await initiateDarajaStkPush({
-      phone:snapshot.customerPhone,amount:snapshot.totalMinor/100,
-      accountReference:darajaAccountReference(reference),
-    });
+    stk=await dispatch();
   } catch (cause) {
     console.error('[DBK68] STK initiation uncertain; operator review required',cause);
     const pending=await dbk68GetReference(reference);

@@ -1,4 +1,5 @@
 import "server-only";
+import { darajaFetch, getDarajaToken } from "@/lib/mpesa/dbk173-transport";
 
 type DarajaEnvironment = "sandbox" | "production";
 
@@ -119,24 +120,10 @@ function kenyaTimestamp(date = new Date()) {
   return `${value("year")}${value("month")}${value("day")}${value("hour")}${value("minute")}${value("second")}`;
 }
 
-async function getAccessToken(config: DarajaConfig) {
-  const credentials = Buffer.from(`${config.consumerKey}:${config.consumerSecret}`).toString("base64");
-  const response = await fetch(`${config.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
-    method: "GET",
-    cache: "no-store",
-    headers: { Authorization: `Basic ${credentials}` },
-  });
-
-  const payload = (await response.json()) as { access_token?: string; expires_in?: string; errorCode?: string; errorMessage?: string };
-  if (!response.ok || !payload.access_token) {
-    throw new Error(payload.errorMessage || `Daraja authorization failed with HTTP ${response.status}.`);
-  }
-  return payload.access_token;
-}
-
-async function darajaPost<T>(config: DarajaConfig, path: string, body: Record<string, unknown>): Promise<T> {
-  const accessToken = await getAccessToken(config);
-  const response = await fetch(`${config.baseUrl}${path}`, {
+async function darajaPost<T>(config: DarajaConfig, path: string, body: Record<string, unknown>, token?: string): Promise<T> {
+  const accessToken = token ?? await getDarajaToken(config);
+  const response = await darajaFetch(config, path, {
+    signal: AbortSignal.timeout(18000),
     method: "POST",
     cache: "no-store",
     headers: {
@@ -162,7 +149,7 @@ export function darajaAccountReference(reference: string) {
   return `DBK${suffix}`.slice(0, 12);
 }
 
-export async function initiateDarajaStkPush({
+export async function prepareDarajaStkPush({
   phone,
   amount,
   accountReference,
@@ -176,36 +163,46 @@ export async function initiateDarajaStkPush({
     throw new Error("M-PESA STK Push requires a positive whole-KES amount.");
   }
 
-  const timestamp = kenyaTimestamp();
   const normalizedPhone = phone.replace(/\D/g, "");
   if (!/^254(?:7|1)\d{8}$/.test(normalizedPhone)) {
     throw new Error("Enter a valid Kenyan Safaricom phone number for M-PESA.");
   }
 
-  const response = await darajaPost<DarajaStkPushResponse>(config, "/mpesa/stkpush/v1/processrequest", {
-    BusinessShortCode: config.shortCode,
-    Password: stkPassword(config, timestamp),
-    Timestamp: timestamp,
-    TransactionType: config.transactionType,
-    Amount: amount,
-    PartyA: normalizedPhone,
-    PartyB: config.partyB,
-    PhoneNumber: normalizedPhone,
-    CallBackURL: config.callbackUrl,
-    AccountReference: accountReference.slice(0, 12),
-    TransactionDesc: "Decor by Kasiwa POS",
-  });
+  const token = await getDarajaToken(config).catch(() => { throw new Error("DARAJA_AUTH_NOT_READY_NO_STK"); });
+  let dispatched = false;
+  return async () => {
+    if (dispatched) throw new Error("DARAJA_STK_ALREADY_ATTEMPTED");
+    dispatched = true;
+    const timestamp = kenyaTimestamp();
+    const response = await darajaPost<DarajaStkPushResponse>(config, "/mpesa/stkpush/v1/processrequest", {
+      BusinessShortCode: config.shortCode,
+      Password: stkPassword(config, timestamp),
+      Timestamp: timestamp,
+      TransactionType: config.transactionType,
+      Amount: amount,
+      PartyA: normalizedPhone,
+      PartyB: config.partyB,
+      PhoneNumber: normalizedPhone,
+      CallBackURL: config.callbackUrl,
+      AccountReference: accountReference.slice(0, 12),
+      TransactionDesc: "Decor by Kasiwa POS",
+    }, token);
 
-  if (response.ResponseCode !== "0" || !response.CheckoutRequestID || !response.MerchantRequestID) {
-    throw new Error(response.CustomerMessage || response.ResponseDescription || response.errorMessage || "Safaricom did not accept the STK Push request.");
-  }
+    if (response.ResponseCode !== "0" || !response.CheckoutRequestID || !response.MerchantRequestID) {
+      throw new Error(response.CustomerMessage || response.ResponseDescription || response.errorMessage || "Safaricom did not accept the STK Push request.");
+    }
 
-  return {
-    merchantRequestId: response.MerchantRequestID,
-    checkoutRequestId: response.CheckoutRequestID,
-    customerMessage: response.CustomerMessage || "Enter your M-PESA PIN on the phone prompt.",
-    environment: config.environment,
+    return {
+      merchantRequestId: response.MerchantRequestID,
+      checkoutRequestId: response.CheckoutRequestID,
+      customerMessage: response.CustomerMessage || "Enter your M-PESA PIN on the phone prompt.",
+      environment: config.environment,
+    };
   };
+}
+
+export async function initiateDarajaStkPush(input: Parameters<typeof prepareDarajaStkPush>[0]) {
+  return (await prepareDarajaStkPush(input))();
 }
 
 export async function queryDarajaStkStatus(checkoutRequestId: string) {

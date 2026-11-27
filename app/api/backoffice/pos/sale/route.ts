@@ -113,6 +113,9 @@ export async function POST(request: Request) {
     // A generic 500 causes cashiers to retry a real payment with a new ID.
     // Surface a reconciliation instruction rather than suggesting a new sale.
     const detail = cause instanceof Error ? cause.message : "";
+    if (detail === 'DARAJA_AUTH_NOT_READY_NO_STK') {
+      return NextResponse.json({code:'DARAJA_AUTH_NOT_READY_NO_STK',retryable:true,message:'M-PESA is temporarily unavailable. No new STK prompt was sent. Wait before retrying this same sale.'},{status:503,headers:{'Cache-Control':'private, no-store'}});
+    }
     if (detail === 'Neon Direct M-PESA currently supports in-store POS only') {
       return NextResponse.json({code:'POS_DARAJA_DELIVERY_NOT_SUPPORTED',retryable:false,message:'Direct M-PESA delivery is not supported yet. For delivery, use Manual Payment only after receiving and verifying the actual customer payment, or ask a supervisor. No new STK request was initiated for this attempt.'},{status:409,headers:{'Cache-Control':'private, no-store'}});
     }
