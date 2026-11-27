@@ -1,4 +1,11 @@
-export type BulkPromotion = { startsAt: string; endsAt: string };
+export type BulkPromotion = { startsAt: string; endsAt: string; selected20Names?: string[] };
+
+// Match the whole approved product name; never match an unrelated partial name.
+export const promotionNameKey = (name: string) => name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+export function bulkPromotionPercent(product: {name?: string; bulkPromotion?: BulkPromotion}): 10 | 20 {
+  const name = promotionNameKey(product.name || "");
+  return name && product.bulkPromotion?.selected20Names?.some(n => promotionNameKey(n) === name) ? 20 : 10;
+}
 
 export function bulkPromotionActive(promotion?: BulkPromotion, now = Date.now()) {
   if (!promotion) return false;
@@ -9,8 +16,12 @@ export function bulkPromotionActive(promotion?: BulkPromotion, now = Date.now())
 // Whole-KES policy is explicit: nearest shilling, minimum 1, no surcharge.
 // This is deliberately not presented as an exact 10% for low-priced items.
 export function bulkPromotionUnitPrice(retail: number) {
+  return promotionUnitPrice(retail, 10);
+}
+
+export function promotionUnitPrice(retail: number, percent: 10 | 20) {
   if (!Number.isFinite(retail) || retail <= 0) return retail;
-  return Math.min(retail, Math.max(1, Math.round(retail * 0.9)));
+  return Math.min(retail, Math.max(1, Math.round(retail * (100 - percent) / 100)));
 }
 
 export type PriceableProduct = {
@@ -74,7 +85,7 @@ export function getActiveSaleUnitPrice(product: PriceableProduct, variantPrice?:
   const salePrice = Number(product.salePrice || 0);
   const individualPrice = isSaleActive(product) && salePrice > 0 && salePrice < retailPrice ? salePrice : retailPrice;
   if (!bulkPromotionActive(product.bulkPromotion)) return individualPrice;
-  const promotedPrice = bulkPromotionUnitPrice(retailPrice);
+  const promotedPrice = promotionUnitPrice(retailPrice, bulkPromotionPercent(product));
   // A fixed parent sale price is not a valid offer for a separately priced variant.
   if (typeof variantPrice === "number" && variantPrice > 0) return promotedPrice;
   return Math.min(individualPrice, promotedPrice);

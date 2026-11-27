@@ -65,3 +65,26 @@ test('actual WhatsApp catalogue adapter prices live product variants, leaves cac
  assert.equal(item.price,4050);assert.deepEqual(item.variantOptions.map(v=>v.price),[4500,4050]);
  assert.deepEqual(m.exports.catalogueItem(item),item);
 });
+
+test('DBK167 approved five exact product names get 20% on base and variants without stacking',()=>{
+ const selected20Names=['Shell Plastic Vase','Bow Tie vase','Long Corn vase','90 Cm Beige pampas Grass','Colored Pampas Grass'];
+ const bulkPromotion={...active,selected20Names};
+ for(const name of selected20Names){
+  const p={name:name.toUpperCase(),price:1000,retailPrice:1000,bulkPromotion,variants:[{price:1500}]};
+  assert.equal(getQuantityUnitPrice(p,1),800);assert.equal(getQuantityUnitPrice(p,1,1500),1200);
+  assert.equal(whatsappPromotionPrice(p),800);assert.equal(whatsappPromotionCatalogue([p])[0].variants[0].price,1200);
+  assert.equal(getPriceComparison(p).savingsPercent,20);
+ }
+ for(const name of ['Shell Plastic Vase Large','55 Cm Artificial Pampas Grass','Unrelated item'])assert.equal(getQuantityUnitPrice({name,price:1000,bulkPromotion},1),900);
+ assert.equal(getQuantityUnitPrice({name:selected20Names[0],price:1000,bulkPromotion,onSale:true,salePrice:600},1),600);
+});
+test('DBK167 exceptions are limited to the approved Black Friday campaign and invalidate cached prices',()=>{
+ const source=readFileSync(new URL('../lib/dbk164-promotion-server.ts',import.meta.url),'utf8');
+ const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+ const m={exports:{}};const env={DBK164_PROMOTION_ENABLED:'YES',DBK164_PROMOTION_ROUNDING:'WHOLE_KES',DBK164_PROMOTION_START:'2026-11-26T21:00:00Z',DBK164_PROMOTION_END:'2026-11-28T00:00:00+03:00'};
+ new Function('require','module','exports','process',compiled)(k=>k==='server-only'?{}:{bulkPromotionActive},m,m.exports,{env});
+ assert.equal(m.exports.configuredBulkPromotion().selected20Names.length,5);
+ assert.match(m.exports.promotionCacheKey(Date.parse(env.DBK164_PROMOTION_START)),/dbk167-tier20-v1$/);
+ assert.equal(m.exports.promotionCacheKey(Date.parse(env.DBK164_PROMOTION_END)),'off');
+ env.DBK164_PROMOTION_START='2026-11-27T01:00:00+03:00';assert.equal(m.exports.configuredBulkPromotion().selected20Names,undefined);
+});

@@ -1,6 +1,6 @@
 import "server-only";
 import { configuredBulkPromotion } from "@/lib/dbk164-promotion-server";
-import { bulkPromotionActive, bulkPromotionUnitPrice } from "@/lib/product-pricing";
+import { bulkPromotionActive, promotionUnitPrice, bulkPromotionPercent } from "@/lib/product-pricing";
 
 import imageUrlBuilder from "@sanity/image-url";
 
@@ -359,7 +359,7 @@ function mapProduct(
   const bulkPromotion = configuredBulkPromotion();
   const individualPrice = scheduledSaleActive ? configuredSale : configuredRetail;
   const effectivePrice = bulkPromotionActive(bulkPromotion)
-    ? Math.min(individualPrice, bulkPromotionUnitPrice(configuredRetail)) : individualPrice;
+    ? Math.min(individualPrice, promotionUnitPrice(configuredRetail, bulkPromotionPercent({name: record.name, bulkPromotion}))) : individualPrice;
   const effectiveStock = record.variants?.length
     ? record.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stockQuantity || 0)), 0)
     : typeof record.initialStock === "number"
