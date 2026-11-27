@@ -353,6 +353,12 @@ export default function PointOfSalePage() {
         ...(product.variants || []).flatMap((variant) => [variant.title, variant.colour, variant.size, variant.sku]),
       ].filter(Boolean).join(" ").toLowerCase();
       return term.split(/\s+/).every((token) => searchable.includes(token));
+    }).sort((a,b) => {
+      // The POS feed is already scoped to the selected store. Rank sellable
+      // items before unavailable items without changing quantities or prices.
+      const rank = (p:StoreProduct) => p.available===false ? 2 :
+        (p.variants?.length ? p.variants.some(v=>stockAvailable(p,v)>0) : stockAvailable(p)>0) ? 0 : 1;
+      return rank(a)-rank(b);
     });
   }, [products, search]);
 

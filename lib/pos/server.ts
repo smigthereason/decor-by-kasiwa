@@ -12,6 +12,7 @@ import { dbk94ProjectAfterCommit } from "@/lib/db/dbk94-project-sale-movements";
 import { dbk95AuditEnabled, dbk95AppendAudit, dbk95PosAuditEntry } from "@/lib/pos/dbk95-transaction-audit";
 import { dbk95ProjectAfterCommit } from "@/lib/db/dbk95-project-audits";
 import { manualPaymentBreakdown, toCents } from "@/lib/pos/manual-payment";
+import type { DBK68Delivery } from "@/lib/db/dbk68-daraja-core";
 import { hasVariants, variantStockTotal } from "@/lib/inventory/stock";
 import { adjustLocationBalance, findLocationBalance, locationOnHand, type LocationBalance } from "@/lib/inventory/location-stock";
 import { serverClient } from "@/sanity/lib/serverClient";
@@ -2323,21 +2324,33 @@ export async function prepareDBK62ManualSale(input: PosSaleInput, seller: PosSel
   return {candidate,snapshot};
 }
 
-/** DBK-68: server-priced, in-store Neon candidate for direct Daraja STK. */
+/** A validated delivery snapshot; absent fields preserve legacy in-store orders. */
+export function prepareDBK68Delivery(input:PosSaleInput):DBK68Delivery|undefined {
+  const delivery=deliveryPayable(input);
+  if (delivery.fulfilmentType==='IN_STORE') {
+    if(delivery.deliveryFee!==0) throw Error('Enter the delivery destination for this order.');
+    return undefined;
+  }
+  const a=delivery.deliveryAddress;
+  if(!a || !a.phone || a.fullName.length>150 || a.address1.length>500 || delivery.deliveryLocation.length>180) throw Error('Enter valid delivery recipient details.');
+  return {fulfilmentType:'DELIVERY',deliveryMinor:toCents(delivery.deliveryFee,'delivery fee'),deliveryLocation:delivery.deliveryLocation,deliveryAddress:a};
+}
+
+/** DBK-68: server-priced Neon candidate for direct Daraja STK. */
 export async function prepareDBK68MpesaSale(input: PosSaleInput, seller: PosSeller) {
   if (input.paymentMethod !== 'mpesa') throw new Error('DBK-68 requires Direct M-PESA');
   const reference = referenceFor(input.requestId);
   const customer = customerDetails(input);
   const storeId = seller.storeLocationId;
   if (!storeId) throw new Error('Select a verified POS store');
-  const delivery = deliveryPayable(input);
-  if (delivery.fulfilmentType !== 'IN_STORE' || delivery.deliveryFee !== 0) {
+  const delivery = prepareDBK68Delivery(input);
+  if (delivery && process.env.DBK175_POS_DIRECT_DELIVERY !== 'YES') {
     throw new Error('Neon Direct M-PESA currently supports in-store POS only');
   }
   const { lines } = await buildLines(input.cart, seller, { stockAuthority: 'neon' });
   const subtotal = subtotalFor(lines);
   const discount = calculateDiscount(subtotal, input.discount, seller);
-  const total = subtotal - discount.discountAmount;
+  const total = subtotal - discount.discountAmount + (delivery?.deliveryMinor ?? 0)/100;
   if (!Number.isSafeInteger(total) || total <= 0) {
     throw new Error('Direct M-PESA requires a positive whole-KES amount');
   }
@@ -2350,6 +2363,7 @@ export async function prepareDBK68MpesaSale(input: PosSaleInput, seller: PosSell
     totalMinor: toCents(total, 'total'),
     subtotalMinor: toCents(subtotal, 'subtotal'),
     discountMinor: toCents(discount.discountAmount, 'discount'),
+    ...delivery,
     lines: lines.map(l => ({
       productId: l.productId, variantId: l.variantId || '', quantity: l.quantity,
       unitPriceMinor: toCents(l.unitPrice, 'unit price'), name: l.name.slice(0, 200),

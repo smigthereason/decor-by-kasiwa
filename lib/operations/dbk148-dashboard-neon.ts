@@ -10,7 +10,7 @@ export async function dbk148ReadPaidOrders(storeNames: Map<string, string>): Pro
   const sql = dbk62GetProductionSql();
   const rows = await sql`SELECT * FROM (
     SELECT o.order_id AS id, o.order_number, o.store_id, o.created_at,
-      o.subtotal_minor::text AS subtotal, o.discount_minor::text AS discount, o.total_minor::text AS total,
+      o.subtotal_minor::text AS subtotal, o.discount_minor::text AS discount, o.total_minor::text AS total, o.delivery_minor::text AS delivery,
       s.display_snapshot->>'internalReference' AS reference,
       s.display_snapshot->>'customerName' AS customer_name,
       s.display_snapshot->>'sellerName' AS seller_name, 'external' AS payment_channel,
@@ -22,12 +22,12 @@ export async function dbk148ReadPaidOrders(storeNames: Map<string, string>): Pro
     )
     UNION ALL
     SELECT o.order_id,o.order_number,o.store_id,o.created_at,
-      o.snapshot->>'subtotalMinor',o.snapshot->>'discountMinor',o.amount_minor::text,
+      o.snapshot->>'subtotalMinor',o.snapshot->>'discountMinor',o.amount_minor::text,coalesce(o.snapshot->>'deliveryMinor','0'),
       o.reference,o.snapshot->>'customerName',o.snapshot->>'sellerName','mobile_money','POS','paid'
     FROM public.dbk68_daraja_orders o WHERE o.payment_status='PAID'
     UNION ALL
     SELECT o.order_id,o.order_number,o.store_id,o.created_at,
-      o.snapshot->>'subtotalMinor','0',o.amount_minor::text,
+      o.snapshot->>'subtotalMinor','0',o.amount_minor::text,coalesce(o.snapshot->>'deliveryMinor','0'),
       o.reference,o.snapshot->>'customerName','Online Shop',o.snapshot->>'paymentChannel','ONLINE',
       coalesce(f.status,'paid')
     FROM public.dbk64_online_orders o LEFT JOIN public.dbk65_online_fulfilment f ON f.order_id=o.order_id
@@ -42,7 +42,7 @@ export async function dbk148ReadPaidOrders(storeNames: Map<string, string>): Pro
       id: String(row.id), orderNumber: String(row.order_number), createdAt: date,
       customerId: "", customerName: row.customer_name || "Customer", customerEmail: "", customerPhone: "", deliveryLocation: "",
       status, paymentStatus: "paid", subtotal: kesMinor(row.subtotal), discountAmount: kesMinor(row.discount),
-      total: kesMinor(row.total), deliveryFee: 0, lineItems: [],
+      total: kesMinor(row.total), deliveryFee: kesMinor(row.delivery), lineItems: [],
       salesChannel: row.channel === "POS" ? "POS" : "ONLINE", paymentReference: row.reference || undefined,
       paymentChannel: row.payment_channel || undefined, soldByName: row.seller_name || undefined,
       storeLocationId: row.store_id, storeLocationName: storeNames.get(row.store_id) || row.store_id,

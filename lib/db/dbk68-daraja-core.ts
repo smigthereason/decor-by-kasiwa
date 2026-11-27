@@ -1,8 +1,13 @@
 /** Pure validation/mapping helpers shared by the DBK-68 POS integration. */
+export type DBK68Delivery = {
+  fulfilmentType: 'DELIVERY'; deliveryMinor: number; deliveryLocation: string;
+  deliveryAddress: {fullName:string;phone:string;address1:string;city:string;country:string};
+};
 export type DBK68Snapshot = {
   reference:string; orderId:string; orderNumber:string; storeId:string; sellerId:string;
   sellerName:string; customerName:string; customerPhone:string;
   totalMinor:number; subtotalMinor:number; discountMinor:number;
+  fulfilmentType?: DBK68Delivery['fulfilmentType']; deliveryMinor?:number; deliveryLocation?:string; deliveryAddress?:DBK68Delivery['deliveryAddress'];
   lines:Array<{productId:string;variantId:string;quantity:number;unitPriceMinor:number;name:string}>;
 };
 export type DBK68Order = {
@@ -51,6 +56,23 @@ export function dbk68Kes(value:string|number) {
   }
   return Number(n)/100;
 }
+/** Old in-store snapshots have no delivery fields. New delivery snapshots must
+ * have the exact amount split persisted before any provider dispatch. */
+export function dbk68DeliverySummary(s:DBK68Snapshot) {
+  const deliveryMinor=s.deliveryMinor ?? 0;
+  if (!Number.isSafeInteger(deliveryMinor) || deliveryMinor<0 ||
+      !Number.isSafeInteger(s.subtotalMinor) || !Number.isSafeInteger(s.discountMinor) ||
+      s.discountMinor<0 || s.discountMinor>s.subtotalMinor ||
+      s.subtotalMinor-s.discountMinor+deliveryMinor!==s.totalMinor) throw Error('DBK-68 invalid delivery amount split');
+  if(s.fulfilmentType==='DELIVERY') {
+    if(typeof s.deliveryMinor!=='number' || !s.deliveryLocation?.trim() || !s.deliveryAddress?.fullName?.trim() ||
+       !s.deliveryAddress.address1?.trim() || s.deliveryAddress.city!==s.deliveryLocation ||
+       s.deliveryAddress.country!=='Kenya' || !/^\+254[17]\d{8}$/.test(s.deliveryAddress.phone)) throw Error('DBK-68 invalid delivery address');
+    return {deliveryFee:dbk68Kes(deliveryMinor),deliveryLocation:s.deliveryLocation,deliveryAddress:s.deliveryAddress,fulfilmentType:'DELIVERY' as const};
+  }
+  if(s.fulfilmentType!==undefined || s.deliveryMinor!==undefined || s.deliveryLocation!==undefined || s.deliveryAddress!==undefined) throw Error('DBK-68 unexpected in-store delivery details');
+  return {deliveryFee:0,deliveryLocation:'',deliveryAddress:undefined,fulfilmentType:'IN_STORE' as const};
+}
 export function dbk68Summary(o:DBK68Order) {
   if (!dbk68ValidReference(o.reference) || !dbk68IsOrderId(o.order_id)) {
     throw new Error('Invalid Neon M-PESA order');
@@ -60,11 +82,13 @@ export function dbk68Summary(o:DBK68Order) {
       s.totalMinor!==Number(o.amount_minor) || !Array.isArray(s.lines)) {
     throw new Error('DBK-68 immutable snapshot mismatch');
   }
+  const delivery=dbk68DeliverySummary(s);
   const paid=o.payment_status==='PAID';
   return {
     reference:o.reference,orderId:o.order_id,orderNumber:o.order_number,
     receiptNumber:`RCT-${o.order_number}`,paymentStatus:paid?'paid':o.payment_status==='FAILED'?'failed':'pending',
-    status:paid?'completed':'pending',paymentProvider:'daraja',paymentChannel:'mobile_money',
+    status:paid?(delivery.fulfilmentType==='DELIVERY'?'processing':'completed'):'pending',paymentProvider:'daraja',paymentChannel:'mobile_money',
+    ...delivery,
     total:dbk68Kes(o.amount_minor),amountPaid:paid?dbk68Kes(o.amount_minor):0,
     balanceDue:paid?0:dbk68Kes(o.amount_minor),storeLocationId:o.store_id,
     customerName:s.customerName,customerPhone:`+${s.customerPhone}`,soldByName:s.sellerName,

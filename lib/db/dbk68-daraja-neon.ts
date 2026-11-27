@@ -1,6 +1,6 @@
 import 'server-only';
 import { dbk62GetProductionSql, dbk62CutoverRequested } from '@/lib/db/dbk62-pos-cutover';
-import { prepareDBK68MpesaSale, type PosSaleInput, type PosSeller } from '@/lib/pos/server';
+import { prepareDBK68MpesaSale, prepareDBK68Delivery, type PosSaleInput, type PosSeller } from '@/lib/pos/server';
 import { callbackMetadata, darajaAccountReference, darajaTransactionDate,
   initiateDarajaStkPush, prepareDarajaStkPush, queryDarajaStkStatus, type DarajaStkCallbackPayload } from '@/lib/mpesa/daraja';
 import { dbk68Kes, dbk68Summary, dbk68ValidReference, dbk68IsOrderId, dbk68PaymentProofMatches, dbk68ReplayCartMatches,
@@ -61,10 +61,31 @@ export async function dbk68CreateSale(input:PosSaleInput,seller:PosSeller) {
         String(input.customerName||'').trim()!==prior.snapshot.customerName) {
       throw new Error('This POS request ID already belongs to a different cart or customer. Reconcile it; do not initiate another STK request.');
     }
+    const requestedDelivery=prepareDBK68Delivery(input);
+    const persisted=prior.snapshot;
+    if ((requestedDelivery?.deliveryMinor ?? 0)!==(persisted.deliveryMinor ?? 0) ||
+        requestedDelivery?.fulfilmentType!==persisted.fulfilmentType ||
+        requestedDelivery?.deliveryLocation!==persisted.deliveryLocation ||
+        (requestedDelivery && (!persisted.deliveryAddress ||
+          (['fullName','phone','address1','city','country'] as const).some(k=>requestedDelivery.deliveryAddress[k]!==persisted.deliveryAddress?.[k])))) {
+      throw new Error('This POS request ID already belongs to a different cart or customer. Reconcile it; do not initiate another STK request.');
+    }
     return safeState(prior);
   }
   const snapshot=await prepareDBK68MpesaSale(input,seller);
   const sql=sqlFor('create');
+  if (snapshot.fulfilmentType==='DELIVERY') {
+    const balances=await sql`WITH requested AS (
+      SELECT x->>'productId' AS product_id,coalesce(x->>'variantId','') AS variant_id,
+        sum((x->>'quantity')::integer) AS qty
+      FROM jsonb_array_elements(${JSON.stringify(snapshot.lines)}::jsonb) x GROUP BY 1,2
+    ) SELECT count(*) AS requested_count,
+      count(*) FILTER (WHERE b.on_hand IS NULL OR b.on_hand<r.qty) AS missing_count
+      FROM requested r LEFT JOIN public.dbk51_stock_balances b
+      ON b.product_id=r.product_id AND b.variant_id=r.variant_id AND b.location_id=${snapshot.storeId}`;
+    if(Number(balances[0]?.requested_count)<1 || Number(balances[0]?.missing_count)!==0 ||
+       !Number.isSafeInteger(Number(balances[0]?.requested_count))) throw Error('POS delivery stock unavailable at selected store; no STK sent');
+  }
   // Authenticate before creating/claiming an irreversible attempt.
   const dispatch=await prepareDarajaStkPush({phone:snapshot.customerPhone,amount:snapshot.totalMinor/100,
     accountReference:darajaAccountReference(reference)});
@@ -176,7 +197,7 @@ export async function dbk68ReadReceipt(id:string) {
   const s=dbk68Summary(row);
   return {...s,_id:s.orderId,subtotal:dbk68Kes(row.snapshot.subtotalMinor),
     discountAmount:dbk68Kes(row.snapshot.discountMinor),
-    paymentReference:row.reference,fulfilmentType:'IN_STORE' as const,
+    paymentReference:row.reference,
     receiptNumber:s.receiptNumber,providerReceiptNumber:row.receipt_number||'',
     businessName:'Decor by Kasiwa',businessEmail:'',businessPhone:'',businessWebsite:'decorbykasiwa.co.ke'};
 }
@@ -218,7 +239,7 @@ export async function dbk68ListHistory() {
       soldByName:s.soldByName,soldAt:s.soldAt,paymentStatus:s.paymentStatus,
       paymentChannel:'mobile_money',subtotal:dbk68Kes(o.snapshot.subtotalMinor),
       discountAmount:dbk68Kes(o.snapshot.discountMinor),total:s.total,amountPaid:s.amountPaid,
-      balanceDue:s.balanceDue,deliveryFee:0,deliveryLocation:'',refundedAmount:0,
+      balanceDue:s.balanceDue,deliveryFee:s.deliveryFee,deliveryLocation:s.deliveryLocation,fulfilmentType:s.fulfilmentType,deliveryAddress:s.deliveryAddress,refundedAmount:0,
       paymentReference:s.reference,paymentProvider:'daraja',
       providerReceiptNumber:o.receipt_number||'',storeLocationId:o.store_id,
       storeLocationName:'',failureReason:o.result_description||'',

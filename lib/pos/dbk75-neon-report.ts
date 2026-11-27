@@ -100,7 +100,7 @@ export async function dbk75ReadNeonReport(start:string,end:string,storeId:string
       salesChannel:'POS',soldByName:summary.soldByName,soldAt:new Date(row.created_at).toISOString(),paymentStatus:'paid',
       paymentChannel:'mobile_money',subtotal:dbk68Kes(row.snapshot.subtotalMinor),
       discountAmount:dbk68Kes(row.snapshot.discountMinor),total:summary.total,amountPaid:summary.amountPaid,
-      balanceDue:summary.balanceDue,cashTendered:0,cashChangeDue:0,deliveryFee:0,deliveryLocation:'',
+      balanceDue:summary.balanceDue,cashTendered:0,cashChangeDue:0,deliveryFee:summary.deliveryFee,deliveryLocation:summary.deliveryLocation,
       refundedAmount:0,paymentReference:summary.reference,paymentProvider:'daraja',
       providerReceiptNumber:row.receipt_number||'',storeLocationId:row.store_id,storeLocationName:'',
       lineItems:summary.lineItems});
